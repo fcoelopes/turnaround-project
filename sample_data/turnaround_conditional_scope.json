@@ -1,0 +1,56 @@
+{
+  "deadline": 24,
+  "task_overrides": {
+    "5": {
+      "activation": {
+        "kind": "conditional",
+        "conditions": [{"source_task_id": "4", "events": ["bearing_damage"]}],
+        "condition_logic": "all"
+      },
+      "modes": [
+        {"name": "normal", "duration": 5, "resources": {"Mecânica": 3}, "cost": 0},
+        {"name": "reforco", "duration": 3, "resources": {"Mecânica": 5}, "cost": 1200}
+      ]
+    },
+    "6": {
+      "activation": {
+        "kind": "conditional",
+        "conditions": [{"source_task_id": "4", "events": ["seal_damage"]}],
+        "condition_logic": "all"
+      }
+    },
+    "7": {
+      "activation": {
+        "kind": "conditional",
+        "conditions": [{"source_task_id": "4", "events": ["shaft_damage"]}],
+        "condition_logic": "all"
+      },
+      "modes": [
+        {"name": "normal", "duration": 7, "resources": {"Mecânica": 3}, "cost": 0},
+        {"name": "ataque", "duration": 4, "resources": {"Mecânica": 5}, "cost": 2500}
+      ]
+    },
+    "8": {
+      "activation": {
+        "kind": "conditional",
+        "conditions": [{"source_task_id": "4", "events": ["shaft_damage"]}],
+        "condition_logic": "all"
+      }
+    },
+    "9": {"activation": {"kind": "optional"}},
+    "10": {"activation": {"kind": "optional"}}
+  },
+  "logical_groups": [
+    {
+      "id": "impeller_disposition",
+      "operator": "xor",
+      "member_task_ids": ["9", "10"],
+      "when": {
+        "source_task_id": "4",
+        "events": ["impeller_damage"],
+        "event_logic": "any",
+        "require_completed": true
+      }
+    }
+  ]
+}
