@@ -1,0 +1,11 @@
+ID,Nome,Duracao_h,Predecessoras,Recursos,Demandas,WBS
+1,Parada e bloqueio,4,,Operação;Elétrica,Operação:2;Elétrica:1,1
+2,Desmontagem linha A,8,1FS,Mecânica,Mecânica:3,2.1
+3,Inspeção interna A,6,2FS,Inspeção,Inspeção:2,2.2
+4,Reparo solda A,10,3FS,Caldeiraria;Soldagem,Caldeiraria:2;Soldagem:2,2.3
+5,Desmontagem bomba B,6,1FS,Mecânica,Mecânica:2,3.1
+6,Revisão bomba B,12,5FS,Mecânica,Mecânica:3,3.2
+7,Alinhamento B,4,6FS,Mecânica,Mecânica:2,3.3
+8,Montagem linha A,8,4FS,Mecânica,Mecânica:3,2.4
+9,Teste estanqueidade,4,8FS;7FS,Inspeção;Operação,Inspeção:1;Operação:1,4.1
+10,Desbloqueio e partida,4,9FS,Operação;Elétrica,Operação:2;Elétrica:1,4.2

@@ -1,0 +1,15 @@
+[project]
+name = "turnaround-streamlit"
+version = "0.1.0"
+description = "Streamlit MVP for shutdown/turnaround scheduling using CPM + heuristic RCPSP + deadline risk simulation"
+requires-python = ">=3.11"
+dependencies = [
+  "streamlit>=1.40",
+  "pandas>=2.2",
+  "openpyxl>=3.1",
+  "plotly>=5.24",
+  "numpy>=1.26",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
