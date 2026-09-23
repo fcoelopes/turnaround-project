@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <SaveVersion>14</SaveVersion>
+  <Name>turnaround_project_model.xml</Name>
+  <Title>Modelo de Turnaround - MRCPSP</Title>
+  <Subject>Cronograma modelo para importação no motor de turnaround</Subject>
+  <Author>3waymaintenanceframework</Author>
+  <CreationDate>2026-09-23T08:00:00</CreationDate>
+  <LastSaved>2026-09-23T08:00:00</LastSaved>
+  <ScheduleFromStart>1</ScheduleFromStart>
+  <StartDate>2026-10-05T07:00:00</StartDate>
+  <FinishDate>2026-10-06T03:00:00</FinishDate>
+  <CalendarUID>1</CalendarUID>
+  <DefaultStartTime>07:00:00</DefaultStartTime>
+  <DefaultFinishTime>19:00:00</DefaultFinishTime>
+  <MinutesPerDay>720</MinutesPerDay>
+  <MinutesPerWeek>5040</MinutesPerWeek>
+  <DaysPerMonth>30</DaysPerMonth>
+  <DurationFormat>7</DurationFormat>
+  <WorkFormat>2</WorkFormat>
+  <HonorConstraints>1</HonorConstraints>
+
+  <Calendars>
+    <Calendar>
+      <UID>1</UID>
+      <Name>Turnaround 24x7</Name>
+      <IsBaseCalendar>1</IsBaseCalendar>
+      <BaseCalendarUID>-1</BaseCalendarUID>
+      <WeekDays>
+        <WeekDay><DayType>1</DayType><DayWorking>1</DayWorking><WorkingTimes><WorkingTime><FromTime>00:00:00</FromTime><ToTime>23:59:00</ToTime></WorkingTime></WorkingTimes></WeekDay>
+        <WeekDay><DayType>2</DayType><DayWorking>1</DayWorking><WorkingTimes><WorkingTime><FromTime>00:00:00</FromTime><ToTime>23:59:00</ToTime></WorkingTime></WorkingTimes></WeekDay>
+        <WeekDay><DayType>3</DayType><DayWorking>1</DayWorking><WorkingTimes><WorkingTime><FromTime>00:00:00</FromTime><ToTime>23:59:00</ToTime></WorkingTime></WorkingTimes></WeekDay>
+        <WeekDay><DayType>4</DayType><DayWorking>1</DayWorking><WorkingTimes><WorkingTime><FromTime>00:00:00</FromTime><ToTime>23:59:00</ToTime></WorkingTime></WorkingTimes></WeekDay>
+        <WeekDay><DayType>5</DayType><DayWorking>1</DayWorking><WorkingTimes><WorkingTime><FromTime>00:00:00</FromTime><ToTime>23:59:00</ToTime></WorkingTime></WorkingTimes></WeekDay>
+        <WeekDay><DayType>6</DayType><DayWorking>1</DayWorking><WorkingTimes><WorkingTime><FromTime>00:00:00</FromTime><ToTime>23:59:00</ToTime></WorkingTime></WorkingTimes></WeekDay>
+        <WeekDay><DayType>7</DayType><DayWorking>1</DayWorking><WorkingTimes><WorkingTime><FromTime>00:00:00</FromTime><ToTime>23:59:00</ToTime></WorkingTime></WorkingTimes></WeekDay>
+      </WeekDays>
+    </Calendar>
+  </Calendars>
+
+  <Tasks>
+    <Task>
+      <UID>0</UID><ID>0</ID><Name>Modelo de Turnaround</Name><Type>1</Type><IsNull>0</IsNull><WBS>0</WBS><OutlineNumber>0</OutlineNumber><OutlineLevel>0</OutlineLevel><Start>2026-10-05T07:00:00</Start><Finish>2026-10-06T03:00:00</Finish><Duration>PT20H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT0H0M0S</Work><Summary>1</Summary><Milestone>0</Milestone>
+    </Task>
+    <Task>
+      <UID>1</UID><ID>1</ID><Name>Preparação e liberação</Name><Type>1</Type><IsNull>0</IsNull><WBS>1</WBS><OutlineNumber>1</OutlineNumber><OutlineLevel>1</OutlineLevel><Start>2026-10-05T07:00:00</Start><Finish>2026-10-05T11:00:00</Finish><Duration>PT4H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT0H0M0S</Work><Summary>1</Summary><Milestone>0</Milestone>
+    </Task>
+    <Task>
+      <UID>2</UID><ID>2</ID><Name>Parada operacional</Name><Type>1</Type><IsNull>0</IsNull><WBS>1.1</WBS><OutlineNumber>1.1</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T07:00:00</Start><Finish>2026-10-05T08:00:00</Finish><Duration>PT1H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT1H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+    </Task>
+    <Task>
+      <UID>3</UID><ID>3</ID><Name>LOTO e liberação de energia</Name><Type>1</Type><IsNull>0</IsNull><WBS>1.2</WBS><OutlineNumber>1.2</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T08:00:00</Start><Finish>2026-10-05T10:00:00</Finish><Duration>PT2H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT4H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>2</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>4</UID><ID>4</ID><Name>Montar andaime de acesso</Name><Type>1</Type><IsNull>0</IsNull><WBS>1.3</WBS><OutlineNumber>1.3</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T08:30:00</Start><Finish>2026-10-05T11:00:00</Finish><Duration>PT2H30M0S</Duration><DurationFormat>7</DurationFormat><Work>PT5H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>2</PredecessorUID><Type>3</Type><CrossProject>0</CrossProject><LinkLag>300</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+
+    <Task>
+      <UID>5</UID><ID>5</ID><Name>Frente A - Bomba P-101</Name><Type>1</Type><IsNull>0</IsNull><WBS>2</WBS><OutlineNumber>2</OutlineNumber><OutlineLevel>1</OutlineLevel><Start>2026-10-05T10:00:00</Start><Finish>2026-10-05T23:00:00</Finish><Duration>PT13H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT0H0M0S</Work><Summary>1</Summary><Milestone>0</Milestone>
+    </Task>
+    <Task>
+      <UID>6</UID><ID>6</ID><Name>Desacoplar bomba P-101</Name><Type>1</Type><IsNull>0</IsNull><WBS>2.1</WBS><OutlineNumber>2.1</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T10:00:00</Start><Finish>2026-10-05T13:00:00</Finish><Duration>PT3H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT12H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>3</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>7</UID><ID>7</ID><Name>Remover conjunto rotativo P-101</Name><Type>1</Type><IsNull>0</IsNull><WBS>2.2</WBS><OutlineNumber>2.2</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T13:00:00</Start><Finish>2026-10-05T15:00:00</Finish><Duration>PT2H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT8H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>6</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>8</UID><ID>8</ID><Name>Inspecionar conjunto P-101</Name><Type>1</Type><IsNull>0</IsNull><WBS>2.3</WBS><OutlineNumber>2.3</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T15:00:00</Start><Finish>2026-10-05T17:00:00</Finish><Duration>PT2H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT4H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>7</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>9</UID><ID>9</ID><Name>Revisar rolamentos e selo P-101</Name><Type>1</Type><IsNull>0</IsNull><WBS>2.4</WBS><OutlineNumber>2.4</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T17:00:00</Start><Finish>2026-10-05T21:00:00</Finish><Duration>PT4H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT16H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>8</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>10</UID><ID>10</ID><Name>Montar e alinhar P-101</Name><Type>1</Type><IsNull>0</IsNull><WBS>2.5</WBS><OutlineNumber>2.5</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T21:00:00</Start><Finish>2026-10-05T23:00:00</Finish><Duration>PT2H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT8H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>9</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+
+    <Task>
+      <UID>11</UID><ID>11</ID><Name>Frente B - Válvula XV-204</Name><Type>1</Type><IsNull>0</IsNull><WBS>3</WBS><OutlineNumber>3</OutlineNumber><OutlineLevel>1</OutlineLevel><Start>2026-10-05T10:00:00</Start><Finish>2026-10-05T20:00:00</Finish><Duration>PT10H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT0H0M0S</Work><Summary>1</Summary><Milestone>0</Milestone>
+    </Task>
+    <Task>
+      <UID>12</UID><ID>12</ID><Name>Remover válvula XV-204</Name><Type>1</Type><IsNull>0</IsNull><WBS>3.1</WBS><OutlineNumber>3.1</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T10:00:00</Start><Finish>2026-10-05T13:00:00</Finish><Duration>PT3H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT12H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>3</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>13</UID><ID>13</ID><Name>Inspecionar sede e obturador XV-204</Name><Type>1</Type><IsNull>0</IsNull><WBS>3.2</WBS><OutlineNumber>3.2</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T13:00:00</Start><Finish>2026-10-05T15:00:00</Finish><Duration>PT2H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT4H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>12</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>14</UID><ID>14</ID><Name>Lapidar sede XV-204</Name><Type>1</Type><IsNull>0</IsNull><WBS>3.3</WBS><OutlineNumber>3.3</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T15:00:00</Start><Finish>2026-10-05T18:00:00</Finish><Duration>PT3H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT12H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>13</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>15</UID><ID>15</ID><Name>Montar válvula XV-204</Name><Type>1</Type><IsNull>0</IsNull><WBS>3.4</WBS><OutlineNumber>3.4</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T18:00:00</Start><Finish>2026-10-05T20:00:00</Finish><Duration>PT2H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT8H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>14</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+
+    <Task>
+      <UID>16</UID><ID>16</ID><Name>Testes e partida</Name><Type>1</Type><IsNull>0</IsNull><WBS>4</WBS><OutlineNumber>4</OutlineNumber><OutlineLevel>1</OutlineLevel><Start>2026-10-05T23:00:00</Start><Finish>2026-10-06T03:00:00</Finish><Duration>PT4H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT0H0M0S</Work><Summary>1</Summary><Milestone>0</Milestone>
+    </Task>
+    <Task>
+      <UID>17</UID><ID>17</ID><Name>Teste funcional e instrumentação</Name><Type>1</Type><IsNull>0</IsNull><WBS>4.1</WBS><OutlineNumber>4.1</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-05T23:00:00</Start><Finish>2026-10-06T01:00:00</Finish><Duration>PT2H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT6H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>10</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+      <PredecessorLink><PredecessorUID>15</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>18</UID><ID>18</ID><Name>Retirada de LOTO e partida</Name><Type>1</Type><IsNull>0</IsNull><WBS>4.2</WBS><OutlineNumber>4.2</OutlineNumber><OutlineLevel>2</OutlineLevel><Start>2026-10-06T01:00:00</Start><Finish>2026-10-06T03:00:00</Finish><Duration>PT2H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT4H0M0S</Work><Summary>0</Summary><Milestone>0</Milestone>
+      <PredecessorLink><PredecessorUID>17</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>19</UID><ID>19</ID><Name>Fim da parada</Name><Type>1</Type><IsNull>0</IsNull><WBS>5</WBS><OutlineNumber>5</OutlineNumber><OutlineLevel>1</OutlineLevel><Start>2026-10-06T03:00:00</Start><Finish>2026-10-06T03:00:00</Finish><Duration>PT0H0M0S</Duration><DurationFormat>7</DurationFormat><Work>PT0H0M0S</Work><Summary>0</Summary><Milestone>1</Milestone>
+      <PredecessorLink><PredecessorUID>18</PredecessorUID><Type>1</Type><CrossProject>0</CrossProject><LinkLag>0</LinkLag><LagFormat>7</LagFormat></PredecessorLink>
+    </Task>
+  </Tasks>
+
+  <Resources>
+    <Resource><UID>0</UID><ID>0</ID><Name>Unassigned</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>1</MaxUnits><PeakUnits>1</PeakUnits></Resource>
+    <Resource><UID>1</UID><ID>1</ID><Name>Operação</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>2</MaxUnits><PeakUnits>2</PeakUnits><CalendarUID>1</CalendarUID></Resource>
+    <Resource><UID>2</UID><ID>2</ID><Name>Mecânica</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>6</MaxUnits><PeakUnits>6</PeakUnits><CalendarUID>1</CalendarUID></Resource>
+    <Resource><UID>3</UID><ID>3</ID><Name>Elétrica</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>3</MaxUnits><PeakUnits>3</PeakUnits><CalendarUID>1</CalendarUID></Resource>
+    <Resource><UID>4</UID><ID>4</ID><Name>Instrumentação</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>2</MaxUnits><PeakUnits>2</PeakUnits><CalendarUID>1</CalendarUID></Resource>
+    <Resource><UID>5</UID><ID>5</ID><Name>Inspeção</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>2</MaxUnits><PeakUnits>2</PeakUnits><CalendarUID>1</CalendarUID></Resource>
+    <Resource><UID>6</UID><ID>6</ID><Name>Guindaste 25t</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>1</MaxUnits><PeakUnits>1</PeakUnits><CalendarUID>1</CalendarUID></Resource>
+    <Resource><UID>7</UID><ID>7</ID><Name>Andaime</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>2</MaxUnits><PeakUnits>2</PeakUnits><CalendarUID>1</CalendarUID></Resource>
+  </Resources>
+
+  <Assignments>
+    <Assignment><UID>1</UID><TaskUID>2</TaskUID><ResourceUID>1</ResourceUID><Units>1</Units><Work>PT1H0M0S</Work></Assignment>
+    <Assignment><UID>2</UID><TaskUID>3</TaskUID><ResourceUID>1</ResourceUID><Units>1</Units><Work>PT2H0M0S</Work></Assignment>
+    <Assignment><UID>3</UID><TaskUID>3</TaskUID><ResourceUID>3</ResourceUID><Units>1</Units><Work>PT2H0M0S</Work></Assignment>
+    <Assignment><UID>4</UID><TaskUID>4</TaskUID><ResourceUID>7</ResourceUID><Units>2</Units><Work>PT5H0M0S</Work></Assignment>
+    <Assignment><UID>5</UID><TaskUID>6</TaskUID><ResourceUID>2</ResourceUID><Units>4</Units><Work>PT12H0M0S</Work></Assignment>
+    <Assignment><UID>6</UID><TaskUID>7</TaskUID><ResourceUID>2</ResourceUID><Units>4</Units><Work>PT8H0M0S</Work></Assignment>
+    <Assignment><UID>7</UID><TaskUID>7</TaskUID><ResourceUID>6</ResourceUID><Units>1</Units><Work>PT2H0M0S</Work></Assignment>
+    <Assignment><UID>8</UID><TaskUID>8</TaskUID><ResourceUID>5</ResourceUID><Units>2</Units><Work>PT4H0M0S</Work></Assignment>
+    <Assignment><UID>9</UID><TaskUID>9</TaskUID><ResourceUID>2</ResourceUID><Units>4</Units><Work>PT16H0M0S</Work></Assignment>
+    <Assignment><UID>10</UID><TaskUID>10</TaskUID><ResourceUID>2</ResourceUID><Units>4</Units><Work>PT8H0M0S</Work></Assignment>
+    <Assignment><UID>11</UID><TaskUID>10</TaskUID><ResourceUID>4</ResourceUID><Units>1</Units><Work>PT2H0M0S</Work></Assignment>
+    <Assignment><UID>12</UID><TaskUID>12</TaskUID><ResourceUID>2</ResourceUID><Units>4</Units><Work>PT12H0M0S</Work></Assignment>
+    <Assignment><UID>13</UID><TaskUID>12</TaskUID><ResourceUID>6</ResourceUID><Units>1</Units><Work>PT3H0M0S</Work></Assignment>
+    <Assignment><UID>14</UID><TaskUID>13</TaskUID><ResourceUID>5</ResourceUID><Units>2</Units><Work>PT4H0M0S</Work></Assignment>
+    <Assignment><UID>15</UID><TaskUID>14</TaskUID><ResourceUID>2</ResourceUID><Units>4</Units><Work>PT12H0M0S</Work></Assignment>
+    <Assignment><UID>16</UID><TaskUID>15</TaskUID><ResourceUID>2</ResourceUID><Units>4</Units><Work>PT8H0M0S</Work></Assignment>
+    <Assignment><UID>17</UID><TaskUID>17</TaskUID><ResourceUID>4</ResourceUID><Units>2</Units><Work>PT4H0M0S</Work></Assignment>
+    <Assignment><UID>18</UID><TaskUID>17</TaskUID><ResourceUID>3</ResourceUID><Units>1</Units><Work>PT2H0M0S</Work></Assignment>
+    <Assignment><UID>19</UID><TaskUID>18</TaskUID><ResourceUID>1</ResourceUID><Units>1</Units><Work>PT2H0M0S</Work></Assignment>
+    <Assignment><UID>20</UID><TaskUID>18</TaskUID><ResourceUID>3</ResourceUID><Units>1</Units><Work>PT2H0M0S</Work></Assignment>
+  </Assignments>
+</Project>
