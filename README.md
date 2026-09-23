@@ -11,7 +11,7 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 5. Testa quatro regras de prioridade e escolhe o menor atraso/makespan.
 6. Mostra Gantt, gargalos, utilização dos recursos e penalidade de capacidade.
 7. Faz Monte Carlo triangular das durações e calcula P50/P80/P90 e probabilidade de cumprir a janela.
-8. Exporta o resultado para Excel.\n9. Em uma página avançada, trata **MRCPSP**, escopo opcional/condicional e rescheduling após inspeções.
+8. Exporta os dados técnicos para Excel.\n9. Gera um **relatório gerencial em PDF** com KPIs, gargalos, risco e cronograma.\n10. Em uma página avançada, trata **MRCPSP**, escopo opcional/condicional e rescheduling após inspeções.
 
 ## Dois níveis de planejamento
 
@@ -37,17 +37,25 @@ O parser de XML é o mesmo do MVP base. Não existe um segundo modelo de importa
 o cronograma é lido uma vez e convertido para o domínio avançado somente quando
 essa página é usada.
 
-## Por que RCPSP?
+## Interface e saída gerencial\n\nA interface Streamlit separa a análise em visão executiva, cronograma, recursos, risco e exportação. O PDF é a saída gerencial para comunicação da parada; o Excel permanece como saída técnica para exploração e auditoria dos dados. A página de scope discovery possui relatório próprio, registrando baseline, novo escopo, mapa de ativação e cronograma reprogramado.\n\n## Por que RCPSP?
 
 Turnarounds são projetos de manutenção de grande escala com precedências fortes, duração curta e recursos limitados. O problema é naturalmente próximo do Resource-Constrained Project Scheduling Problem; variantes de shutdown maintenance também incorporam equipes multi-skill, modos de execução e avaliação de risco de prazo.
 
 ## Rodar
 
+Com uv:
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate        # Linux/WSL
-# .venv\\Scripts\\activate       # Windows PowerShell
-pip install -r requirements.txt
+uv sync
+uv run streamlit run app.py
+```
+
+Ou, com venv tradicional:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
