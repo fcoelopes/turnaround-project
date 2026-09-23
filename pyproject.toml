@@ -10,6 +10,7 @@ dependencies = [
   "plotly>=5.24",
   "numpy>=1.26",
   "pydantic>=2.5",
+  "reportlab>=4.2",
 ]
 
 [tool.pytest.ini_options]
