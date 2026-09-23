@@ -20,7 +20,7 @@ from turnaround.risk import simulate_deadline_risk
 
 st.set_page_config(page_title="Turnaround Scheduler", page_icon="🛠️", layout="wide")
 st.title("🛠️ Turnaround Scheduler")
-st.caption("Cronograma do Microsoft Project → CPM → RCPSP → risco de prazo")
+st.caption("Microsoft Project → CPM → RCPSP → risco · página avançada: MRCPSP + scope discovery")
 
 with st.sidebar:
     st.header("Configuração")
