@@ -502,7 +502,7 @@ def build_conditional_management_pdf(
             schedule_df,
             ["ID", "Atividade", "Modo", "Início (h)", "Fim (h)", "Duração (h)", "Congelada"],
             max_rows=60,
-            widths=[12 * mm, 63 * mm, 27 * mm, 19 * mm, 19 * mm, 19 * mm, 20 * mm],
+            widths=[11 * mm, 60 * mm, 24 * mm, 18 * mm, 18 * mm, 18 * mm, 18 * mm],
         ),
         Spacer(1, 4 * mm),
         _p(
