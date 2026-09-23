@@ -28,3 +28,10 @@ jobs:
 
       - name: Test
         run: pytest -q
+
+      - name: Validate deploy stack
+        env:
+          DOMAIN: turnaround.example.com
+        run: |
+          docker compose config -q
+          docker build -t turnaround-project:test .

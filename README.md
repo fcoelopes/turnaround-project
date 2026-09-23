@@ -112,3 +112,25 @@ O núcleo foi separado da interface para substituir o heurístico por **CP-SAT/M
 - restrições de área, LOTO, acesso, guindaste e simultaneidade;
 - buffers por risco e janela P80;
 - reexportação compatível com Microsoft Project.
+
+
+## Deploy na OCI
+
+O repositório inclui um stack de produção com **Docker Compose + Caddy**:
+
+- `Dockerfile` — aplicação Streamlit;
+- `compose.yaml` — app + reverse proxy;
+- `deploy/oci/Caddyfile` — HTTPS automático e proxy para o Streamlit;
+- `.env.example` — domínio do deploy;
+- `deploy/oci/README.md` — passo a passo completo para VM Ubuntu na OCI.
+
+Fluxo resumido:
+
+```bash
+cp .env.example .env
+# edite DOMAIN no .env
+
+docker compose up -d --build
+```
+
+A porta 8501 fica somente na rede Docker; exponha publicamente apenas 80/443.
