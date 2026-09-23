@@ -8,9 +8,11 @@ import pandas as pd
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
+    Flowable,
     KeepTogether,
     PageBreak,
     Paragraph,
@@ -136,59 +138,397 @@ def _page(canvas, doc):
     canvas.restoreState()
 
 
-def _metric_table(metrics: list[tuple[str, str]]) -> Table:
-    styles = _styles()
-    cells = []
-    for label, value in metrics:
-        cells.append(
-            [
-                _p(label.upper(), styles["metric_label"]),
-                _p(value, styles["metric_value"]),
-            ]
+class _MetricCards(Flowable):
+    def __init__(
+        self,
+        metrics: list[tuple[str, str]],
+        *,
+        columns: int | None = None,
+    ):
+        super().__init__()
+        self.metrics = metrics
+        if columns is None:
+            columns = 3 if len(metrics) == 6 else 4 if len(metrics) >= 8 else min(3, len(metrics))
+        self.columns = max(1, columns)
+        self.gap = 3 * mm
+        self.card_height = 22 * mm
+        self.row_gap = 3 * mm
+        self.rows = (len(metrics) + self.columns - 1) // self.columns
+        self.height = (
+            self.rows * self.card_height
+            + max(0, self.rows - 1) * self.row_gap
         )
 
-    cards = []
-    for label_value in cells:
-        cards.append(
-            Table(
-                [[label_value[0]], [label_value[1]]],
-                colWidths=[39 * mm],
-                rowHeights=[8 * mm, 11 * mm],
-                style=TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-                        ("BOX", (0, 0), (-1, -1), 0.6, LINE),
-                        ("ROUNDEDCORNERS", [4]),
-                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 4 * mm),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
-                        ("TOPPADDING", (0, 0), (-1, -1), 1 * mm),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 1 * mm),
-                    ]
-                ),
+    def wrap(self, avail_width, avail_height):
+        self.width = avail_width
+        return avail_width, self.height
+
+    def _fit_text(self, text: str, max_width: float, start_size: float) -> float:
+        size = start_size
+        while size > 8 and stringWidth(text, "Helvetica-Bold", size) > max_width:
+            size -= 0.5
+        return size
+
+    def draw(self):
+        canvas = self.canv
+        card_width = (
+            self.width - (self.columns - 1) * self.gap
+        ) / self.columns
+
+        for index, (label, value) in enumerate(self.metrics):
+            row = index // self.columns
+            col = index % self.columns
+            x = col * (card_width + self.gap)
+            y = self.height - (row + 1) * self.card_height - row * self.row_gap
+
+            canvas.saveState()
+            canvas.setFillColor(colors.HexColor("#FAFCFD"))
+            canvas.setStrokeColor(LINE)
+            canvas.setLineWidth(0.7)
+            canvas.roundRect(
+                x,
+                y,
+                card_width,
+                self.card_height,
+                5,
+                fill=1,
+                stroke=1,
             )
+
+            canvas.setFillColor(ACCENT)
+            canvas.roundRect(
+                x,
+                y,
+                3.2,
+                self.card_height,
+                3,
+                fill=1,
+                stroke=0,
+            )
+
+            left = x + 5 * mm
+            label_y = y + self.card_height - 6.2 * mm
+            value_y = y + 5.2 * mm
+
+            canvas.setFillColor(MUTED)
+            canvas.setFont("Helvetica-Bold", 7.2)
+            canvas.drawString(left, label_y, str(label).upper())
+
+            value_text = str(value)
+            max_value_width = card_width - 9 * mm
+            value_size = self._fit_text(
+                value_text,
+                max_value_width,
+                14,
+            )
+            canvas.setFillColor(INK)
+            canvas.setFont("Helvetica-Bold", value_size)
+            canvas.drawString(left, value_y, value_text)
+            canvas.restoreState()
+
+
+def _metric_table(metrics: list[tuple[str, str]]) -> Flowable:
+    return _MetricCards(metrics)
+
+
+def _truncate_canvas_text(
+    text: str,
+    *,
+    max_width: float,
+    font_name: str = "Helvetica",
+    font_size: float = 7.2,
+) -> str:
+    text = str(text)
+    if stringWidth(text, font_name, font_size) <= max_width:
+        return text
+    suffix = "..."
+    available = max_width - stringWidth(suffix, font_name, font_size)
+    if available <= 0:
+        return suffix
+    out = text
+    while out and stringWidth(out, font_name, font_size) > available:
+        out = out[:-1]
+    return out.rstrip() + suffix
+
+
+class _GanttFlowable(Flowable):
+    def __init__(
+        self,
+        schedule_df: pd.DataFrame,
+        *,
+        critical_ids: set[str] | None = None,
+        deadline: float | None = None,
+        current_time: float | None = None,
+        max_rows: int = 18,
+        frozen_column: str | None = None,
+    ):
+        super().__init__()
+        self.schedule_df = schedule_df.copy()
+        self.critical_ids = {str(x) for x in (critical_ids or set())}
+        self.deadline = deadline
+        self.current_time = current_time
+        self.max_rows = max_rows
+        self.frozen_column = frozen_column
+        self.row_height = 6.4 * mm
+        self.axis_height = 12 * mm
+        self.legend_height = 7 * mm
+
+        self.start_col = (
+            "Inicio_h"
+            if "Inicio_h" in self.schedule_df.columns
+            else "Início (h)"
+        )
+        self.finish_col = (
+            "Fim_h"
+            if "Fim_h" in self.schedule_df.columns
+            else "Fim (h)"
+        )
+        self.name_col = "Atividade"
+        self.id_col = "ID"
+
+        if not self.schedule_df.empty:
+            self.schedule_df = self.schedule_df.sort_values(
+                [self.start_col, self.finish_col]
+            ).head(self.max_rows)
+
+        self.rows = len(self.schedule_df)
+        self.height = (
+            self.axis_height
+            + self.rows * self.row_height
+            + self.legend_height
         )
 
-    rows = []
-    for i in range(0, len(cards), 4):
-        row = cards[i : i + 4]
-        while len(row) < 4:
-            row.append("")
-        rows.append(row)
+    def wrap(self, avail_width, avail_height):
+        self.width = avail_width
+        return avail_width, self.height
 
-    return Table(
-        rows,
-        colWidths=[42 * mm] * 4,
-        hAlign="LEFT",
-        style=TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
-                ("TOPPADDING", (0, 0), (-1, -1), 1 * mm),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
-            ]
-        ),
+    def _time_bounds(self):
+        if self.schedule_df.empty:
+            return 0.0, 1.0
+
+        start = float(self.schedule_df[self.start_col].min())
+        finish = float(self.schedule_df[self.finish_col].max())
+        start = min(0.0, start)
+
+        if self.deadline is not None:
+            finish = max(finish, float(self.deadline))
+        if self.current_time is not None:
+            finish = max(finish, float(self.current_time))
+
+        if finish <= start:
+            finish = start + 1.0
+        return start, finish
+
+    def draw(self):
+        canvas = self.canv
+        if self.schedule_df.empty:
+            canvas.setFillColor(MUTED)
+            canvas.setFont("Helvetica", 8)
+            canvas.drawString(0, self.height / 2, "Sem atividades para exibir no Gantt.")
+            return
+
+        label_width = min(57 * mm, self.width * 0.36)
+        chart_x = label_width + 4 * mm
+        chart_width = self.width - chart_x
+        top = self.height - self.axis_height
+        start_t, finish_t = self._time_bounds()
+        span = finish_t - start_t
+
+        def tx(value: float) -> float:
+            return chart_x + (float(value) - start_t) / span * chart_width
+
+        # Axis/grid
+        ticks = 6
+        canvas.saveState()
+        canvas.setStrokeColor(LINE)
+        canvas.setFillColor(MUTED)
+        canvas.setFont("Helvetica", 6.8)
+        for i in range(ticks + 1):
+            value = start_t + span * i / ticks
+            x = tx(value)
+            canvas.setDash(1, 2)
+            canvas.line(
+                x,
+                self.legend_height,
+                x,
+                top + 1.5 * mm,
+            )
+            canvas.setDash()
+            label = f"{value:.0f} h"
+            canvas.drawCentredString(
+                x,
+                top + 3.2 * mm,
+                label,
+            )
+
+        # Rows and bars
+        for row_index, (_, row) in enumerate(self.schedule_df.iterrows()):
+            y = top - (row_index + 1) * self.row_height
+            center_y = y + self.row_height / 2
+            task_id = str(row[self.id_col])
+            task_name = _truncate_canvas_text(
+                row[self.name_col],
+                max_width=label_width - 6 * mm,
+                font_size=7.1,
+            )
+
+            if row_index % 2 == 1:
+                canvas.setFillColor(colors.HexColor("#F7F9FB"))
+                canvas.rect(
+                    0,
+                    y,
+                    self.width,
+                    self.row_height,
+                    fill=1,
+                    stroke=0,
+                )
+
+            canvas.setStrokeColor(LINE)
+            canvas.setLineWidth(0.35)
+            canvas.line(0, y, self.width, y)
+
+            canvas.setFillColor(INK)
+            canvas.setFont("Helvetica", 7.1)
+            canvas.drawString(
+                0,
+                center_y - 2.2,
+                f"{task_id} · {task_name}",
+            )
+
+            bar_start = tx(float(row[self.start_col]))
+            bar_finish = tx(float(row[self.finish_col]))
+            bar_width = max(2.5, bar_finish - bar_start)
+            frozen = (
+                self.frozen_column is not None
+                and self.frozen_column in row.index
+                and bool(row[self.frozen_column])
+            )
+
+            if frozen:
+                fill = colors.HexColor("#AAB4C0")
+            elif task_id in self.critical_ids:
+                fill = ACCENT
+            else:
+                fill = colors.HexColor("#73AFA9")
+
+            canvas.setFillColor(fill)
+            canvas.roundRect(
+                bar_start,
+                y + 1.4 * mm,
+                bar_width,
+                self.row_height - 2.8 * mm,
+                2.2,
+                fill=1,
+                stroke=0,
+            )
+
+            duration = float(row[self.finish_col]) - float(row[self.start_col])
+            if bar_width >= 16 * mm:
+                canvas.setFillColor(WHITE)
+                canvas.setFont("Helvetica-Bold", 6.4)
+                canvas.drawCentredString(
+                    bar_start + bar_width / 2,
+                    center_y - 2.0,
+                    f"{duration:g} h",
+                )
+
+        canvas.setStrokeColor(LINE)
+        canvas.line(
+            0,
+            top - self.rows * self.row_height,
+            self.width,
+            top - self.rows * self.row_height,
+        )
+
+        # Deadline/current time markers
+        if self.deadline is not None:
+            x = tx(float(self.deadline))
+            canvas.setStrokeColor(DANGER)
+            canvas.setLineWidth(1.2)
+            canvas.setDash(3, 2)
+            canvas.line(
+                x,
+                self.legend_height,
+                x,
+                top + 1.5 * mm,
+            )
+            canvas.setDash()
+            canvas.setFillColor(DANGER)
+            canvas.setFont("Helvetica-Bold", 6.5)
+            canvas.drawRightString(
+                min(self.width, x - 1.5 * mm),
+                self.legend_height - 1.5 * mm,
+                "deadline",
+            )
+
+        if self.current_time is not None:
+            x = tx(float(self.current_time))
+            canvas.setStrokeColor(colors.HexColor("#2563EB"))
+            canvas.setLineWidth(1.2)
+            canvas.setDash(2, 2)
+            canvas.line(
+                x,
+                self.legend_height,
+                x,
+                top + 1.5 * mm,
+            )
+            canvas.setDash()
+            canvas.setFillColor(colors.HexColor("#2563EB"))
+            canvas.setFont("Helvetica-Bold", 6.5)
+            canvas.drawString(
+                min(self.width - 18 * mm, x + 1.5 * mm),
+                self.legend_height - 1.5 * mm,
+                "agora",
+            )
+
+        # Legend
+        legend_y = 1.8 * mm
+        legend_items = [
+            (ACCENT, "crítica"),
+            (colors.HexColor("#73AFA9"), "programada"),
+        ]
+        if self.frozen_column:
+            legend_items.append((colors.HexColor("#AAB4C0"), "congelada"))
+
+        x = 0
+        canvas.setFont("Helvetica", 6.6)
+        for color, label in legend_items:
+            canvas.setFillColor(color)
+            canvas.roundRect(
+                x,
+                legend_y,
+                5 * mm,
+                2.6 * mm,
+                1.2,
+                fill=1,
+                stroke=0,
+            )
+            canvas.setFillColor(MUTED)
+            canvas.drawString(
+                x + 6.2 * mm,
+                legend_y + 0.2 * mm,
+                label,
+            )
+            x += 31 * mm
+
+        total_rows = len(self.schedule_df)
+        canvas.restoreState()
+
+
+def _gantt_chart(
+    schedule_df: pd.DataFrame,
+    *,
+    critical_ids: set[str] | None = None,
+    deadline: float | None = None,
+    current_time: float | None = None,
+    frozen_column: str | None = None,
+) -> Flowable:
+    return _GanttFlowable(
+        schedule_df,
+        critical_ids=critical_ids,
+        deadline=deadline,
+        current_time=current_time,
+        frozen_column=frozen_column,
     )
 
 
@@ -394,16 +734,33 @@ def build_base_management_pdf(
         )
     )
 
+    critical_ids = set()
+    if not criticality_df.empty and "Critical" in criticality_df.columns:
+        critical_ids = {
+            str(value)
+            for value in criticality_df.loc[
+                criticality_df["Critical"] == True,  # noqa: E712
+                "ID",
+            ].tolist()
+        }
+
     story.extend(
         [
             PageBreak(),
             _p("CRONOGRAMA", s["kicker"]),
             _p("Cronograma otimizado", s["title"]),
             _p(
-                "Lista gerencial das atividades programadas. Para manipulação detalhada, mantenha a exportação Excel.",
+                "Visão temporal das frentes de trabalho; atividades críticas aparecem em destaque.",
                 s["muted"],
             ),
             Spacer(1, 3 * mm),
+            _gantt_chart(
+                schedule_df,
+                critical_ids=critical_ids,
+                deadline=deadline_h,
+            ),
+            Spacer(1, 5 * mm),
+            _p("Detalhamento do cronograma", s["h2"]),
             _dataframe_table(
                 schedule_df,
                 ["ID", "Atividade", "Inicio_h", "Fim_h", "Duracao_h", "WBS"],
@@ -498,6 +855,14 @@ def build_conditional_management_pdf(
             s["muted"],
         ),
         Spacer(1, 3 * mm),
+        _gantt_chart(
+            schedule_df,
+            deadline=deadline,
+            current_time=current_time,
+            frozen_column="Congelada",
+        ),
+        Spacer(1, 5 * mm),
+        _p("Detalhamento do cronograma", s["h2"]),
         _dataframe_table(
             schedule_df,
             ["ID", "Atividade", "Modo", "Início (h)", "Fim (h)", "Duração (h)", "Congelada"],
