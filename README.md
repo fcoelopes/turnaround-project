@@ -11,7 +11,31 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 5. Testa quatro regras de prioridade e escolhe o menor atraso/makespan.
 6. Mostra Gantt, gargalos, utilização dos recursos e penalidade de capacidade.
 7. Faz Monte Carlo triangular das durações e calcula P50/P80/P90 e probabilidade de cumprir a janela.
-8. Exporta o resultado para Excel.
+8. Exporta o resultado para Excel.\n9. Em uma página avançada, trata **MRCPSP**, escopo opcional/condicional e rescheduling após inspeções.
+
+## Dois níveis de planejamento
+
+### Planejamento-base — RCPSP
+
+A página principal mantém o MVP original: CPM + RCPSP heurístico + risco de prazo.
+É apropriada quando o escopo já é conhecido e cada atividade possui um único modo
+de execução.
+
+### Scope discovery — MRCPSP + escopo condicional
+
+A página **Escopo Condicional MRCPSP** acrescenta a dinâmica típica de turnaround:
+
+- modos alternativos de execução por atividade;
+- atividades `mandatory`, `optional` e `conditional`;
+- eventos gerados por inspeções;
+- múltiplos achados simultâneos;
+- grupos lógicos AND, OR e XOR;
+- rescheduling com atividades concluídas/em andamento congeladas;
+- sidecar JSON para regras que não pertencem ao arquivo do Microsoft Project.
+
+O parser de XML é o mesmo do MVP base. Não existe um segundo modelo de importação:
+o cronograma é lido uma vez e convertido para o domínio avançado somente quando
+essa página é usada.
 
 ## Por que RCPSP?
 
@@ -55,7 +79,13 @@ O arquivo `sample_data/cronograma_exemplo.csv` pode ser usado imediatamente.
 - O CPM exibido é uma aproximação de folga para vínculos complexos; o agendador respeita FS/SS/FF/SF e lag na programação.
 - Recursos do Excel/CSV usam demanda unitária por padrão; a coluna `Demandas` permite sobrescrever.
 - Não lê `.mpp` nativo. XML é preferido porque evita dependência Java/MPXJ.
-- A simulação de risco perturba duração; ainda não modela descoberta de escopo emergente como eventos discretos.
+- A simulação de risco da página base perturba duração; o **scope discovery discreto** é tratado separadamente na página MRCPSP.
+
+## Arquivos de exemplo
+
+- `sample_data/turnaround_project_model.xml` — cronograma-base MSPDI;
+- `sample_data/turnaround_conditional_model.xml` — cenário de inspeção "Kinder Ovo";
+- `sample_data/turnaround_conditional_scope.json` — regras de ativação e modos.
 
 ## Próxima evolução
 
