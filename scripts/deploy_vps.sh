@@ -28,5 +28,5 @@ for attempt in {1..20}; do
 done
 
 echo "Healthcheck falhou após o restart" >&2
-sudo -n systemctl status turnaround.service --no-pager || true
+systemctl status turnaround.service --no-pager || true
 exit 1
