@@ -43,7 +43,7 @@ sudo visudo -f /etc/sudoers.d/turnaround-deploy
 e adicione:
 
 ```text
-ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl restart turnaround.service, /usr/bin/systemctl status turnaround.service
+ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl restart turnaround.service
 ```
 
 Valide:
