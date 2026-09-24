@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .activation import ActivationResult, ActivationState, resolve_activation
 from .advanced_models import ExecutionState, Precedence, TurnaroundProject, TurnaroundTask
@@ -18,6 +18,7 @@ class RescheduleResult:
     schedule: AdvancedScheduleResult
     frozen_tasks: list[AdvancedScheduledTask]
     newly_scheduled_ids: set[str]
+    effective_tasks: list[TurnaroundTask] = field(default_factory=list)
 
 
 def _propagate_late_predecessors_across_frozen_tasks(
@@ -194,4 +195,5 @@ def reschedule_from_state(    project: TurnaroundProject,
         schedule=schedule,
         frozen_tasks=sorted(frozen, key=lambda x: (x.start, x.task_id)),
         newly_scheduled_ids={t.task_id for t in schedule.tasks},
+        effective_tasks=schedulable,
     )
