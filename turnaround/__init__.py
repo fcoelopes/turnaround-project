@@ -1,5 +1,6 @@
 from .activation import ActivationResult, ActivationState, resolve_activation
 from .advanced_adapter import project_from_tasks
+from .criticality import EffectiveCriticalityResult, EffectiveDriver, analyze_effective_criticality
 from .advanced_models import (
     ActivationRule,
     ExecutionMode,
@@ -22,6 +23,8 @@ __all__ = [
     "ActivationRule",
     "ActivationState",
     "AdvancedScheduleResult",
+    "EffectiveCriticalityResult",
+    "EffectiveDriver",
     "ExecutionMode",
     "ExecutionState",
     "LogicalGroup",
@@ -31,6 +34,7 @@ __all__ = [
     "TriggerCondition",
     "TurnaroundProject",
     "TurnaroundTask",
+    "analyze_effective_criticality",
     "apply_scope_config",
     "infer_capacities",
     "load_schedule",

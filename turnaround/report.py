@@ -791,6 +791,8 @@ def build_conditional_management_pdf(
     strategy: str,
     activation_df: pd.DataFrame,
     schedule_df: pd.DataFrame,
+    critical_ids: set[str] | None = None,
+    critical_path_label: str | None = None,
 ) -> bytes:
     s = _styles()
     delta = current_makespan - baseline_makespan
@@ -840,6 +842,21 @@ def build_conditional_management_pdf(
                 ("Pendentes", str(active_counts.get("pending", 0))),
             ]
         ),
+        _p("Cadeia controladora atual", s["h2"]),
+        _p(
+            (
+                critical_path_label
+                if critical_path_label and critical_path_label != "—"
+                else "Sem cadeia controladora identificada para o estado atual."
+            ),
+            s["body"],
+        ),
+        _p(
+            "A criticidade efetiva considera precedências ativas, gates criados pelo "
+            "scope discovery e liberações de recursos que controlam o término. "
+            "Não equivale ao CPM clássico do planejamento-base.",
+            s["muted"],
+        ),
         _p("Mapa de ativação", s["h2"]),
         _dataframe_table(
             activation_df,
@@ -857,6 +874,7 @@ def build_conditional_management_pdf(
         Spacer(1, 3 * mm),
         _gantt_chart(
             schedule_df,
+            critical_ids=critical_ids,
             deadline=deadline,
             current_time=current_time,
             frozen_column="Congelada",
@@ -865,9 +883,27 @@ def build_conditional_management_pdf(
         _p("Detalhamento do cronograma", s["h2"]),
         _dataframe_table(
             schedule_df,
-            ["ID", "Atividade", "Modo", "Início (h)", "Fim (h)", "Duração (h)", "Congelada"],
+            [
+                "ID",
+                "Atividade",
+                "Modo",
+                "Início (h)",
+                "Fim (h)",
+                "Duração (h)",
+                "Crítica atual",
+                "Controla por",
+            ],
             max_rows=60,
-            widths=[11 * mm, 60 * mm, 24 * mm, 18 * mm, 18 * mm, 18 * mm, 18 * mm],
+            widths=[
+                10 * mm,
+                48 * mm,
+                20 * mm,
+                16 * mm,
+                16 * mm,
+                18 * mm,
+                20 * mm,
+                26 * mm,
+            ],
         ),
         Spacer(1, 4 * mm),
         _p(

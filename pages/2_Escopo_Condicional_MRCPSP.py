@@ -10,6 +10,7 @@ import streamlit as st
 from turnaround import (
     ExecutionState,
     TaskExecution,
+    analyze_effective_criticality,
     apply_scope_config,
     project_from_tasks,
     resolve_activation,
@@ -331,6 +332,20 @@ activation_df = pd.DataFrame(
 )
 
 all_items = result.frozen_tasks + result.schedule.tasks
+criticality = analyze_effective_criticality(
+    project=project,
+    effective_tasks=result.effective_tasks,
+    items=all_items,
+    capacities=project.capacities,
+    current_time=float(current_time),
+    makespan=float(result.schedule.makespan),
+)
+critical_path_label = (
+    " → ".join(criticality.path_ids)
+    if criticality.path_ids
+    else "—"
+)
+
 schedule_df = pd.DataFrame(
     [
         {
@@ -341,6 +356,8 @@ schedule_df = pd.DataFrame(
             "Fim (h)": item.finish,
             "Duração (h)": item.duration,
             "Congelada": item.fixed,
+            "Crítica atual": str(item.task_id) in criticality.critical_ids,
+            "Controla por": criticality.reasons.get(str(item.task_id), ""),
             "Recursos": ", ".join(
                 f"{key}:{value:g}"
                 for key, value in item.resources.items()
@@ -408,6 +425,23 @@ with tab_exec:
             title="Intervenção gerencial necessária.",
         )
 
+    if criticality.path_ids:
+        path_names = " → ".join(
+            f"{task_id} · {name_by_id.get(task_id, task_id)}"
+            for task_id in criticality.path_ids
+        )
+        st.markdown(f"**Cadeia controladora atual:** {path_names}")
+        branch_count = len(criticality.critical_ids - set(criticality.path_ids))
+        if branch_count:
+            st.caption(
+                f"Há mais {branch_count} atividade(s) crítica(s) em ramificações "
+                "que também alimentam o término atual."
+            )
+        st.caption(
+            "Criticidade efetiva: considera precedências ativas, gates criados "
+            "pelo scope discovery e liberações de recursos que controlam o cronograma."
+        )
+
     if all_items:
         fig = go.Figure()
         ordered = sorted(
@@ -415,6 +449,27 @@ with tab_exec:
             key=lambda item: (item.start, item.finish),
             reverse=True,
         )
+        bar_colors = []
+        bar_text = []
+        hover_reasons = []
+        for item in ordered:
+            task_id = str(item.task_id)
+            is_critical = task_id in criticality.critical_ids
+            if item.fixed:
+                bar_colors.append("#94A3B8")
+            elif is_critical:
+                bar_colors.append("#D92D20")
+            else:
+                bar_colors.append("#0F766E")
+
+            label = item.mode_name + (" · congelada" if item.fixed else "")
+            if is_critical:
+                label += " · crítica"
+            bar_text.append(label)
+            hover_reasons.append(
+                criticality.reasons.get(task_id, "fora da cadeia controladora")
+            )
+
         fig.add_trace(
             go.Bar(
                 y=[
@@ -424,14 +479,13 @@ with tab_exec:
                 x=[item.duration for item in ordered],
                 base=[item.start for item in ordered],
                 orientation="h",
-                text=[
-                    item.mode_name
-                    + (" · congelada" if item.fixed else "")
-                    for item in ordered
-                ],
+                text=bar_text,
+                marker_color=bar_colors,
+                customdata=hover_reasons,
                 hovertemplate=(
                     "%{y}<br>Início=%{base:.1f}h"
-                    "<br>Duração=%{x:.1f}h<extra></extra>"
+                    "<br>Duração=%{x:.1f}h"
+                    "<br>Driver=%{customdata}<extra></extra>"
                 ),
             )
         )
@@ -491,6 +545,11 @@ with tab_schedule:
         f"combinações de modos={result.schedule.mode_combinations} · "
         f"avaliações SSGS={result.schedule.evaluated_combinations}."
     )
+    if criticality.critical_ids:
+        st.caption(
+            "Crítica atual = atividade pertencente à cadeia efetiva que controla "
+            "o término do cronograma reprogramado; não equivale ao CPM clássico."
+        )
 
 with tab_export:
     st.markdown("#### Relatório gerencial do replanejamento")
@@ -514,6 +573,8 @@ with tab_export:
         strategy=result.schedule.strategy,
         activation_df=activation_df,
         schedule_df=schedule_df,
+        critical_ids=criticality.critical_ids,
+        critical_path_label=critical_path_label,
     )
 
     st.download_button(

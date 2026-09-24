@@ -692,6 +692,40 @@ A tabela detalhada apresenta:
 
 ---
 
+
+## 25.1 Caminho crítico efetivo do discovery
+
+Após o scope discovery, a página também identifica a **cadeia controladora atual** do cronograma reprogramado.
+
+Ela não deve ser confundida com o caminho crítico CPM do planejamento-base. A análise considera o cronograma efetivamente encontrado pelo MRCPSP e procura os vínculos que estão controlando o término naquele instante:
+
+- precedências ativas;
+- gates de precedência introduzidos por novo escopo descoberto após atividades já congeladas;
+- liberações de recursos que impedem uma atividade de começar antes;
+- atividade(s) que definem o makespan atual.
+
+As atividades dessa cadeia aparecem destacadas no Gantt e recebem, na tabela do cronograma, as colunas:
+
+| Campo | Significado |
+|---|---|
+| `Crítica atual` | indica se a atividade pertence à cadeia efetiva que controla o término |
+| `Controla por` | informa se o driver é precedência, gate de escopo, recurso ou término do cronograma |
+
+Exemplo conceitual:
+
+```text
+Reparar eixo
+   ↓  liberação de Mecânica
+Substituir impelidor
+   ↓  gate do novo escopo
+Teste funcional e partida
+   ↓
+makespan atual
+```
+
+O objetivo é responder não apenas **quanto o novo escopo alterou a parada**, mas também **o que agora controla o seu término e onde uma intervenção pode recuperar prazo**.
+
+
 ## 26. Estratégia do solver
 
 Para problemas menores, o solver utiliza:
