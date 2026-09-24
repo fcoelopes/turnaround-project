@@ -1,0 +1,802 @@
+# Manual de Uso — Escopo Condicional + MRCPSP
+
+Este manual descreve o uso da página **Escopo Condicional + MRCPSP** do Turnaround Scheduler.
+
+A funcionalidade foi criada para tratar um problema típico de paradas de manutenção: o planejamento começa com um escopo conhecido, mas novas atividades podem surgir somente depois da abertura e inspeção do equipamento.
+
+---
+
+## 1. Objetivo
+
+A página permite:
+
+- carregar um cronograma-base do Microsoft Project;
+- acrescentar regras de escopo por meio de um JSON;
+- tratar atividades obrigatórias, opcionais e condicionais;
+- registrar eventos e achados de inspeção;
+- trabalhar com decisões lógicas AND, OR e XOR;
+- alterar capacidades de recursos;
+- avaliar modos alternativos de execução;
+- congelar atividades já concluídas ou em andamento;
+- reprogramar apenas o trabalho futuro;
+- comparar baseline, novo escopo, prazo e custo;
+- exportar um relatório gerencial em PDF.
+
+O fluxo geral é:
+
+```text
+Planejamento-base
+      ↓
+Execução da parada
+      ↓
+Inspeção
+      ↓
+Achado
+      ↓
+Novo escopo ativado
+      ↓
+MRCPSP
+      ↓
+Reprogramação
+      ↓
+Avaliação de prazo, recursos e custo
+```
+
+---
+
+## 2. Conceito do cenário “Kinder Ovo”
+
+O cenário demonstrativo representa uma bomba P-101.
+
+Inicialmente, sabe-se que será necessário:
+
+```text
+Parada operacional
+      ↓
+LOTO e liberação
+      ↓
+Abrir P-101
+      ↓
+Inspecionar P-101
+```
+
+Entretanto, apenas após a inspeção será possível saber se será necessário:
+
+- trocar rolamentos;
+- trocar o selo mecânico;
+- reparar o eixo;
+- executar END após reparo do eixo;
+- recuperar o impelidor;
+- substituir o impelidor.
+
+O nome **Kinder Ovo** representa exatamente essa dinâmica: parte do escopo só é descoberta depois que o equipamento é aberto.
+
+---
+
+## 3. Tipos de atividade
+
+O sistema trabalha com três tipos principais.
+
+| Tipo | Significado |
+|---|---|
+| `mandatory` | atividade obrigatória desde o início |
+| `optional` | atividade incluída apenas se o usuário selecionar |
+| `conditional` | atividade ativada somente quando uma condição/evento ocorrer |
+
+### Exemplo
+
+```text
+mandatory
+LOTO e liberação
+
+conditional
+Trocar rolamentos somente se houver bearing_damage
+
+optional
+Executar uma atividade oportunística selecionada pelo usuário
+```
+
+---
+
+## 4. Arquivos de entrada
+
+A página usa dois arquivos complementares.
+
+### 4.1 Microsoft Project XML
+
+O XML contém a estrutura principal do cronograma:
+
+- ID e UID;
+- nome da atividade;
+- duração;
+- WBS/EDT;
+- predecessoras;
+- tipo de vínculo;
+- lag;
+- recursos;
+- unidades/demanda de recursos.
+
+Na interface:
+
+**Microsoft Project XML → Upload**
+
+O formato recomendado é XML exportado pelo Microsoft Project.
+
+### 4.2 JSON de regras de escopo
+
+O JSON adiciona informações que não pertencem naturalmente ao cronograma tradicional:
+
+- deadline;
+- atividades condicionais;
+- atividades opcionais;
+- eventos gatilho;
+- modos alternativos de execução;
+- custo dos modos;
+- grupos lógicos AND, OR e XOR.
+
+Na interface:
+
+**Regras de escopo / modos (JSON) → Upload**
+
+Conceitualmente:
+
+```text
+XML
+├── estrutura do cronograma
+├── duração
+├── precedências
+└── recursos
+
+JSON
+├── quando executar
+├── se executar
+├── modos possíveis
+├── custo
+└── regras de decisão
+```
+
+---
+
+## 5. Usando o cenário demonstrativo
+
+Para aprender a ferramenta, marque:
+
+**Usar cenário demonstrativo 'Kinder Ovo'**
+
+O sistema carrega automaticamente:
+
+```text
+sample_data/turnaround_conditional_model.xml
+sample_data/turnaround_conditional_scope.json
+```
+
+Assim, não é necessário fazer upload de arquivos para testar a lógica.
+
+---
+
+## 6. Etapa 1 — Planejamento-base e regras de escopo
+
+Depois de carregar os arquivos, o sistema monta o projeto e determina quais atividades estão ativas no baseline.
+
+As atividades condicionais não entram automaticamente como trabalho obrigatório.
+
+Por exemplo, antes dos achados da inspeção, atividades como:
+
+```text
+Trocar rolamentos P-101
+Trocar selo mecânico P-101
+Reparar eixo P-101
+END pós-reparo do eixo
+Recuperar impelidor
+Substituir impelidor
+```
+
+podem permanecer inativas ou pendentes.
+
+Isso diferencia o modelo de um RCPSP convencional em que todo o escopo já é conhecido.
+
+---
+
+## 7. Etapa 2 — Capacidade de recursos
+
+A interface apresenta sliders para os recursos disponíveis.
+
+No cenário demonstrativo aparecem recursos como:
+
+- Guindaste;
+- Inspeção;
+- Mecânica;
+- Operação.
+
+Ao mover um slider, o Streamlit recalcula a página automaticamente.
+
+Não existe botão **Calcular**.
+
+O fluxo é:
+
+```text
+Alterar capacidade
+      ↓
+Streamlit reroda
+      ↓
+Modos factíveis são reavaliados
+      ↓
+MRCPSP é executado novamente
+      ↓
+Cronograma é atualizado
+```
+
+### Importante
+
+Aumentar a quantidade de recursos não reduz necessariamente o prazo.
+
+Se duas atividades possuem dependência direta:
+
+```text
+A → B
+```
+
+B não poderá iniciar antes de A apenas porque existem mais recursos disponíveis.
+
+O ganho aparece quando:
+
+- atividades podem ocorrer em paralelo;
+- existe disputa por um mesmo recurso;
+- um modo mais rápido exige maior capacidade.
+
+---
+
+## 8. Modos de execução
+
+Uma atividade pode possuir mais de um modo de execução.
+
+### Exemplo — troca de rolamentos
+
+| Modo | Duração | Mecânica | Custo |
+|---|---:|---:|---:|
+| normal | 5 h | 3 | 0 |
+| reforco | 3 h | 5 | 1200 |
+
+Se a capacidade de Mecânica for 3, o modo `reforco` é inviável.
+
+Se a capacidade for 5 ou superior, ambos os modos tornam-se candidatos.
+
+### Exemplo — reparo do eixo
+
+| Modo | Duração | Mecânica | Custo |
+|---|---:|---:|---:|
+| normal | 7 h | 3 | 0 |
+| ataque | 4 h | 5 | 2500 |
+
+---
+
+## 9. Critério atual de escolha dos modos
+
+Hoje o solver compara os resultados nesta ordem:
+
+```text
+1. menor atraso
+2. menor makespan
+3. menor custo
+```
+
+Internamente, a pontuação é:
+
+```text
+(tardiness, makespan, cost)
+```
+
+Portanto, um modo mais caro pode ser escolhido se produzir menor atraso ou menor makespan.
+
+O modelo atual está orientado prioritariamente para o cumprimento da janela da parada.
+
+---
+
+## 10. Indicadores do baseline
+
+A tela apresenta quatro indicadores principais.
+
+### Makespan base
+
+Tempo total previsto para o escopo atualmente conhecido.
+
+### Deadline
+
+Janela máxima definida no JSON.
+
+### Tarefas ativas na base
+
+Quantidade de atividades que pertencem ao escopo atual do baseline.
+
+### Escopo potencial
+
+Quantidade de atividades existentes no projeto que ainda podem entrar no escopo.
+
+**Escopo potencial não significa que todas essas atividades serão executadas.**
+
+---
+
+## 11. Etapa 3 — Hora corrente
+
+Na seção **Estado da parada e achados**, informe:
+
+**Hora corrente desde o início da parada**
+
+Exemplo:
+
+```text
+7.0 h
+```
+
+O sistema compara a hora atual com o cronograma-base e identifica automaticamente atividades:
+
+- concluídas;
+- em andamento;
+- não iniciadas.
+
+---
+
+## 12. Congelamento do trabalho já executado
+
+Atividades concluídas ou em andamento não são reprogramadas como se a parada estivesse começando novamente.
+
+Elas são congeladas.
+
+```text
+PASSADO             AGORA                 FUTURO
+
+███████████████████ │ ─────────────────────────
+      congelado      │      reprogramável
+```
+
+O replanejamento atua apenas sobre o trabalho futuro.
+
+---
+
+## 13. Registrando achados da inspeção
+
+Quando uma atividade gatilho estiver concluída, a interface habilita seus eventos possíveis.
+
+No cenário Kinder Ovo, após a conclusão de:
+
+```text
+Inspecionar P-101
+```
+
+podem ser registrados eventos como:
+
+```text
+bearing_damage
+seal_damage
+shaft_damage
+impeller_damage
+```
+
+A seleção desses eventos altera o escopo.
+
+---
+
+## 14. Exemplo — dano no rolamento
+
+Ao selecionar:
+
+```text
+bearing_damage
+```
+
+a atividade:
+
+```text
+Trocar rolamentos P-101
+```
+
+é ativada.
+
+O solver então recalcula:
+
+- cronograma;
+- modo de execução;
+- recursos;
+- custo;
+- makespan;
+- atraso.
+
+---
+
+## 15. Exemplo — dano no eixo
+
+Ao selecionar:
+
+```text
+shaft_damage
+```
+
+o sistema ativa:
+
+```text
+Reparar eixo P-101
+        ↓
+END pós-reparo do eixo
+```
+
+Esse é um exemplo de escopo condicional encadeado.
+
+---
+
+## 16. Exemplo — dano no impelidor
+
+Ao selecionar:
+
+```text
+impeller_damage
+```
+
+o sistema habilita uma decisão lógica do tipo XOR:
+
+```text
+            ┌── Recuperar impelidor
+Dano ───────┤
+            └── Substituir impelidor
+```
+
+O usuário deve escolher exatamente uma alternativa.
+
+Na interface aparece o grupo:
+
+```text
+Grupo XOR · impeller_disposition
+```
+
+---
+
+## 17. Grupos lógicos AND, OR e XOR
+
+### AND
+
+Todas as atividades do grupo são ativadas.
+
+```text
+Achado
+  ↓
+┌─────┬─────┬─────┐
+A     B     C
+```
+
+### OR
+
+Uma ou mais atividades podem ser selecionadas.
+
+Exemplos válidos:
+
+```text
+A
+A+B
+B+C
+A+B+C
+```
+
+### XOR
+
+Exatamente uma atividade deve ser selecionada.
+
+```text
+A OU B
+```
+
+---
+
+## 18. Estados do mapa de ativação
+
+Na aba **Mapa de ativação**, cada atividade possui um estado.
+
+### `active`
+
+A atividade faz parte do escopo atual.
+
+Pode ocorrer porque:
+
+- é obrigatória;
+- foi selecionada;
+- uma condição foi satisfeita;
+- um grupo lógico a ativou;
+- já está em execução;
+- já foi concluída.
+
+### `inactive`
+
+A atividade não faz parte do escopo atual.
+
+Exemplo:
+
+```text
+não houve seal_damage
+↓
+Trocar selo mecânico permanece inativa
+```
+
+### `pending`
+
+Ainda não existe informação suficiente para decidir.
+
+Exemplo:
+
+```text
+Inspeção ainda não concluída
+↓
+Atividades dependentes do achado permanecem pendentes
+```
+
+---
+
+## 19. Campo “Motivo”
+
+O mapa de ativação também apresenta a justificativa do estado.
+
+Exemplos:
+
+```text
+atividade obrigatória
+atividade opcional selecionada
+atividade opcional não selecionada
+condição de ativação satisfeita
+aguardando atividade/evento gatilho
+aguardando seleção XOR do grupo
+selecionada pelo grupo XOR
+```
+
+Esse campo ajuda na rastreabilidade da decisão.
+
+---
+
+## 20. Atividades opcionais
+
+Atividades `optional` não dependem obrigatoriamente de eventos.
+
+A interface apresenta:
+
+**Atividades opcionais selecionadas**
+
+O usuário pode decidir incluí-las no cenário.
+
+Exemplo conceitual:
+
+```text
+Aproveitar a parada para executar uma manutenção oportunística
+```
+
+---
+
+## 21. Etapa 4 — Replanejamento
+
+Depois de registrar:
+
+- hora atual;
+- achados;
+- atividades opcionais;
+- decisões OR/XOR;
+- recursos disponíveis;
+
+o sistema executa o replanejamento.
+
+O resultado combina:
+
+```text
+atividades congeladas
++
+novo escopo
++
+trabalho futuro já previsto
++
+restrições de recursos
++
+modos de execução
+```
+
+---
+
+## 22. Visão executiva
+
+A aba **Visão executiva** apresenta os principais indicadores.
+
+### Novo makespan
+
+Duração do cronograma após o novo escopo.
+
+Também é exibida a diferença para o baseline.
+
+### Atraso
+
+Quanto o cronograma ultrapassa o deadline.
+
+```text
+Deadline = 24 h
+Makespan = 27 h
+
+Atraso = 3 h
+```
+
+### Novas tarefas ativas
+
+Quantidade de atividades que entraram no escopo em relação ao baseline.
+
+### Custo dos modos
+
+Soma do custo associado aos modos escolhidos pelo solver.
+
+---
+
+## 23. Mensagens gerenciais
+
+Quando o novo cronograma permanece dentro da janela:
+
+**Scope discovery absorvido.**
+
+Quando ultrapassa:
+
+**Intervenção gerencial necessária.**
+
+O sistema mostra o impacto, mas não toma a decisão gerencial pelo usuário.
+
+Possíveis respostas operacionais incluem:
+
+- aumentar recursos;
+- utilizar modos mais rápidos;
+- rever sequenciamento;
+- retirar trabalho oportunístico;
+- rever a janela da parada.
+
+---
+
+## 24. Gantt reprogramado
+
+O gráfico apresenta o cronograma considerando o estado atual.
+
+A linha:
+
+```text
+agora
+```
+
+representa a hora corrente.
+
+Quando existe deadline, também aparece:
+
+```text
+deadline
+```
+
+O Gantt permite visualizar:
+
+- atividades já executadas;
+- atividades em andamento;
+- novo escopo;
+- reprogramação futura;
+- eventual ultrapassagem da janela.
+
+---
+
+## 25. Aba Cronograma
+
+A tabela detalhada apresenta:
+
+| Campo | Significado |
+|---|---|
+| ID | identificação da atividade |
+| Atividade | nome da atividade |
+| Modo | modo escolhido |
+| Início | hora prevista de início |
+| Fim | hora prevista de término |
+| Duração | duração do modo |
+| Congelada | indica atividade já iniciada/concluída |
+| Recursos | demandas de recursos |
+
+---
+
+## 26. Estratégia do solver
+
+Para problemas menores, o solver utiliza:
+
+```text
+enumeration+ssgs
+```
+
+Ele avalia as combinações de modos factíveis e diferentes regras de prioridade.
+
+Quando o número de combinações ultrapassa o limite configurado, utiliza:
+
+```text
+multistart-local+ssgs
+```
+
+Nesse caso, passa a utilizar busca heurística.
+
+O mecanismo atual é uma ferramenta de apoio à decisão e não constitui prova de ótimo global.
+
+---
+
+## 27. Exportação em PDF
+
+Na aba **Exportação** existe:
+
+**Baixar relatório gerencial em PDF**
+
+O relatório registra uma fotografia do momento do replanejamento, incluindo:
+
+- baseline;
+- hora atual;
+- novo escopo;
+- makespan atualizado;
+- deadline;
+- custo dos modos;
+- mapa de ativação;
+- cronograma reprogramado.
+
+---
+
+## 28. Roteiro recomendado para testar o Kinder Ovo
+
+1. Ative o cenário **Kinder Ovo**.
+2. Observe o baseline.
+3. Avance a **Hora corrente** até a atividade `Inspecionar P-101` estar concluída.
+4. Selecione apenas `bearing_damage`.
+5. Observe a entrada de `Trocar rolamentos P-101`.
+6. Altere a capacidade de Mecânica.
+7. Observe se novos modos passam a ser factíveis.
+8. Adicione `shaft_damage`.
+9. Observe a entrada de `Reparar eixo` e `END pós-reparo`.
+10. Adicione `impeller_damage`.
+11. Escolha `Recuperar impelidor` ou `Substituir impelidor` no grupo XOR.
+12. Compare makespan, atraso, custo e Gantt.
+13. Gere o relatório PDF.
+
+---
+
+## 29. Regra de ouro
+
+Não confunda:
+
+```text
+ATIVIDADE CONDICIONAL
+“Só executo se determinada condição acontecer.”
+
+ATIVIDADE OPCIONAL
+“Posso decidir aproveitar a parada para executar.”
+
+MODO DE EXECUÇÃO
+“A atividade vai acontecer; preciso decidir COMO executá-la.”
+```
+
+Exemplo:
+
+```text
+shaft_damage
+      ↓
+Reparar eixo
+      ↓
+┌───────────────────────────┐
+│ normal: 7 h / 3 mecânicos │
+│ ataque: 4 h / 5 mecânicos │
+└───────────────────────────┘
+```
+
+---
+
+## 30. Limitações atuais
+
+A funcionalidade ainda não pretende representar todos os detalhes de uma parada industrial.
+
+Entre as limitações atuais:
+
+- calendários por turno;
+- pausas de refeição;
+- indisponibilidade individual;
+- overtime;
+- dimensionamento multi-skill completo;
+- otimização global exata;
+- restrições avançadas de área e simultaneidade.
+
+A página deve ser entendida atualmente como:
+
+> **Ferramenta de apoio ao replanejamento e à análise de cenários de scope discovery durante turnarounds.**
+
+Ela não substitui, neste estágio, Microsoft Project, Primavera ou sistemas completos de controle da execução.
