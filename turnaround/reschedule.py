@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .activation import ActivationResult, ActivationState, resolve_activation
-from .advanced_models import ExecutionState, TurnaroundProject
+from .advanced_models import ExecutionState, Precedence, TurnaroundProject, TurnaroundTask
 from .mrcpsp import (
     AdvancedScheduleResult,
     AdvancedScheduledTask,
@@ -20,8 +20,96 @@ class RescheduleResult:
     newly_scheduled_ids: set[str]
 
 
-def reschedule_from_state(
+def _propagate_late_predecessors_across_frozen_tasks(
     project: TurnaroundProject,
+    activation: ActivationResult,
+    frozen_ids: set[str],
+    schedulable: list[TurnaroundTask],
+) -> list[TurnaroundTask]:
+    """Protect future work when late scope appears behind frozen work.
+
+    Frozen history is not rewritten. If a newly active, unfinished task should
+    have preceded a frozen task, that unfinished task becomes a conservative
+    finish-to-start gate for the frozen task's future successors.
+    """
+
+    task_by_id = {task.id: task for task in project.tasks}
+    active_ids = activation.active_ids
+    cache: dict[str, set[str]] = {}
+
+    def unresolved_before_frozen(
+        task_id: str,
+        trail: set[str] | None = None,
+    ) -> set[str]:
+        if task_id in cache:
+            return set(cache[task_id])
+
+        trail = set(trail or set())
+        if task_id in trail:
+            return set()
+        trail.add(task_id)
+
+        blockers: set[str] = set()
+        task = task_by_id[task_id]
+        for precedence in task.precedences:
+            predecessor_id = precedence.predecessor_id
+            if predecessor_id not in active_ids:
+                continue
+
+            if predecessor_id in frozen_ids:
+                blockers.update(
+                    unresolved_before_frozen(predecessor_id, trail)
+                )
+            else:
+                blockers.add(predecessor_id)
+
+        cache[task_id] = set(blockers)
+        return blockers
+
+    repaired: list[TurnaroundTask] = []
+    for task in schedulable:
+        existing_predecessors = {
+            precedence.predecessor_id
+            for precedence in task.precedences
+        }
+        extra_predecessors: set[str] = set()
+
+        for precedence in task.precedences:
+            if precedence.predecessor_id not in frozen_ids:
+                continue
+            extra_predecessors.update(
+                unresolved_before_frozen(precedence.predecessor_id)
+            )
+
+        extra_predecessors.difference_update(existing_predecessors)
+        extra_predecessors.discard(task.id)
+
+        if not extra_predecessors:
+            repaired.append(task)
+            continue
+
+        repaired.append(
+            task.model_copy(
+                update={
+                    "precedences": [
+                        *task.precedences,
+                        *[
+                            Precedence(
+                                predecessor_id=predecessor_id,
+                                relation="FS",
+                                lag=0.0,
+                            )
+                            for predecessor_id in sorted(extra_predecessors)
+                        ],
+                    ]
+                }
+            )
+        )
+
+    return repaired
+
+
+def reschedule_from_state(    project: TurnaroundProject,
     state: ExecutionState,
     max_mode_combinations: int = 2000,
 ) -> RescheduleResult:
@@ -65,6 +153,7 @@ def reschedule_from_state(
                 )
             )
 
+    frozen_ids = set(fixed_task_times)
     schedulable = []
     for task in project.tasks:
         if activation.states[task.id] != ActivationState.ACTIVE:
@@ -73,6 +162,13 @@ def reschedule_from_state(
         if execution and execution.status in {"completed", "in_progress"}:
             continue
         schedulable.append(task)
+
+    schedulable = _propagate_late_predecessors_across_frozen_tasks(
+        project,
+        activation,
+        frozen_ids,
+        schedulable,
+    )
 
     schedule = solve_mrcpsp(
         schedulable,

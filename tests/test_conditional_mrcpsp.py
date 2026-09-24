@@ -400,3 +400,70 @@ def test_scope_config_adds_modes_without_mutating_base_project():
     assert base.tasks[1].activation.kind == "mandatory"
     assert configured.tasks[1].activation.kind == "conditional"
     assert len(configured.tasks[1].modes) == 2
+
+
+def test_late_scope_blocks_successor_of_frozen_activity():
+    inspection = task("I", "Inspecionar", 2)
+    repair = task(
+        "R",
+        "Reparo descoberto",
+        2,
+        predecessors=["I"],
+        activation=ActivationRule(
+            kind="conditional",
+            conditions=[
+                TriggerCondition(
+                    source_task_id="I",
+                    events=["defect"],
+                )
+            ],
+        ),
+    )
+    close = task(
+        "C",
+        "Fechar equipamento",
+        2,
+        predecessors=["I", "R"],
+    )
+    startup = task(
+        "S",
+        "Teste e partida",
+        1,
+        predecessors=["C"],
+    )
+    project = TurnaroundProject(
+        tasks=[inspection, repair, close, startup],
+        capacities={},
+    )
+    state = ExecutionState(
+        current_time=3,
+        events={"I": ["defect"]},
+        executions={
+            "I": TaskExecution(
+                status="completed",
+                start=0,
+                finish=2,
+                mode_name="base",
+            ),
+            "C": TaskExecution(
+                status="in_progress",
+                start=2,
+                finish=4,
+                mode_name="base",
+            ),
+        },
+    )
+
+    result = reschedule_from_state(project, state)
+    repair_item = next(
+        item for item in result.schedule.tasks if item.task_id == "R"
+    )
+    startup_item = next(
+        item for item in result.schedule.tasks if item.task_id == "S"
+    )
+
+    assert repair_item.start == pytest.approx(3)
+    assert repair_item.finish == pytest.approx(5)
+    assert startup_item.start >= repair_item.finish
+    assert startup_item.start == pytest.approx(5)
+    assert result.schedule.makespan == pytest.approx(6)
