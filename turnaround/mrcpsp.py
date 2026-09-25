@@ -121,6 +121,11 @@ def _mode_feasible(
     for skill, count in human_requirements.items():
         if count > capacities.get(skill, 0.0) + 1e-9:
             return False
+    if human_requirements and assign_people_to_skills(
+        human_requirements,
+        workforce,
+    ) is None:
+        return False
     return all(
         req <= capacities.get(resource, 0.0) + 1e-9
         for resource, req in mode.resources.items()
