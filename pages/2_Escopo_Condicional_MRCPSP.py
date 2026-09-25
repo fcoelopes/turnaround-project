@@ -133,8 +133,10 @@ scenario_name = st.text_input(
 
 if project_name == "Turnaround Kinder Ovo":
     st.info(
-        "Teste guiado: avance até 7 h, marque bearing_damage e compare Mecânica=4 com Mecânica=5. "
-        "O modo de 'Trocar rolamentos P-101' deve mudar de normal (5 h) para reforço (3 h)."
+        "Teste guiado: avance até 7 h. Você terá dois discoveries independentes: "
+        "na inspeção mecânica, marque bearing_damage; no ensaio do motor, marque "
+        "motor_replacement_required. O primeiro testa mudança de modo com Mecânica=4→5; "
+        "o segundo adiciona a substituição do motor (6 h, Elétrica:2, Mecânica:2, Guindaste:1)."
     )
 
 cols = st.columns(min(4, max(1, len(base_capacities))))
