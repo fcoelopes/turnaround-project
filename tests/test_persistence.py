@@ -261,7 +261,7 @@ def test_upgrade_repairs_unversioned_initial_schema_without_deleting_data(tmp_pa
             text("SELECT project_name FROM execution_sessions WHERE id='recover-me'")
         ).scalar_one()
 
-    assert revision == "0001_execution_persistence"
+    assert revision == "0002_scope_rule_rows"
     assert preserved == "Parada interrompida"
 
 
@@ -282,4 +282,4 @@ def test_concurrent_upgrade_database_calls_are_serialized(tmp_path):
             text("SELECT version_num FROM alembic_version")
         ).scalars().all()
 
-    assert revisions == ["0001_execution_persistence"]
+    assert revisions == ["0002_scope_rule_rows"]
