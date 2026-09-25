@@ -326,6 +326,28 @@ section(
     "Estado da parada e achados",
     "Avance a hora corrente, registre achados e resolva decisões lógicas de escopo.",
 )
+
+reference_start_times = {
+    item.task_id: float(item.start)
+    for item in baseline.tasks
+}
+stability_weight = st.slider(
+    "Peso de estabilidade do replanejamento (λ)",
+    min_value=0.0,
+    max_value=2.0,
+    value=1.0,
+    step=0.1,
+    help=(
+        "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos de início. "
+        "Atraso à deadline continua sendo prioridade. λ=0 reproduz o comportamento anterior; "
+        "λ=1 trata 1 h acumulada de mudança de início como 1 h no objetivo."
+    ),
+)
+st.caption(
+    "A estabilidade compara apenas atividades futuras que já existiam no plano anterior. "
+    "Novo escopo descoberto não recebe penalidade por não possuir início de referência."
+)
+
 current_time = st.number_input(
     "Hora corrente desde o início da parada",
     min_value=0.0,
@@ -450,7 +472,12 @@ state = ExecutionState(
     executions=executions,
 )
 
-decision_engine = evaluate_scope_decisions(project, state)
+decision_engine = evaluate_scope_decisions(
+    project,
+    state,
+    reference_start_times=reference_start_times,
+    stability_weight=stability_weight,
+)
 
 st.markdown("#### Decisões de escopo ativas")
 if not decision_engine.pending_human:
@@ -500,6 +527,12 @@ if focused_decision is not None:
                 "Makespan (h)": impact.makespan if impact.feasible else None,
                 "Atraso (h)": impact.tardiness if impact.feasible else None,
                 "Custo": impact.total_cost if impact.feasible else None,
+                "Δ início total (h)": (
+                    impact.total_start_deviation if impact.feasible else None
+                ),
+                "Maior Δ início (h)": (
+                    impact.max_start_deviation if impact.feasible else None
+                ),
                 "Gargalo de recursos": (
                     ", ".join(
                         f"{resource}: faltam {shortage:g}"
@@ -561,7 +594,12 @@ state = ExecutionState(
     group_selections=stored_human_selections,
     executions=executions,
 )
-decision_engine = evaluate_scope_decisions(project, state)
+decision_engine = evaluate_scope_decisions(
+    project,
+    state,
+    reference_start_times=reference_start_times,
+    stability_weight=stability_weight,
+)
 state = decision_engine.state
 
 if decision_engine.auto_resolved:
@@ -615,6 +653,16 @@ if decision_engine.auto_resolved:
                     if applied_impact is not None and applied_impact.feasible
                     else None
                 ),
+                "Δ início total (h)": (
+                    applied_impact.total_start_deviation
+                    if applied_impact is not None and applied_impact.feasible
+                    else None
+                ),
+                "Maior Δ início (h)": (
+                    applied_impact.max_start_deviation
+                    if applied_impact is not None and applied_impact.feasible
+                    else None
+                ),
                 "Gargalo de recursos": (
                     ", ".join(
                         f"{resource}: faltam {shortage:g}"
@@ -664,6 +712,12 @@ if decision_engine.auto_resolved:
                         "Custo": (
                             impact.total_cost if impact.feasible else None
                         ),
+                        "Δ início total (h)": (
+                            impact.total_start_deviation if impact.feasible else None
+                        ),
+                        "Maior Δ início (h)": (
+                            impact.max_start_deviation if impact.feasible else None
+                        ),
                         "Gargalo de recursos": (
                             ", ".join(
                                 f"{resource}: faltam {shortage:g}"
@@ -710,12 +764,22 @@ if pending_groups:
 base_result = None
 base_result_error = None
 try:
-    base_result = reschedule_from_state(base_project, state)
+    base_result = reschedule_from_state(
+        base_project,
+        state,
+        reference_start_times=reference_start_times,
+        stability_weight=stability_weight,
+    )
 except ValueError as exc:
     base_result_error = str(exc)
 
 try:
-    result = reschedule_from_state(project, state)
+    result = reschedule_from_state(
+        project,
+        state,
+        reference_start_times=reference_start_times,
+        stability_weight=stability_weight,
+    )
 except ValueError as exc:
     st.error(f"Cenário de recursos inviável: {exc}")
     if base_result_error:
@@ -816,6 +880,27 @@ else:
     c4.metric(
         "Δ custo de modos",
         f"{result.schedule.total_cost - base_result.schedule.total_cost:+,.0f}",
+    )
+
+    s1, s2, s3, s4 = st.columns(4)
+    s1.metric(
+        "Δ início acumulado · base",
+        f"{base_result.schedule.total_start_deviation:.1f} h",
+    )
+    s2.metric(
+        "Δ início acumulado · cenário",
+        f"{result.schedule.total_start_deviation:.1f} h",
+        delta=(
+            f"{result.schedule.total_start_deviation - base_result.schedule.total_start_deviation:+.1f} h"
+        ),
+    )
+    s3.metric(
+        "Maior deslocamento de início",
+        f"{result.schedule.max_start_deviation:.1f} h",
+    )
+    s4.metric(
+        "Atividades comparadas",
+        result.schedule.stability_compared_tasks,
     )
 
     base_future = {item.task_id: item for item in base_result.schedule.tasks}
