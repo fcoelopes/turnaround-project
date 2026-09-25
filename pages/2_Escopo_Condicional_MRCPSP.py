@@ -585,8 +585,8 @@ if stored_human_selections:
                 del st.session_state[key]
         st.rerun()
 
-# Reexecuta o motor após eventuais escolhas humanas. Ele pode resolver grupos
-# event/optimize adicionais que tenham sido liberados pela decisão recém tomada.
+# Reexecuta o motor após eventuais escolhas humanas. Ele pode aplicar regras
+# event-driven determinísticas que tenham sido liberadas pela decisão recém tomada.
 state = ExecutionState(
     current_time=current_time,
     events=events,
@@ -829,6 +829,11 @@ schedule_df = pd.DataFrame(
             "Início (h)": item.start,
             "Fim (h)": item.finish,
             "Duração (h)": item.duration,
+            "Δ início vs plano (h)": (
+                item.start - reference_start_times[item.task_id]
+                if item.task_id in reference_start_times
+                else None
+            ),
             "Congelada": item.fixed,
             "Crítica atual": str(item.task_id) in criticality.critical_ids,
             "Controla por": criticality.reasons.get(str(item.task_id), ""),
@@ -966,6 +971,9 @@ else:
                     "Atraso (h)": result.schedule.tardiness,
                     "Custo modos": result.schedule.total_cost,
                     "Horas recuperadas": base_result.schedule.makespan - result.schedule.makespan,
+                    "Δ início acumulado (h)": result.schedule.total_start_deviation,
+                    "Maior Δ início (h)": result.schedule.max_start_deviation,
+                    "λ estabilidade": stability_weight,
                     "Modos alterados": int(
                         sum(
                             row["Mudou modo?"] == "SIM"
@@ -1016,6 +1024,24 @@ with tab_exec:
     r2.metric("Atraso", f"{result.schedule.tardiness:.1f} h")
     r3.metric("Novas tarefas ativas", len(new_scope))
     r4.metric("Custo dos modos", f"{result.schedule.total_cost:,.0f}")
+
+    sr1, sr2, sr3, sr4 = st.columns(4)
+    sr1.metric(
+        "Δ início acumulado",
+        f"{result.schedule.total_start_deviation:.1f} h",
+    )
+    sr2.metric(
+        "Maior Δ início",
+        f"{result.schedule.max_start_deviation:.1f} h",
+    )
+    sr3.metric(
+        "Atividades comparadas",
+        result.schedule.stability_compared_tasks,
+    )
+    sr4.metric(
+        "Peso de estabilidade λ",
+        f"{stability_weight:.1f}",
+    )
 
     if project.deadline is None:
         status(
@@ -1199,6 +1225,10 @@ with tab_export:
         strategy=result.schedule.strategy,
         activation_df=activation_df,
         schedule_df=schedule_df,
+        total_start_deviation=float(result.schedule.total_start_deviation),
+        max_start_deviation=float(result.schedule.max_start_deviation),
+        stability_compared_tasks=int(result.schedule.stability_compared_tasks),
+        stability_weight=float(stability_weight),
         critical_ids=criticality.critical_ids,
         critical_path_label=critical_path_label,
     )
