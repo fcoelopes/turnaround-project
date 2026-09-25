@@ -21,6 +21,7 @@ from turnaround import (
     WorkforceProfile,
     analyze_effective_criticality,
     apply_scope_config,
+    assign_people_to_skills,
     apply_scope_rule_rows,
     discover_resource_catalog,
     effective_capacities,
@@ -32,6 +33,7 @@ from turnaround import (
     reschedule_from_state,
     solve_mrcpsp,
     skill_capacities,
+    skill_requirements,
     task_reference_catalog,
     upgrade_database,
 )
@@ -1208,13 +1210,31 @@ with config_tab:
         mode_rows = []
         for task in base_project.tasks:
             for mode in task.modes:
-                feasible_base = all(
-                    demand <= effective_base_capacities.get(resource, 0.0) + 1e-9
-                    for resource, demand in mode.resources.items()
+                human_requirements = skill_requirements(
+                    mode.resources,
+                    workforce,
                 )
-                feasible_scenario = all(
-                    demand <= effective_scenario_capacities.get(resource, 0.0) + 1e-9
-                    for resource, demand in mode.resources.items()
+                workforce_match = (
+                    assign_people_to_skills(
+                        human_requirements,
+                        workforce,
+                    )
+                    if human_requirements
+                    else {}
+                )
+                feasible_base = (
+                    all(
+                        demand <= effective_base_capacities.get(resource, 0.0) + 1e-9
+                        for resource, demand in mode.resources.items()
+                    )
+                    and workforce_match is not None
+                )
+                feasible_scenario = (
+                    all(
+                        demand <= effective_scenario_capacities.get(resource, 0.0) + 1e-9
+                        for resource, demand in mode.resources.items()
+                    )
+                    and workforce_match is not None
                 )
                 missing_base = [
                     resource
