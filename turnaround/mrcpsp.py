@@ -5,7 +5,7 @@ from itertools import product
 from math import prod
 import re
 
-from .advanced_models import ExecutionMode, Precedence, TurnaroundTask
+from .advanced_models import ExecutionMode, Precedence, TurnaroundProject, TurnaroundTask
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,52 @@ class AdvancedScheduleResult:
     strategy: str
     mode_combinations: int
     evaluated_combinations: int
+
+
+@dataclass(frozen=True)
+class ResourceCatalogEntry:
+    name: str
+    base_capacity: float | None
+    max_demand: float
+    task_ids: tuple[str, ...]
+
+    @property
+    def capacity_defined(self) -> bool:
+        return self.base_capacity is not None
+
+
+def discover_resource_catalog(
+    project: TurnaroundProject,
+) -> dict[str, ResourceCatalogEntry]:
+    """Descobre recursos por capacidade declarada OU por demanda em qualquer modo."""
+    max_demand: dict[str, float] = {}
+    task_ids: dict[str, set[str]] = {}
+
+    for task in project.tasks:
+        for mode in task.modes:
+            for resource, demand in mode.resources.items():
+                if demand <= 0:
+                    continue
+                max_demand[resource] = max(
+                    max_demand.get(resource, 0.0),
+                    float(demand),
+                )
+                task_ids.setdefault(resource, set()).add(task.id)
+
+    names = set(project.capacities) | set(max_demand)
+    return {
+        name: ResourceCatalogEntry(
+            name=name,
+            base_capacity=(
+                float(project.capacities[name])
+                if name in project.capacities
+                else None
+            ),
+            max_demand=float(max_demand.get(name, 0.0)),
+            task_ids=tuple(sorted(task_ids.get(name, set()), key=_natural_id_key)),
+        )
+        for name in sorted(names, key=str.casefold)
+    }
 
 
 PRIORITIES = ("most_successors", "shortest_duration", "longest_duration", "id")
