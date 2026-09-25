@@ -1261,6 +1261,134 @@ schedule_df = pd.DataFrame(
     ]
 )
 
+# Snapshot único usado pela tela e pelo relatório gerencial.
+# Se este invariante falhar, o PDF não é gerado: ele nunca deve representar
+# um estado diferente do cronograma que o usuário está vendo.
+snapshot_schedule_finish = max(
+    [float(item.finish) for item in all_items],
+    default=float(current_time),
+)
+if abs(snapshot_schedule_finish - float(result.schedule.makespan)) > 1e-6:
+    st.error(
+        "Inconsistência interna: o makespan exibido não coincide com o maior "
+        "fim do cronograma atual. O relatório foi bloqueado para evitar um "
+        "snapshot incorreto."
+    )
+    st.stop()
+
+dynamic_scope_report_df = pd.DataFrame(
+    [
+        {
+            "ID": item.id,
+            "Atividade": item.name,
+            "Descoberta em (h)": float(item.discovered_at),
+            "Recursos": "; ".join(
+                f"{resource}={demand:g}"
+                for mode in item.modes
+                for resource, demand in sorted(mode.resources.items())
+            ) or "—",
+            "Bloqueia": ", ".join(item.successor_task_ids) or "—",
+        }
+        for item in discovered_tasks
+    ]
+)
+
+observed_events_label = "; ".join(
+    f"{task_id}: {', '.join(values)}"
+    for task_id, values in sorted(events.items())
+    if values
+) or "—"
+human_decisions_label = "; ".join(
+    f"{group_id}: {', '.join(selection)}"
+    for group_id, selection in sorted(stored_human_selections.items())
+    if selection
+) or "—"
+auto_rules_label = "; ".join(
+    f"{group_id}: {', '.join(selection)}"
+    for group_id, selection in sorted(decision_engine.auto_resolved.items())
+    if selection
+) or "—"
+optional_label = ", ".join(sorted(selected_optional_ids)) or "—"
+
+snapshot_payload = {
+    "session_id": execution_session.id,
+    "project_key": project_key,
+    "current_time": float(current_time),
+    "scenario_capacities": {
+        key: float(value)
+        for key, value in sorted(scenario_capacities.items())
+    },
+    "stability_weight": float(stability_weight),
+    "events": {
+        key: sorted(value)
+        for key, value in sorted(events.items())
+        if value
+    },
+    "selected_optional_ids": sorted(selected_optional_ids),
+    "human_selections": {
+        key: sorted(value)
+        for key, value in sorted(stored_human_selections.items())
+        if value
+    },
+    "auto_resolved": {
+        key: sorted(value)
+        for key, value in sorted(decision_engine.auto_resolved.items())
+        if value
+    },
+    "dynamic_scope": [
+        item.model_dump(mode="json")
+        for item in discovered_tasks
+    ],
+    "result": {
+        "makespan": float(result.schedule.makespan),
+        "tardiness": float(result.schedule.tardiness),
+        "total_cost": float(result.schedule.total_cost),
+        "strategy": result.schedule.strategy,
+        "tasks": [
+            {
+                "id": str(item.task_id),
+                "mode": item.mode_name,
+                "start": float(item.start),
+                "finish": float(item.finish),
+                "fixed": bool(item.fixed),
+            }
+            for item in all_items
+        ],
+    },
+}
+report_snapshot_id = hashlib.sha256(
+    json.dumps(
+        snapshot_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+).hexdigest()[:12]
+
+execution_state_report_df = pd.DataFrame(
+    [
+        {"Parâmetro": "Snapshot", "Valor": report_snapshot_id},
+        {"Parâmetro": "Sessão", "Valor": execution_session.id},
+        {"Parâmetro": "Hora corrente", "Valor": f"{current_time:.1f} h"},
+        {"Parâmetro": "Makespan baseline", "Valor": f"{baseline.makespan:.1f} h"},
+        {
+            "Parâmetro": "Makespan reprogramado",
+            "Valor": f"{result.schedule.makespan:.1f} h",
+        },
+        {"Parâmetro": "Atraso", "Valor": f"{result.schedule.tardiness:.1f} h"},
+        {"Parâmetro": "Peso estabilidade λ", "Valor": f"{stability_weight:.1f}"},
+        {"Parâmetro": "Achados observados", "Valor": observed_events_label},
+        {"Parâmetro": "Opcionais selecionadas", "Valor": optional_label},
+        {"Parâmetro": "Decisões humanas", "Valor": human_decisions_label},
+        {"Parâmetro": "Regras determinísticas", "Valor": auto_rules_label},
+        {
+            "Parâmetro": "Dynamic scope",
+            "Valor": f"{len(dynamic_scope_ids)} atividade(s)",
+        },
+        {"Parâmetro": "Estratégia solver", "Valor": result.schedule.strategy},
+    ]
+)
+
 section(
     "4",
     "Comparação do cenário MRCPSP",
@@ -1647,6 +1775,16 @@ with tab_export:
         stability_weight=float(stability_weight),
         critical_ids=criticality.critical_ids,
         critical_path_label=critical_path_label,
+        snapshot_id=report_snapshot_id,
+        session_id=execution_session.id,
+        resource_scenario_df=resource_scenario_df,
+        execution_state_df=execution_state_report_df,
+        dynamic_scope_df=dynamic_scope_report_df,
+    )
+
+    st.info(
+        f"PDF preparado com o snapshot **{report_snapshot_id}** · "
+        f"makespan **{result.schedule.makespan:.1f} h**."
     )
 
     st.download_button(
@@ -1654,19 +1792,23 @@ with tab_export:
         data=pdf_bytes,
         file_name=(
             f"{project_name.lower().replace(' ', '_')}"
-            "_scope_discovery.pdf"
+            f"_ms{result.schedule.makespan:.1f}".replace(".", "_")
+            + f"_{report_snapshot_id}_scope_discovery.pdf"
         ),
         mime="application/pdf",
         type="primary",
         use_container_width=True,
+        key=f"download_management_report_{report_snapshot_id}",
+        on_click="ignore",
     )
 
     st.markdown(
         """
         <div class="ta-note">
-        O relatório registra a fotografia atual do replanejamento.
-        Atividades já iniciadas ou concluídas permanecem congeladas;
-        apenas o trabalho futuro é reprogramado.
+        O relatório registra a fotografia atual do replanejamento e inclui
+        o identificador do snapshot, capacidades de recursos, achados e decisões
+        que produziram o makespan exibido. Atividades já iniciadas ou concluídas
+        permanecem congeladas; apenas o trabalho futuro é reprogramado.
         </div>
         """,
         unsafe_allow_html=True,

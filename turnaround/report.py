@@ -913,6 +913,11 @@ def build_conditional_management_pdf(
     schedule_df: pd.DataFrame,
     critical_ids: set[str] | None = None,
     critical_path_label: str | None = None,
+    snapshot_id: str | None = None,
+    session_id: str | None = None,
+    resource_scenario_df: pd.DataFrame | None = None,
+    execution_state_df: pd.DataFrame | None = None,
+    dynamic_scope_df: pd.DataFrame | None = None,
 ) -> bytes:
     s = _styles()
     delta = current_makespan - baseline_makespan
@@ -955,6 +960,18 @@ def build_conditional_management_pdf(
         _p(project_name or "Turnaround", s["title"]),
         _p(
             "Impacto de achados de inspeção, decisões de escopo e modos de execução sobre o plano da parada.",
+            s["muted"],
+        ),
+        _p(
+            (
+                "Snapshot: "
+                + (snapshot_id or "não informado")
+                + (
+                    f" · sessão {session_id}"
+                    if session_id
+                    else ""
+                )
+            ),
             s["muted"],
         ),
         Spacer(1, 3 * mm),
@@ -1017,6 +1034,52 @@ def build_conditional_management_pdf(
             "scope discovery e liberações de recursos que controlam o término. "
             "Não equivale ao CPM clássico do planejamento-base.",
             s["muted"],
+        ),
+        _p("Snapshot operacional capturado", s["h2"]),
+        _p(
+            "Os parâmetros abaixo são os mesmos usados para calcular o makespan reprogramado deste relatório.",
+            s["muted"],
+        ),
+        *(
+            [
+                _dataframe_table(
+                    execution_state_df,
+                    ["Parâmetro", "Valor"],
+                    max_rows=30,
+                    widths=[55 * mm, 120 * mm],
+                ),
+                Spacer(1, 3 * mm),
+            ]
+            if execution_state_df is not None and not execution_state_df.empty
+            else []
+        ),
+        *(
+            [
+                _p("Capacidades do cenário", s["h2"]),
+                _dataframe_table(
+                    resource_scenario_df,
+                    ["Recurso", "Base", "Cenário", "Δ vs base"],
+                    max_rows=40,
+                    widths=[55 * mm, 35 * mm, 35 * mm, 35 * mm],
+                ),
+                Spacer(1, 3 * mm),
+            ]
+            if resource_scenario_df is not None and not resource_scenario_df.empty
+            else []
+        ),
+        *(
+            [
+                _p("Atividades descobertas em execução", s["h2"]),
+                _dataframe_table(
+                    dynamic_scope_df,
+                    ["ID", "Atividade", "Descoberta em (h)", "Recursos", "Bloqueia"],
+                    max_rows=30,
+                    widths=[18 * mm, 65 * mm, 25 * mm, 36 * mm, 36 * mm],
+                ),
+                Spacer(1, 3 * mm),
+            ]
+            if dynamic_scope_df is not None and not dynamic_scope_df.empty
+            else []
         ),
         _p("Mapa de ativação", s["h2"]),
         _dataframe_table(
