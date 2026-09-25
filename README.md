@@ -439,7 +439,7 @@ bomba só é liberado depois dessa atividade quando ela pertence ao escopo ativo
 O núcleo foi separado da interface para substituir o heurístico por **CP-SAT/MILP** sem refazer a tela. Próximas camadas sugeridas:
 
 - calendários e turnos 24x7;
-- multi-skill RCPSP;
+- níveis de proficiência e produtividade por habilidade;
 - crew sizing e dimensionamento multi-skill;
 - custos de overtime e contratação;
 - restrições de área, LOTO, acesso, guindaste e simultaneidade;
