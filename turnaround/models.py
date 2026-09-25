@@ -21,6 +21,9 @@ class Task:
     baseline_start: Optional[str] = None
     baseline_finish: Optional[str] = None
     wbs: Optional[str] = None
+    # UID do Microsoft Project: estável mesmo quando o ID visual muda por
+    # inserção/remoção/reordenação de tarefas. CSV/Excel podem deixá-lo vazio.
+    project_uid: Optional[str] = None
 
 
 @dataclass
