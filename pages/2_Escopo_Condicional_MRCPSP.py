@@ -1982,137 +1982,141 @@ with operation_tab:
             title="Recursos-base insuficientes.",
         )
     else:
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric(
-            "Makespan · recursos-base",
-            f"{base_result.schedule.makespan:.1f} h",
-        )
-        c2.metric(
-            "Makespan · cenário",
-            f"{result.schedule.makespan:.1f} h",
-            delta=f"{result.schedule.makespan - base_result.schedule.makespan:+.1f} h",
-        )
-        c3.metric(
-            "Horas recuperadas",
-            f"{max(0.0, base_result.schedule.makespan - result.schedule.makespan):.1f} h",
-        )
-        c4.metric(
-            "Δ custo de modos",
-            f"{result.schedule.total_cost - base_result.schedule.total_cost:+,.0f}",
-        )
-
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric(
-            "Δ início acumulado · base",
-            f"{base_result.schedule.total_start_deviation:.1f} h",
-        )
-        s2.metric(
-            "Δ início acumulado · cenário",
-            f"{result.schedule.total_start_deviation:.1f} h",
-            delta=(
-                f"{result.schedule.total_start_deviation - base_result.schedule.total_start_deviation:+.1f} h"
-            ),
-        )
-        s3.metric(
-            "Maior deslocamento de início",
-            f"{result.schedule.max_start_deviation:.1f} h",
-        )
-        s4.metric(
-            "Atividades comparadas",
-            result.schedule.stability_compared_tasks,
-        )
-
-        base_future = {item.task_id: item for item in base_result.schedule.tasks}
-        scenario_future = {item.task_id: item for item in result.schedule.tasks}
-        mode_comparison_rows = []
-        for task_id in sorted(set(base_future) & set(scenario_future)):
-            before = base_future[task_id]
-            after = scenario_future[task_id]
-            mode_comparison_rows.append(
-                {
-                    "ID": task_id,
-                    "Atividade": after.task_name,
-                    "Modo · base": before.mode_name,
-                    "Modo · cenário": after.mode_name,
-                    "Mudou modo?": "SIM" if before.mode_name != after.mode_name else "não",
-                    "Duração base (h)": before.duration,
-                    "Duração cenário (h)": after.duration,
-                    "Fim base (h)": before.finish,
-                    "Fim cenário (h)": after.finish,
-                    "Δ fim (h)": after.finish - before.finish,
-                }
+        with st.expander(
+            "Comparar recursos-base x cenário",
+            expanded=False,
+        ):
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric(
+                "Makespan · recursos-base",
+                f"{base_result.schedule.makespan:.1f} h",
+            )
+            c2.metric(
+                "Makespan · cenário",
+                f"{result.schedule.makespan:.1f} h",
+                delta=f"{result.schedule.makespan - base_result.schedule.makespan:+.1f} h",
+            )
+            c3.metric(
+                "Horas recuperadas",
+                f"{max(0.0, base_result.schedule.makespan - result.schedule.makespan):.1f} h",
+            )
+            c4.metric(
+                "Δ custo de modos",
+                f"{result.schedule.total_cost - base_result.schedule.total_cost:+,.0f}",
             )
 
-        mode_comparison_df = pd.DataFrame(mode_comparison_rows)
-        changed_modes_df = (
-            mode_comparison_df[mode_comparison_df["Mudou modo?"] == "SIM"]
-            if not mode_comparison_df.empty
-            else mode_comparison_df
-        )
-
-        if not changed_modes_df.empty:
-            status(
-                f"O MRCPSP trocou o modo de {len(changed_modes_df)} atividade(s) neste cenário.",
-                tone="ok",
-                title="Mudança de estratégia de execução detectada.",
+            s1, s2, s3, s4 = st.columns(4)
+            s1.metric(
+                "Δ início acumulado · base",
+                f"{base_result.schedule.total_start_deviation:.1f} h",
             )
-            st.dataframe(
-                changed_modes_df,
-                use_container_width=True,
-                hide_index=True,
+            s2.metric(
+                "Δ início acumulado · cenário",
+                f"{result.schedule.total_start_deviation:.1f} h",
+                delta=(
+                    f"{result.schedule.total_start_deviation - base_result.schedule.total_start_deviation:+.1f} h"
+                ),
             )
-        else:
-            st.info(
-                "Nenhuma atividade trocou de modo. O cenário ainda pode alterar o makespan "
-                "por permitir ou restringir paralelismo."
+            s3.metric(
+                "Maior deslocamento de início",
+                f"{result.schedule.max_start_deviation:.1f} h",
+            )
+            s4.metric(
+                "Atividades comparadas",
+                result.schedule.stability_compared_tasks,
             )
 
-        with st.expander("Comparação completa das atividades futuras", expanded=True):
-            st.dataframe(
-                mode_comparison_df,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        st.session_state.setdefault("mrcpsp_saved_scenarios", [])
-        save_col, clear_col = st.columns(2)
-        with save_col:
-            if st.button("Salvar cenário na comparação", type="primary"):
-                st.session_state.mrcpsp_saved_scenarios.append(
+            base_future = {item.task_id: item for item in base_result.schedule.tasks}
+            scenario_future = {item.task_id: item for item in result.schedule.tasks}
+            mode_comparison_rows = []
+            for task_id in sorted(set(base_future) & set(scenario_future)):
+                before = base_future[task_id]
+                after = scenario_future[task_id]
+                mode_comparison_rows.append(
                     {
-                        "Cenário": scenario_name,
-                        "Makespan (h)": result.schedule.makespan,
-                        "Atraso (h)": result.schedule.tardiness,
-                        "Custo modos": result.schedule.total_cost,
-                        "Horas recuperadas": base_result.schedule.makespan - result.schedule.makespan,
-                        "Δ início acumulado (h)": result.schedule.total_start_deviation,
-                        "Maior Δ início (h)": result.schedule.max_start_deviation,
-                        "λ estabilidade": stability_weight,
-                        "Dynamic scope": len(dynamic_scope_ids),
-                        "Modos alterados": int(
-                            sum(
-                                row["Mudou modo?"] == "SIM"
-                                for row in mode_comparison_rows
-                            )
-                        ),
-                        "Recursos": "; ".join(
-                            f"{resource}={scenario_capacities[resource]:g}"
-                            for resource in sorted(scenario_capacities)
-                        ),
+                        "ID": task_id,
+                        "Atividade": after.task_name,
+                        "Modo · base": before.mode_name,
+                        "Modo · cenário": after.mode_name,
+                        "Mudou modo?": "SIM" if before.mode_name != after.mode_name else "não",
+                        "Duração base (h)": before.duration,
+                        "Duração cenário (h)": after.duration,
+                        "Fim base (h)": before.finish,
+                        "Fim cenário (h)": after.finish,
+                        "Δ fim (h)": after.finish - before.finish,
                     }
                 )
-                st.success(f"{scenario_name} salvo.")
-        with clear_col:
-            if st.button("Limpar cenários salvos"):
-                st.session_state.mrcpsp_saved_scenarios = []
 
-        if st.session_state.mrcpsp_saved_scenarios:
-            st.markdown("#### Cenários salvos nesta sessão")
-            st.dataframe(
-                pd.DataFrame(st.session_state.mrcpsp_saved_scenarios),
-                use_container_width=True,
-                hide_index=True,
+            mode_comparison_df = pd.DataFrame(mode_comparison_rows)
+            changed_modes_df = (
+                mode_comparison_df[mode_comparison_df["Mudou modo?"] == "SIM"]
+                if not mode_comparison_df.empty
+                else mode_comparison_df
             )
+
+            if not changed_modes_df.empty:
+                status(
+                    f"O MRCPSP trocou o modo de {len(changed_modes_df)} atividade(s) neste cenário.",
+                    tone="ok",
+                    title="Mudança de estratégia de execução detectada.",
+                )
+                st.dataframe(
+                    changed_modes_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info(
+                    "Nenhuma atividade trocou de modo. O cenário ainda pode alterar o makespan "
+                    "por permitir ou restringir paralelismo."
+                )
+
+            with st.expander("Comparação completa das atividades futuras", expanded=True):
+                st.dataframe(
+                    mode_comparison_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            st.session_state.setdefault("mrcpsp_saved_scenarios", [])
+            save_col, clear_col = st.columns(2)
+            with save_col:
+                if st.button("Salvar cenário na comparação", type="primary"):
+                    st.session_state.mrcpsp_saved_scenarios.append(
+                        {
+                            "Cenário": scenario_name,
+                            "Makespan (h)": result.schedule.makespan,
+                            "Atraso (h)": result.schedule.tardiness,
+                            "Custo modos": result.schedule.total_cost,
+                            "Horas recuperadas": base_result.schedule.makespan - result.schedule.makespan,
+                            "Δ início acumulado (h)": result.schedule.total_start_deviation,
+                            "Maior Δ início (h)": result.schedule.max_start_deviation,
+                            "λ estabilidade": stability_weight,
+                            "Dynamic scope": len(dynamic_scope_ids),
+                            "Modos alterados": int(
+                                sum(
+                                    row["Mudou modo?"] == "SIM"
+                                    for row in mode_comparison_rows
+                                )
+                            ),
+                            "Recursos": "; ".join(
+                                f"{resource}={scenario_capacities[resource]:g}"
+                                for resource in sorted(scenario_capacities)
+                            ),
+                        }
+                    )
+                    st.success(f"{scenario_name} salvo.")
+            with clear_col:
+                if st.button("Limpar cenários salvos"):
+                    st.session_state.mrcpsp_saved_scenarios = []
+
+            if st.session_state.mrcpsp_saved_scenarios:
+                st.markdown("#### Cenários salvos nesta sessão")
+                st.dataframe(
+                    pd.DataFrame(st.session_state.mrcpsp_saved_scenarios),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
     section(
         "3",
@@ -2130,38 +2134,50 @@ with operation_tab:
     )
 
     with tab_exec:
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric(
-            "Novo makespan",
-            f"{result.schedule.makespan:.1f} h",
-            delta=f"{result.schedule.makespan - baseline.makespan:+.1f} h",
-        )
-        r2.metric("Atraso", f"{result.schedule.tardiness:.1f} h")
-        r3.metric("Novas tarefas ativas", len(new_scope))
-        r4.metric("Custo dos modos", f"{result.schedule.total_cost:,.0f}")
-        if dynamic_scope_ids:
-            st.caption(
-                f"{len(dynamic_scope_ids)} atividade(s) foram criadas em execução por "
-                "dynamic scope discovery; elas não pertenciam ao planejamento-base."
-            )
+        impact_hours = result.schedule.makespan - baseline.makespan
+        if project.deadline is None:
+            window_title = "Janela"
+            window_value = "sem deadline"
+        elif result.schedule.makespan <= project.deadline:
+            window_title = "Folga da janela"
+            window_value = f"{project.deadline - result.schedule.makespan:.1f} h"
+        else:
+            window_title = "Excesso da janela"
+            window_value = f"{result.schedule.makespan - project.deadline:.1f} h"
 
-        sr1, sr2, sr3, sr4 = st.columns(4)
-        sr1.metric(
-            "Δ início acumulado",
-            f"{result.schedule.total_start_deviation:.1f} h",
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Makespan atual", f"{result.schedule.makespan:.1f} h")
+        r2.metric("Impacto vs baseline", f"{impact_hours:+.1f} h")
+        r3.metric(window_title, window_value)
+        r4.metric(
+            "Novo escopo ativo",
+            len(new_scope),
+            delta=(
+                f"{len(dynamic_scope_ids)} dinâmico(s)"
+                if dynamic_scope_ids
+                else None
+            ),
         )
-        sr2.metric(
-            "Maior Δ início",
-            f"{result.schedule.max_start_deviation:.1f} h",
-        )
-        sr3.metric(
-            "Atividades comparadas",
-            result.schedule.stability_compared_tasks,
-        )
-        sr4.metric(
-            "Peso de estabilidade λ",
-            f"{stability_weight:.1f}",
-        )
+
+        with st.expander("Estabilidade, custo e diagnóstico do solver", expanded=False):
+            sr1, sr2, sr3, sr4 = st.columns(4)
+            sr1.metric(
+                "Δ início acumulado",
+                f"{result.schedule.total_start_deviation:.1f} h",
+            )
+            sr2.metric(
+                "Maior Δ início",
+                f"{result.schedule.max_start_deviation:.1f} h",
+            )
+            sr3.metric("Custo dos modos", f"{result.schedule.total_cost:,.0f}")
+            sr4.metric(
+                "Peso λ",
+                f"{stability_weight:.1f}",
+            )
+            st.caption(
+                f"{result.schedule.stability_compared_tasks} atividade(s) comparadas · "
+                f"solver {result.schedule.strategy}."
+            )
 
         if project.deadline is None:
             status(
@@ -2187,6 +2203,22 @@ with operation_tab:
                 ),
                 tone="danger",
                 title="Intervenção gerencial necessária.",
+            )
+
+        active_change_names = [
+            name_by_id.get(task_id, task_id)
+            for task_id in sorted(new_scope)
+        ]
+        if active_change_names:
+            st.markdown("**O que mudou neste snapshot**")
+            st.write(
+                f"{len(active_change_names)} atividade(s) entraram no escopo ativo: "
+                + ", ".join(active_change_names[:6])
+                + ("…" if len(active_change_names) > 6 else "")
+            )
+        elif not decision_engine.pending_human:
+            st.caption(
+                "Nenhuma nova atividade foi ativada neste snapshot; o impacto atual vem do estado, recursos e modos de execução."
             )
 
         if criticality.path_ids:
