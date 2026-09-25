@@ -38,6 +38,8 @@ __all__ = [
     "ExecutionSessionSnapshot",
     "ExecutionStore",
     "ScopeRuleRow",
+    "Person",
+    "WorkforceProfile",
     "ExecutionState",
     "LogicalGroup",
     "Precedence",
@@ -50,8 +52,10 @@ __all__ = [
     "analyze_effective_criticality",
     "apply_scope_config",
     "apply_scope_rule_rows",
+    "assign_people_to_skills",
     "default_database_url",
     "discover_resource_catalog",
+    "effective_capacities",
     "evaluate_scope_decisions",
     "infer_capacities",
     "load_schedule",
@@ -61,12 +65,17 @@ __all__ = [
     "project_from_tasks",
     "resolve_activation",
     "reschedule_from_state",
+    "skill_capacities",
+    "skill_requirements",
     "solve_mrcpsp",
     "task_reference",
     "task_reference_catalog",
     "upgrade_database",
+    "workforce_summary",
 ]
 
 from .persistence import ExecutionEvent, ExecutionSessionSnapshot, ExecutionStore, default_database_url, upgrade_database
 
 from .scope_rules import ScopeRuleRow, apply_scope_rule_rows, task_reference, task_reference_catalog
+
+from .workforce import Person, WorkforceProfile, assign_people_to_skills, effective_capacities, skill_capacities, skill_requirements, workforce_summary
