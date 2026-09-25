@@ -23,6 +23,7 @@ def project_from_tasks(
                 id=task.id,
                 name=task.name,
                 wbs=task.wbs,
+                project_uid=task.project_uid,
                 modes=[
                     ExecutionMode(
                         name="base",
