@@ -220,6 +220,13 @@ def evaluate_scope_decisions(
                     if group.id not in unresolved_event_groups:
                         unresolved_event_groups.append(group.id)
                     continue
+                impact = _evaluate_selection(
+                    project,
+                    working_state,
+                    group,
+                    selection,
+                    max_mode_combinations=max_mode_combinations,
+                )
                 selections = {
                     key: list(value)
                     for key, value in working_state.group_selections.items()
@@ -235,8 +242,14 @@ def evaluate_scope_decisions(
                         group_id=group.id,
                         operator=group.operator,
                         resolution_mode=group.resolution_mode,
+                        impacts=[impact],
+                        recommended_selection=selection,
                         applied_selection=selection,
-                        status="auto_resolved",
+                        status=(
+                            "auto_resolved"
+                            if impact.feasible
+                            else "auto_resolved_infeasible"
+                        ),
                     )
                 )
                 progressed = True
