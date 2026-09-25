@@ -546,7 +546,10 @@ if human_choices:
 if stored_human_selections:
     if st.button("Reabrir decisões humanas desta sessão"):
         st.session_state.scope_decision_selections = {}
-        stored_human_selections = {}
+        for key in list(st.session_state):
+            if key.startswith("scope_decision_") and key != "scope_decision_selections":
+                del st.session_state[key]
+        st.rerun()
 
 # Reexecuta o motor após eventuais escolhas humanas. Ele pode resolver grupos
 # event/optimize adicionais que tenham sido liberados pela decisão recém tomada.
