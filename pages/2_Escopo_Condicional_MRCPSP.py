@@ -627,6 +627,41 @@ if decision_engine.auto_resolved:
             use_container_width=True,
             hide_index=True,
         )
+        for decision in decision_engine.decisions:
+            if (
+                decision.applied_selection is None
+                or len(decision.impacts) <= 1
+            ):
+                continue
+            st.markdown(f"**Cenários sombra · {decision.group_id}**")
+            shadow_rows = []
+            for impact in decision.impacts:
+                shadow_rows.append(
+                    {
+                        "Alternativa": " + ".join(impact.task_names),
+                        "Aplicada": (
+                            "SIM"
+                            if impact.selection == decision.applied_selection
+                            else "não"
+                        ),
+                        "Factível": "sim" if impact.feasible else "não",
+                        "Makespan (h)": (
+                            impact.makespan if impact.feasible else None
+                        ),
+                        "Atraso (h)": (
+                            impact.tardiness if impact.feasible else None
+                        ),
+                        "Custo": (
+                            impact.total_cost if impact.feasible else None
+                        ),
+                        "Diagnóstico": impact.error or "",
+                    }
+                )
+            st.dataframe(
+                pd.DataFrame(shadow_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
 
 if decision_engine.unresolved_event_groups:
     status(
