@@ -13,6 +13,7 @@ from turnaround import (
     analyze_effective_criticality,
     apply_scope_config,
     discover_resource_catalog,
+    evaluate_scope_decisions,
     project_from_tasks,
     resolve_activation,
     reschedule_from_state,
@@ -359,10 +360,12 @@ for task in project.tasks:
 
 for group in project.logical_groups:
     if group.when:
+        group_events = set(group.when.events)
+        group_events.update(group.event_routes)
         event_catalog.setdefault(
             group.when.source_task_id,
             set(),
-        ).update(group.when.events)
+        ).update(group_events)
 
 name_by_id = {task.id: task.name for task in project.tasks}
 project_order = {task.id: index for index, task in enumerate(project.tasks)}
@@ -415,42 +418,226 @@ if independent_optional:
         format_func=lambda task_id: labels[task_id],
     )
 
-group_selections: dict[str, list[str]] = {}
-for group in project.logical_groups:
-    labels = {
-        task_id: f"{task_id} · {name_by_id.get(task_id, task_id)}"
-        for task_id in group.member_task_ids
-    }
-
-    if group.operator == "xor":
-        chosen = st.selectbox(
-            f"Grupo XOR · {group.id}",
-            options=[None] + group.member_task_ids,
-            format_func=lambda task_id: (
-                "— selecionar —"
-                if task_id is None
-                else labels[task_id]
-            ),
+known_groups = {group.id: group for group in project.logical_groups}
+stored_human_selections = st.session_state.setdefault(
+    "scope_decision_selections",
+    {},
+)
+stored_human_selections = {
+    group_id: [
+        task_id
+        for task_id in selection
+        if (
+            group_id in known_groups
+            and task_id in known_groups[group_id].member_task_ids
         )
-        if chosen:
-            group_selections[group.id] = [chosen]
-
-    elif group.operator == "or":
-        chosen = st.multiselect(
-            f"Grupo OR · {group.id}",
-            options=group.member_task_ids,
-            format_func=lambda task_id: labels[task_id],
-        )
-        if chosen:
-            group_selections[group.id] = chosen
+    ]
+    for group_id, selection in stored_human_selections.items()
+    if group_id in known_groups
+}
+stored_human_selections = {
+    group_id: selection
+    for group_id, selection in stored_human_selections.items()
+    if selection
+}
+st.session_state.scope_decision_selections = stored_human_selections
 
 state = ExecutionState(
     current_time=current_time,
     events=events,
     selected_optional_ids=selected_optional_ids,
-    group_selections=group_selections,
+    group_selections=stored_human_selections,
     executions=executions,
 )
+
+decision_engine = evaluate_scope_decisions(project, state)
+
+st.markdown("#### Decisões de escopo ativas")
+if not decision_engine.pending_human:
+    st.caption(
+        "Nenhuma decisão humana pendente. Regras sem gatilho permanecem dormentes "
+        "e não geram controles."
+    )
+
+human_choices: dict[str, list[str]] = {}
+pending_human = decision_engine.pending_human
+focused_decision = None
+
+if pending_human:
+    pending_ids = [decision.group_id for decision in pending_human]
+    if len(pending_human) > 1:
+        st.caption(
+            f"{len(pending_human)} decisões humanas estão ativas. "
+            "Apenas uma é detalhada por vez."
+        )
+        focused_group_id = st.selectbox(
+            "Decisão em foco",
+            options=pending_ids,
+            key="scope_decision_focus",
+        )
+        focused_decision = next(
+            decision
+            for decision in pending_human
+            if decision.group_id == focused_group_id
+        )
+    else:
+        focused_decision = pending_human[0]
+
+if focused_decision is not None:
+    decision = focused_decision
+    group = known_groups[decision.group_id]
+    st.markdown(f"**{decision.group_id} · {group.operator.upper()}**")
+
+    impact_rows = []
+    feasible_impacts = []
+    for index, impact in enumerate(decision.impacts):
+        if impact.feasible:
+            feasible_impacts.append((index, impact))
+        impact_rows.append(
+            {
+                "Alternativa": " + ".join(impact.task_names),
+                "Factível": "sim" if impact.feasible else "não",
+                "Makespan (h)": impact.makespan if impact.feasible else None,
+                "Atraso (h)": impact.tardiness if impact.feasible else None,
+                "Custo": impact.total_cost if impact.feasible else None,
+                "Diagnóstico": impact.error or "",
+            }
+        )
+    st.dataframe(
+        pd.DataFrame(impact_rows),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    recommended = decision.recommended_selection
+    option_indices = [index for index, impact in feasible_impacts]
+    chosen_index = st.selectbox(
+        "Resolver decisão",
+        options=[None] + option_indices,
+        key=f"scope_decision_{decision.group_id}",
+        format_func=lambda index: (
+            "— manter pendente —"
+            if index is None
+            else (
+                " + ".join(decision.impacts[index].task_names)
+                + (
+                    " · menor score MRCPSP"
+                    if decision.impacts[index].selection == recommended
+                    else ""
+                )
+            )
+        ),
+    )
+    if chosen_index is not None:
+        human_choices[decision.group_id] = list(
+            decision.impacts[chosen_index].selection
+        )
+
+    if not decision.exhaustive:
+        st.caption(
+            "Grupo OR grande: a avaliação usa um conjunto limitado de candidatos "
+            "para evitar explosão combinatória."
+        )
+
+if human_choices:
+    stored_human_selections.update(human_choices)
+    st.session_state.scope_decision_selections = stored_human_selections
+
+if stored_human_selections:
+    if st.button("Reabrir decisões humanas desta sessão"):
+        st.session_state.scope_decision_selections = {}
+        for key in list(st.session_state):
+            if key.startswith("scope_decision_") and key != "scope_decision_selections":
+                del st.session_state[key]
+        st.rerun()
+
+# Reexecuta o motor após eventuais escolhas humanas. Ele pode resolver grupos
+# event/optimize adicionais que tenham sido liberados pela decisão recém tomada.
+state = ExecutionState(
+    current_time=current_time,
+    events=events,
+    selected_optional_ids=selected_optional_ids,
+    group_selections=stored_human_selections,
+    executions=executions,
+)
+decision_engine = evaluate_scope_decisions(project, state)
+state = decision_engine.state
+
+if decision_engine.auto_resolved:
+    auto_rows = []
+    for group_id, selection in decision_engine.auto_resolved.items():
+        group = known_groups[group_id]
+        decision = next(
+            (
+                item
+                for item in decision_engine.decisions
+                if item.group_id == group_id
+                and item.applied_selection is not None
+            ),
+            None,
+        )
+        applied_impact = None
+        if decision is not None:
+            applied_impact = next(
+                (
+                    impact
+                    for impact in decision.impacts
+                    if impact.selection == decision.applied_selection
+                ),
+                None,
+            )
+        auto_rows.append(
+            {
+                "Regra": group_id,
+                "Modo": group.resolution_mode,
+                "Ramo aplicado": " + ".join(
+                    name_by_id.get(task_id, task_id)
+                    for task_id in selection
+                ),
+                "Factível": (
+                    "sim"
+                    if applied_impact is not None and applied_impact.feasible
+                    else "não"
+                ),
+                "Makespan (h)": (
+                    applied_impact.makespan
+                    if applied_impact is not None and applied_impact.feasible
+                    else None
+                ),
+                "Atraso (h)": (
+                    applied_impact.tardiness
+                    if applied_impact is not None and applied_impact.feasible
+                    else None
+                ),
+                "Custo": (
+                    applied_impact.total_cost
+                    if applied_impact is not None and applied_impact.feasible
+                    else None
+                ),
+                "Diagnóstico": (
+                    applied_impact.error
+                    if applied_impact is not None and not applied_impact.feasible
+                    else ""
+                ),
+            }
+        )
+    with st.expander("Decisões resolvidas automaticamente", expanded=False):
+        st.dataframe(
+            pd.DataFrame(auto_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+if decision_engine.unresolved_event_groups:
+    status(
+        (
+            "Há regra(s) event-driven com gatilho ativo, mas nenhum event_route "
+            "corresponde aos eventos observados: "
+            + ", ".join(decision_engine.unresolved_event_groups)
+        ),
+        tone="warn",
+        title="Rota automática ainda não determinada.",
+    )
 
 activation = resolve_activation(project, state)
 pending_groups = [
@@ -461,12 +648,11 @@ pending_groups = [
 if pending_groups:
     status(
         (
-            "Há decisão lógica pendente nos grupos: "
-            + ", ".join(pending_groups)
-            + ". O cronograma não inclui os ramos ainda não escolhidos."
+            f"{len(pending_groups)} decisão(ões) de escopo continuam pendentes. "
+            "Somente grupos cujo gatilho ocorreu entram nesta fila."
         ),
         tone="warn",
-        title="Decisão de escopo pendente.",
+        title="Rolling horizon de decisões.",
     )
 
 base_result = None
