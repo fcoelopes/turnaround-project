@@ -903,6 +903,7 @@ def build_conditional_management_pdf(
     current_time: float,
     total_cost: float,
     new_scope_count: int,
+    dynamic_scope_count: int = 0,
     strategy: str,
     activation_df: pd.DataFrame,
     total_start_deviation: float = 0.0,
@@ -966,6 +967,7 @@ def build_conditional_management_pdf(
                 ("Impacto", f"{delta:+.1f} h"),
                 ("Hora corrente", f"{current_time:.1f} h"),
                 ("Novo escopo", str(new_scope_count)),
+                ("Dynamic scope", str(dynamic_scope_count)),
                 ("Custo modos", f"{total_cost:,.0f}"),
                 ("Δ início acum.", f"{total_start_deviation:.1f} h"),
                 ("Maior Δ início", f"{max_start_deviation:.1f} h"),
@@ -974,6 +976,16 @@ def build_conditional_management_pdf(
                 ("Ativas", str(active_counts.get("active", 0))),
                 ("Pendentes", str(active_counts.get("pending", 0))),
             ]
+        ),
+        _p("Dynamic scope discovery", s["h2"]),
+        _p(
+            (
+                f"{dynamic_scope_count} atividade(s) do plano atual foram criadas "
+                "durante a execução e não existiam no cronograma-base. Essas "
+                "atividades entram como escopo obrigatório a partir do achado e "
+                "podem inserir novos gates de precedência no trabalho futuro."
+            ),
+            s["body"],
         ),
         _p("Estabilidade do replanejamento", s["h2"]),
         _p(
