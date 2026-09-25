@@ -33,5 +33,8 @@ jobs:
         env:
           DOMAIN: turnaround.example.com
         run: |
+          bash -n scripts/deploy_vps.sh
+          test -f deploy/systemd/turnaround.service
+          grep -q '^ExecStart=.*/streamlit run app.py' deploy/systemd/turnaround.service
           docker compose config -q
           docker build -t turnaround-project:test .
