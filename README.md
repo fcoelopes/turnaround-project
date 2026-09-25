@@ -29,6 +29,7 @@ A página **Escopo Condicional MRCPSP** acrescenta a dinâmica típica de turnar
 
 - modos alternativos de execução por atividade;
 - atividades `mandatory`, `optional` e `conditional`;
+- atividades `DS-*` realmente criadas durante a execução;
 - eventos gerados por inspeções;
 - múltiplos achados simultâneos;
 - grupos lógicos AND, OR e XOR;
@@ -70,8 +71,10 @@ Fechar equipamento
 
 A materialização não modifica o cronograma-base. O projeto efetivo é construído
 em memória com a nova atividade como `mandatory` e, quando necessário, são
-injetadas precedências FS nas sucessoras indicadas. O rescheduling então trata
-a atividade nova junto com o restante do escopo ativo.
+injetadas precedências FS nas sucessoras indicadas. A hora do achado vira
+`release_time`, portanto a atividade nunca pode ser programada antes de ter
+sido descoberta. O rescheduling então trata a atividade nova junto com o
+restante do escopo ativo.
 
 Se a descoberta introduzir um recurso que não existia na Resource Sheet, por
 exemplo `Soldador`, o catálogo dinâmico de recursos passa a exibi-lo
