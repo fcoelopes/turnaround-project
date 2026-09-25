@@ -895,33 +895,43 @@ def test_lazy_human_decision_stays_dormant_until_trigger_occurs():
     assert triggered.state.group_selections == {}
 
 
-def test_optimize_decision_auto_applies_best_shadow_scenario():
+def test_scheduler_cannot_auto_select_technical_action():
+    with pytest.raises(ValueError):
+        LogicalGroup(
+            id="disposition",
+            operator="xor",
+            member_task_ids=["R", "S"],
+            resolution_mode="optimize",
+        )
+
+
+def test_human_decision_reports_resource_gap_without_selecting_action():
     inspection = task("I", "Inspecionar", 1)
     repair = task(
         "R",
-        "Reparar",
-        5,
+        "Reparar rotor",
+        4,
+        resources={"Soldador": 1},
         predecessors=["I"],
         activation=ActivationRule(kind="optional"),
     )
     replace = task(
         "S",
-        "Substituir",
-        2,
+        "Substituir rotor",
+        6,
+        resources={"Mecânica": 2},
         predecessors=["I"],
         activation=ActivationRule(kind="optional"),
     )
-    close = task("C", "Fechar", 1, predecessors=["R", "S"])
     project = TurnaroundProject(
-        tasks=[inspection, repair, replace, close],
-        capacities={},
-        deadline=10,
+        tasks=[inspection, repair, replace],
+        capacities={"Mecânica": 2},
         logical_groups=[
             LogicalGroup(
                 id="disposition",
                 operator="xor",
                 member_task_ids=["R", "S"],
-                resolution_mode="optimize",
+                resolution_mode="human",
                 when=TriggerCondition(
                     source_task_id="I",
                     events=["damage"],
@@ -944,22 +954,20 @@ def test_optimize_decision_auto_applies_best_shadow_scenario():
 
     decision_result = evaluate_scope_decisions(project, state)
 
-    assert decision_result.auto_resolved == {"disposition": ["S"]}
-    assert decision_result.state.group_selections == {
-        "disposition": ["S"]
+    assert decision_result.auto_resolved == {}
+    assert decision_result.state.group_selections == {}
+    assert len(decision_result.pending_human) == 1
+
+    decision = decision_result.pending_human[0]
+    impacts = {
+        impact.selection: impact
+        for impact in decision.impacts
     }
-    auto = next(
-        decision
-        for decision in decision_result.decisions
-        if decision.group_id == "disposition"
-    )
-    assert auto.status == "auto_resolved"
-    assert auto.applied_selection == ("S",)
-    assert auto.recommended_selection == ("S",)
 
-    schedule = reschedule_from_state(project, decision_result.state)
-    assert schedule.schedule.makespan == pytest.approx(4)
-
+    assert impacts[("R",)].feasible is False
+    assert impacts[("R",)].resource_gaps == {"Soldador": pytest.approx(1)}
+    assert impacts[("S",)].feasible is True
+    assert impacts[("S",)].makespan == pytest.approx(7)
 
 def test_event_decision_routes_without_human_selection():
     inspection = task("I", "Inspecionar", 1)
@@ -1069,7 +1077,7 @@ def test_event_decision_reports_trigger_without_matching_route():
     assert decision_result.unresolved_event_groups == ["disposition"]
 
 
-def test_kinder_ovo_impeller_disposition_runs_on_autopilot():
+def test_kinder_ovo_impeller_disposition_remains_human_decision():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
@@ -1087,7 +1095,7 @@ def test_kinder_ovo_impeller_disposition_runs_on_autopilot():
         for group in project.logical_groups
         if group.id == "impeller_disposition"
     )
-    assert group.resolution_mode == "optimize"
+    assert group.resolution_mode == "human"
 
     state = ExecutionState(
         current_time=7,
@@ -1103,17 +1111,13 @@ def test_kinder_ovo_impeller_disposition_runs_on_autopilot():
 
     decisions = evaluate_scope_decisions(project, state)
 
-    assert decisions.pending_human == []
-    assert decisions.auto_resolved == {
-        "impeller_disposition": ["10"]
-    }
+    assert decisions.auto_resolved == {}
+    assert decisions.state.group_selections == {}
+    assert len(decisions.pending_human) == 1
 
-    decision = next(
-        item
-        for item in decisions.decisions
-        if item.group_id == "impeller_disposition"
-    )
-    assert decision.applied_selection == ("10",)
+    decision = decisions.pending_human[0]
+    assert decision.group_id == "impeller_disposition"
+    assert decision.applied_selection is None
     assert len(decision.impacts) == 2
 
     impacts = {
@@ -1122,3 +1126,4 @@ def test_kinder_ovo_impeller_disposition_runs_on_autopilot():
     }
     assert impacts[("9",)].makespan == pytest.approx(17)
     assert impacts[("10",)].makespan == pytest.approx(16)
+
