@@ -1798,6 +1798,8 @@ with tab_export:
         mime="application/pdf",
         type="primary",
         use_container_width=True,
+        key=f"download_management_report_{report_snapshot_id}",
+        on_click="ignore",
     )
 
     st.markdown(
