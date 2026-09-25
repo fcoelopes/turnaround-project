@@ -92,10 +92,10 @@ dormentes até que a condição `when` seja satisfeita. Nesse momento, o motor d
 decisão avalia cenários sombra e aplica uma das três políticas:
 
 - `human` (padrão): calcula o impacto de cada alternativa e mostra somente a
-  decisão ativa para julgamento humano;
-- `optimize`: avalia os ramos e aplica automaticamente o menor score
-  lexicográfico `(atraso, makespan, custo)`;
-- `event`: o evento observado determina diretamente o ramo por
+  decisão ativa para julgamento humano. Makespan, atraso, custo e recursos são
+  informações de apoio; a ferramenta não seleciona a ação técnica;
+- `event`: reservado a regras determinísticas previamente definidas, nas
+  quais o próprio evento já determina qual tarefa entra no escopo por
   `event_routes`.
 
 Exemplo de decisão humana:
@@ -135,6 +135,11 @@ Exemplo event-driven com referências estáveis:
 A avaliação é lazy/rolling-horizon: grupos cujo gatilho ainda não ocorreu não
 são simulados. Para grupos `OR` grandes, a análise usa um conjunto limitado de
 candidatos em vez de enumerar todas as `2^n - 1` combinações.
+
+O scheduler nunca escolhe entre alternativas técnicas como reparar, substituir
+ou recuperar com base em prazo/custo. Se uma alternativa exigir um recurso sem
+capacidade disponível, o cenário sombra é marcado como inviável e a interface
+expõe explicitamente o déficit de recurso.
 
 ## Interface e saída gerencial
 

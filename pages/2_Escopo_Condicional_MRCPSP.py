@@ -500,6 +500,13 @@ if focused_decision is not None:
                 "Makespan (h)": impact.makespan if impact.feasible else None,
                 "Atraso (h)": impact.tardiness if impact.feasible else None,
                 "Custo": impact.total_cost if impact.feasible else None,
+                "Gargalo de recursos": (
+                    ", ".join(
+                        f"{resource}: faltam {shortage:g}"
+                        for resource, shortage in sorted(impact.resource_gaps.items())
+                    )
+                    or "—"
+                ),
                 "Diagnóstico": impact.error or "",
             }
         )
@@ -509,7 +516,6 @@ if focused_decision is not None:
         hide_index=True,
     )
 
-    recommended = decision.recommended_selection
     option_indices = [index for index, impact in feasible_impacts]
     chosen_index = st.selectbox(
         "Resolver decisão",
@@ -520,11 +526,6 @@ if focused_decision is not None:
             if index is None
             else (
                 " + ".join(decision.impacts[index].task_names)
-                + (
-                    " · menor score MRCPSP"
-                    if decision.impacts[index].selection == recommended
-                    else ""
-                )
             )
         ),
     )
@@ -614,6 +615,15 @@ if decision_engine.auto_resolved:
                     if applied_impact is not None and applied_impact.feasible
                     else None
                 ),
+                "Gargalo de recursos": (
+                    ", ".join(
+                        f"{resource}: faltam {shortage:g}"
+                        for resource, shortage in sorted(
+                            (applied_impact.resource_gaps if applied_impact is not None else {}).items()
+                        )
+                    )
+                    or "—"
+                ),
                 "Diagnóstico": (
                     applied_impact.error
                     if applied_impact is not None and not applied_impact.feasible
@@ -621,7 +631,7 @@ if decision_engine.auto_resolved:
                 ),
             }
         )
-    with st.expander("Decisões resolvidas automaticamente", expanded=False):
+    with st.expander("Regras determinísticas aplicadas", expanded=False):
         st.dataframe(
             pd.DataFrame(auto_rows),
             use_container_width=True,
@@ -653,6 +663,13 @@ if decision_engine.auto_resolved:
                         ),
                         "Custo": (
                             impact.total_cost if impact.feasible else None
+                        ),
+                        "Gargalo de recursos": (
+                            ", ".join(
+                                f"{resource}: faltam {shortage:g}"
+                                for resource, shortage in sorted(impact.resource_gaps.items())
+                            )
+                            or "—"
                         ),
                         "Diagnóstico": impact.error or "",
                     }

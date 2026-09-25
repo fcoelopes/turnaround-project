@@ -134,7 +134,7 @@
         "event_logic": "any",
         "require_completed": true
       },
-      "resolution_mode": "optimize"
+      "resolution_mode": "human"
     }
   ]
 }

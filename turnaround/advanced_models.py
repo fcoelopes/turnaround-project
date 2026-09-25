@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 ActivationKind = Literal["mandatory", "optional", "conditional"]
 ConditionLogic = Literal["any", "all"]
 LogicalOperator = Literal["and", "or", "xor"]
-DecisionResolutionMode = Literal["human", "optimize", "event"]
+DecisionResolutionMode = Literal["human", "event"]
 TaskStatus = Literal["not_started", "in_progress", "completed", "skipped"]
 RelationType = Literal["FS", "SS", "FF", "SF"]
 
