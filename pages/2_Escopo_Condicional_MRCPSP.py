@@ -1732,6 +1732,10 @@ snapshot_payload = {
         item.model_dump(mode="json")
         for item in discovered_tasks
     ],
+    "spreadsheet_scope_rules": [
+        row.model_dump(mode="json")
+        for row in stored_scope_rules
+    ],
     "result": {
         "makespan": float(result.schedule.makespan),
         "tardiness": float(result.schedule.tardiness),
@@ -1777,6 +1781,13 @@ execution_state_report_df = pd.DataFrame(
         {
             "Parâmetro": "Dynamic scope",
             "Valor": f"{len(dynamic_scope_ids)} atividade(s)",
+        },
+        {
+            "Parâmetro": "Regras da planilha",
+            "Valor": (
+                ", ".join(row.id for row in stored_scope_rules if row.enabled)
+                or "—"
+            ),
         },
         {"Parâmetro": "Estratégia solver", "Valor": result.schedule.strategy},
     ]
