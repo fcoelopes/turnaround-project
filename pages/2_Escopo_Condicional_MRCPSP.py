@@ -217,14 +217,19 @@ cols = st.columns(min(4, max(1, len(resource_catalog))))
 scenario_capacities: dict[str, float] = {}
 for i, (resource, entry) in enumerate(resource_catalog.items()):
     base_capacity = entry.base_capacity
-    default_value = float(base_capacity) if base_capacity is not None else 0.0
+    persisted_capacity = execution_session.scenario_capacities.get(resource)
+    default_value = (
+        float(persisted_capacity)
+        if persisted_capacity is not None
+        else (float(base_capacity) if base_capacity is not None else 0.0)
+    )
     upper = max(
         2.0,
         default_value * 2.5,
         float(entry.max_demand) * 2.0,
         float(entry.max_demand) + 2.0,
     )
-    values_for_step = [float(entry.max_demand)]
+    values_for_step = [float(entry.max_demand), default_value]
     if base_capacity is not None:
         values_for_step.append(float(base_capacity))
     step = (
@@ -248,7 +253,7 @@ for i, (resource, entry) in enumerate(resource_catalog.items()):
             max_value=float(upper),
             value=default_value,
             step=step,
-            key=f"advanced_cap_{i}_{resource}",
+            key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
             help=help_text,
         )
 
@@ -413,8 +418,9 @@ stability_weight = st.slider(
     "Peso de estabilidade do replanejamento (λ)",
     min_value=0.0,
     max_value=2.0,
-    value=1.0,
+    value=min(2.0, max(0.0, float(execution_session.stability_weight))),
     step=0.1,
+    key=f"stability_weight_{execution_session.id[:8]}",
     help=(
         "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos de início. "
         "Atraso à deadline continua sendo prioridade. λ=0 reproduz o comportamento anterior; "
@@ -437,6 +443,7 @@ current_time = st.number_input(
     min_value=0.0,
     value=float(default_current_time),
     step=0.5,
+    key=f"current_time_{execution_session.id[:8]}",
 )
 
 executions: dict[str, TaskExecution] = {}
@@ -760,7 +767,7 @@ if event_catalog:
                 if event_name in options
             ],
             disabled=not completed,
-            key=f"events_{source_id}",
+            key=f"events_{execution_session.id[:8]}_{source_id}",
         )
         if selected:
             events[source_id] = selected
@@ -786,7 +793,13 @@ if independent_optional:
     selected_optional_ids = st.multiselect(
         "Atividades opcionais selecionadas",
         options=list(labels),
+        default=[
+            task_id
+            for task_id in execution_session.selected_optional_ids
+            if task_id in labels
+        ],
         format_func=lambda task_id: labels[task_id],
+        key=f"optional_{execution_session.id[:8]}",
     )
 
 known_groups = {group.id: group for group in project.logical_groups}
@@ -926,6 +939,9 @@ if stored_human_selections:
             current_time=float(current_time),
             observed_events=events,
             human_selections={},
+            selected_optional_ids=selected_optional_ids,
+            scenario_capacities=scenario_capacities,
+            stability_weight=float(stability_weight),
         )
         for key in list(st.session_state):
             if key.startswith("scope_decision_"):
@@ -938,6 +954,9 @@ execution_session = execution_store.update_execution_state(
     current_time=float(current_time),
     observed_events=events,
     human_selections=stored_human_selections,
+    selected_optional_ids=selected_optional_ids,
+    scenario_capacities=scenario_capacities,
+    stability_weight=float(stability_weight),
 )
 
 # Reexecuta o motor após eventuais escolhas humanas. Ele pode aplicar regras
