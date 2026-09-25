@@ -1088,6 +1088,11 @@ with config_tab:
             title="Capacidades de recursos precisam ser informadas.",
         )
 
+    workforce_skill_capacities = (
+        skill_capacities(workforce)
+        if workforce.enabled
+        else {}
+    )
     cols = st.columns(min(4, max(1, len(resource_catalog))))
     scenario_capacities: dict[str, float] = {}
     for i, (resource, entry) in enumerate(resource_catalog.items()):
@@ -1122,15 +1127,38 @@ with config_tab:
             f"Usado em {len(entry.task_ids)} atividade(s)."
         )
         with cols[i % len(cols)]:
-            scenario_capacities[resource] = st.slider(
-                resource,
-                min_value=0.0,
-                max_value=float(upper),
-                value=default_value,
-                step=step,
-                key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
-                help=help_text,
-            )
+            if workforce.enabled and resource in workforce.skills:
+                scenario_capacities[resource] = float(
+                    workforce_skill_capacities.get(resource, 0.0)
+                )
+                st.metric(
+                    resource,
+                    f"{scenario_capacities[resource]:g} pessoa(s)",
+                    help=(
+                        "Capacidade derivada das pessoas ativas qualificadas. "
+                        "Para esta habilidade, o slider agregado é substituído "
+                        "pela alocação individual multi-skill."
+                    ),
+                )
+            else:
+                scenario_capacities[resource] = st.slider(
+                    resource,
+                    min_value=0.0,
+                    max_value=float(upper),
+                    value=default_value,
+                    step=step,
+                    key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
+                    help=help_text,
+                )
+
+    effective_base_capacities = effective_capacities(
+        base_capacities,
+        workforce,
+    )
+    effective_scenario_capacities = effective_capacities(
+        scenario_capacities,
+        workforce,
+    )
 
     resource_scenario_df = pd.DataFrame(
         [
@@ -1168,11 +1196,11 @@ with config_tab:
         for task in base_project.tasks:
             for mode in task.modes:
                 feasible_base = all(
-                    demand <= base_capacities.get(resource, 0.0) + 1e-9
+                    demand <= effective_base_capacities.get(resource, 0.0) + 1e-9
                     for resource, demand in mode.resources.items()
                 )
                 feasible_scenario = all(
-                    demand <= scenario_capacities.get(resource, 0.0) + 1e-9
+                    demand <= effective_scenario_capacities.get(resource, 0.0) + 1e-9
                     for resource, demand in mode.resources.items()
                 )
                 missing_base = [
@@ -1250,6 +1278,7 @@ try:
         baseline_tasks,
         planned_project.capacities,
         deadline=planned_project.deadline,
+        workforce=workforce,
     )
 except ValueError as exc:
     base_baseline_error = str(exc)
@@ -1261,6 +1290,7 @@ try:
         baseline_tasks,
         project.capacities,
         deadline=project.deadline,
+        workforce=workforce,
     )
 except ValueError as exc:
     scenario_baseline_error = str(exc)
@@ -1343,6 +1373,10 @@ with operation_tab:
                 start=item.start,
                 finish=item.finish,
                 mode_name=item.mode_name,
+                skill_assignments={
+                    skill: list(person_ids)
+                    for skill, person_ids in item.skill_assignments.items()
+                },
             )
         elif item.start < current_time < item.finish:
             executions[item.task_id] = TaskExecution(
@@ -1350,6 +1384,10 @@ with operation_tab:
                 start=item.start,
                 finish=item.finish,
                 mode_name=item.mode_name,
+                skill_assignments={
+                    skill: list(person_ids)
+                    for skill, person_ids in item.skill_assignments.items()
+                },
             )
 
     st.markdown("#### Dynamic scope discovery")
@@ -1833,6 +1871,7 @@ with operation_tab:
         state,
         reference_start_times=reference_start_times,
         stability_weight=stability_weight,
+        workforce=workforce,
     )
     state = decision_engine.state
 
@@ -2003,6 +2042,7 @@ with operation_tab:
             state,
             reference_start_times=reference_start_times,
             stability_weight=stability_weight,
+            workforce=workforce,
         )
     except ValueError as exc:
         base_result_error = str(exc)
@@ -2013,6 +2053,7 @@ with operation_tab:
             state,
             reference_start_times=reference_start_times,
             stability_weight=stability_weight,
+            workforce=workforce,
         )
     except ValueError as exc:
         st.error(f"Cenário de recursos inviável: {exc}")
@@ -2085,6 +2126,10 @@ with operation_tab:
                     f"{key}:{value:g}"
                     for key, value in item.resources.items()
                 ),
+                "Pessoas": "; ".join(
+                    f"{skill}: {', '.join(person_ids)}"
+                    for skill, person_ids in item.skill_assignments.items()
+                ) or "—",
             }
             for item in sorted(
                 all_items,
@@ -2154,6 +2199,7 @@ with operation_tab:
             for key, value in sorted(scenario_capacities.items())
         },
         "stability_weight": float(stability_weight),
+        "workforce": workforce.model_dump(mode="json"),
         "events": {
             key: sorted(value)
             for key, value in sorted(events.items())
@@ -2190,6 +2236,10 @@ with operation_tab:
                     "start": float(item.start),
                     "finish": float(item.finish),
                     "fixed": bool(item.fixed),
+                    "skill_assignments": {
+                        skill: list(person_ids)
+                        for skill, person_ids in item.skill_assignments.items()
+                    },
                 }
                 for item in all_items
             ],
