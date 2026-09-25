@@ -155,6 +155,96 @@ def _parse_resource_demands(raw: str) -> dict[str, float]:
     return demands
 
 
+def render_manual() -> None:
+    st.markdown("### Manual de uso")
+    st.caption(
+        "Use esta página como um fluxo de execução da parada: configure uma vez, "
+        "registre apenas o que mudou e leia o impacto antes de tomar decisões."
+    )
+
+    st.markdown("#### Fluxo recomendado")
+    st.markdown(
+        """
+1. **Carregue o planejamento** — envie o XML do Microsoft Project ou use o Kinder Ovo.
+2. **Configure o modelo** — na aba Configuração, revise recursos, λ e regras de escopo.
+3. **Informe onde a parada está** — avance a hora corrente.
+4. **Registre achados** — marque eventos de inspeção ou crie uma atividade DS-* se o trabalho não existia no plano.
+5. **Resolva decisões técnicas** — quando houver XOR/OR humano, escolha a alternativa após comparar impactos.
+6. **Leia o efeito** — confira makespan, janela, novo escopo e cadeia controladora.
+7. **Comunique** — gere o PDF do snapshot atual quando o cenário estiver consistente.
+        """
+    )
+
+    st.markdown("#### O que fica em cada aba")
+    st.markdown(
+        """
+- **Operação:** carregar o plano, avançar a execução, registrar achados, resolver decisões e acompanhar impacto.
+- **Configuração:** regras de escopo, capacidades dos recursos, estabilidade do replanejamento e sessão persistida.
+- **Manual:** este guia e o glossário rápido.
+        """
+    )
+
+    with st.expander("Glossário rápido", expanded=True):
+        st.markdown(
+            """
+- **Baseline:** plano de referência antes dos achados da execução.
+- **Scope discovery:** escopo conhecido ou criado após inspeções/achados.
+- **Conditional:** atividade prevista, mas só ativada quando uma condição ocorre.
+- **Dynamic scope / DS-***: trabalho que não existia no planejamento e nasceu durante a execução.
+- **XOR:** exatamente uma alternativa; **OR:** uma ou mais; **AND:** todas.
+- **Makespan:** tempo total até o término do cronograma.
+- **Hora corrente:** ponto da execução; o que já terminou ou começou fica congelado.
+- **λ de estabilidade:** peso dado a evitar mudanças desnecessárias nos horários já planejados.
+- **Cadeia controladora:** atividades que, no estado atual, controlam o término por precedência, gates ou recursos.
+        """
+        )
+
+    with st.expander("O que a ferramenta decide — e o que ela não decide", expanded=False):
+        st.markdown(
+            """
+O scheduler **programa** o escopo escolhido e calcula consequências de prazo, custo,
+recursos e estabilidade. Ele **não escolhe uma ação técnica** como reparar ou substituir
+porque uma delas termina mais cedo. Quando a decisão é técnica, a ferramenta mostra os
+cenários sombra e a escolha continua humana.
+
+Uma regra event só é automática quando o próprio evento já determina a ação por uma
+regra previamente cadastrada.
+        """
+        )
+
+    with st.expander("Plano real: caminho mínimo", expanded=False):
+        st.markdown(
+            """
+1. Envie somente o **XML**.
+2. Vá para **Configuração** e cadastre regras na planilha; o JSON é opcional.
+3. Confira as capacidades dos recursos. Recurso demandado sem capacidade começa em 0.
+4. Volte para **Operação**, informe a hora corrente e registre os achados.
+5. Resolva apenas as decisões que realmente forem disparadas.
+6. Gere o PDF quando a visão executiva representar o cenário que você quer comunicar.
+        """
+        )
+
+    with st.expander("Quando usar cada tipo de regra", expanded=False):
+        st.markdown(
+            """
+- conditional: uma atividade específica entra quando um evento ocorre.
+- xor + human: há alternativas técnicas e uma pessoa deve escolher uma.
+- or + human: uma ou mais alternativas podem ser necessárias.
+- and: o gatilho ativa todo o conjunto.
+- event: use apenas quando o evento já determina de forma objetiva qual ramo entra.
+        """
+        )
+
+    with st.expander("Leitura do relatório gerencial", expanded=False):
+        st.markdown(
+            """
+Leia o PDF nesta ordem: **situação da janela → impacto vs baseline → o que mudou →
+cadeia controladora → Gantt**. Detalhes de recursos, estabilidade e auditoria ficam
+depois da leitura executiva; não precisam orientar a primeira decisão.
+        """
+        )
+
+
 def load_project():
     section(
         "1",
@@ -215,11 +305,14 @@ def load_project():
     return project, project_name, source_kind
 
 
-planning_tab, config_tab = st.tabs(
-    ["📋 Planejamento", "⚙️ Configuração"]
+operation_tab, config_tab, manual_tab = st.tabs(
+    ["▶️ Operação", "⚙️ Configuração", "📘 Manual"]
 )
 
-with planning_tab:
+with manual_tab:
+    render_manual()
+
+with operation_tab:
     project, project_name, project_source_kind = load_project()
 
 if project is None:
