@@ -33,6 +33,40 @@ def next_discovered_task_id(
         index += 1
 
 
+def _validate_acyclic(tasks: list[TurnaroundTask]) -> None:
+    predecessors = {
+        task.id: [p.predecessor_id for p in task.precedences]
+        for task in tasks
+    }
+    state: dict[str, int] = {}
+    stack: list[str] = []
+
+    def visit(task_id: str) -> None:
+        marker = state.get(task_id, 0)
+        if marker == 2:
+            return
+        if marker == 1:
+            try:
+                start = stack.index(task_id)
+                cycle = [*stack[start:], task_id]
+            except ValueError:
+                cycle = [task_id, task_id]
+            raise ValueError(
+                "Dynamic scope criou ciclo de precedência: "
+                + " -> ".join(cycle)
+            )
+
+        state[task_id] = 1
+        stack.append(task_id)
+        for predecessor_id in predecessors.get(task_id, []):
+            visit(predecessor_id)
+        stack.pop()
+        state[task_id] = 2
+
+    for task_id in predecessors:
+        visit(task_id)
+
+
 def materialize_dynamic_scope(
     project: TurnaroundProject,
     discovered_tasks: list[DiscoveredTask],
@@ -126,6 +160,8 @@ def materialize_dynamic_scope(
                 update={"precedences": [*task.precedences, *extra]}
             )
         )
+
+    _validate_acyclic(tasks)
 
     effective = TurnaroundProject(
         tasks=tasks,
