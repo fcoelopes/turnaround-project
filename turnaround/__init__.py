@@ -2,8 +2,10 @@ from .activation import ActivationResult, ActivationState, resolve_activation
 from .advanced_adapter import project_from_tasks
 from .criticality import EffectiveCriticalityResult, EffectiveDriver, analyze_effective_criticality
 from .decision_engine import DecisionEngineResult, DecisionEvaluation, DecisionImpact, evaluate_scope_decisions
+from .dynamic_scope import DynamicScopeMaterialization, materialize_dynamic_scope, next_discovered_task_id
 from .advanced_models import (
     ActivationRule,
+    DiscoveredTask,
     ExecutionMode,
     ExecutionState,
     LogicalGroup,
@@ -27,6 +29,8 @@ __all__ = [
     "DecisionEngineResult",
     "DecisionEvaluation",
     "DecisionImpact",
+    "DiscoveredTask",
+    "DynamicScopeMaterialization",
     "EffectiveCriticalityResult",
     "EffectiveDriver",
     "ExecutionMode",
@@ -45,6 +49,8 @@ __all__ = [
     "evaluate_scope_decisions",
     "infer_capacities",
     "load_schedule",
+    "materialize_dynamic_scope",
+    "next_discovered_task_id",
     "optimize_turnaround",
     "project_from_tasks",
     "resolve_activation",

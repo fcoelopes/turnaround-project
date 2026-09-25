@@ -237,7 +237,7 @@ def _schedule_assignment(
 
         task = sorted(ready, key=key)[0]
         mode = modes[task.id]
-        earliest = earliest_start
+        earliest = max(earliest_start, float(task.release_time))
         for p in task.precedences:
             if p.predecessor_id not in finishes:
                 continue

@@ -64,6 +64,7 @@ class TurnaroundTask(BaseModel):
     name: str
     wbs: str | None = None
     project_uid: str | None = None
+    release_time: float = Field(default=0.0, ge=0)
     modes: list[ExecutionMode]
     precedences: list[Precedence] = Field(default_factory=list)
     activation: ActivationRule = Field(default_factory=ActivationRule)
@@ -123,6 +124,66 @@ class LogicalGroup(BaseModel):
                 f"Grupo {self.id}: event_routes só pode ser usado com resolution_mode=event"
             )
 
+        return self
+
+
+class DiscoveredTask(BaseModel):
+    """Atividade criada durante a execução a partir de um achado não previsto.
+
+    Diferente de uma atividade conditional pré-modelada, esta atividade não
+    existia no cronograma-base. Ao ser materializada, torna-se obrigatória no
+    escopo efetivo e pode inserir gates FS em atividades futuras existentes.
+    """
+
+    id: str
+    name: str
+    discovered_at: float = Field(ge=0)
+    source_task_id: str | None = None
+    source_event: str | None = None
+    wbs: str | None = None
+    modes: list[ExecutionMode]
+    precedences: list[Precedence] = Field(default_factory=list)
+    successor_task_ids: list[str] = Field(default_factory=list)
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def validate_discovered_task(self):
+        if not self.id.strip():
+            raise ValueError("Atividade descoberta exige ID")
+        if not self.name.strip():
+            raise ValueError("Atividade descoberta exige nome")
+        if not self.modes:
+            raise ValueError(f"Atividade descoberta {self.id} exige pelo menos um modo")
+
+        mode_names = [mode.name for mode in self.modes]
+        if len(mode_names) != len(set(mode_names)):
+            raise ValueError(
+                f"Atividade descoberta {self.id} possui modos duplicados"
+            )
+
+        predecessor_ids = [item.predecessor_id for item in self.precedences]
+        if len(predecessor_ids) != len(set(predecessor_ids)):
+            raise ValueError(
+                f"Atividade descoberta {self.id} possui predecessoras duplicadas"
+            )
+
+        if len(self.successor_task_ids) != len(set(self.successor_task_ids)):
+            raise ValueError(
+                f"Atividade descoberta {self.id} possui sucessoras duplicadas"
+            )
+
+        if self.id in predecessor_ids:
+            raise ValueError(
+                f"Atividade descoberta {self.id} não pode ser predecessora de si mesma"
+            )
+        if self.id in self.successor_task_ids:
+            raise ValueError(
+                f"Atividade descoberta {self.id} não pode ser sucessora de si mesma"
+            )
+        if self.source_event and not self.source_task_id:
+            raise ValueError(
+                "source_event exige source_task_id na atividade descoberta"
+            )
         return self
 
 
