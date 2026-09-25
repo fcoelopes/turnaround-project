@@ -460,7 +460,31 @@ if not decision_engine.pending_human:
     )
 
 human_choices: dict[str, list[str]] = {}
-for decision in decision_engine.pending_human:
+pending_human = decision_engine.pending_human
+focused_decision = None
+
+if pending_human:
+    pending_ids = [decision.group_id for decision in pending_human]
+    if len(pending_human) > 1:
+        st.caption(
+            f"{len(pending_human)} decisões humanas estão ativas. "
+            "Apenas uma é detalhada por vez."
+        )
+        focused_group_id = st.selectbox(
+            "Decisão em foco",
+            options=pending_ids,
+            key="scope_decision_focus",
+        )
+        focused_decision = next(
+            decision
+            for decision in pending_human
+            if decision.group_id == focused_group_id
+        )
+    else:
+        focused_decision = pending_human[0]
+
+if focused_decision is not None:
+    decision = focused_decision
     group = known_groups[decision.group_id]
     st.markdown(f"**{decision.group_id} · {group.operator.upper()}**")
 
