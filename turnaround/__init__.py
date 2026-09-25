@@ -1,6 +1,7 @@
 from .activation import ActivationResult, ActivationState, resolve_activation
 from .advanced_adapter import project_from_tasks
 from .criticality import EffectiveCriticalityResult, EffectiveDriver, analyze_effective_criticality
+from .decision_engine import DecisionEngineResult, DecisionEvaluation, DecisionImpact, evaluate_scope_decisions
 from .advanced_models import (
     ActivationRule,
     ExecutionMode,
@@ -23,6 +24,9 @@ __all__ = [
     "ActivationRule",
     "ActivationState",
     "AdvancedScheduleResult",
+    "DecisionEngineResult",
+    "DecisionEvaluation",
+    "DecisionImpact",
     "EffectiveCriticalityResult",
     "EffectiveDriver",
     "ExecutionMode",
@@ -38,6 +42,7 @@ __all__ = [
     "analyze_effective_criticality",
     "apply_scope_config",
     "discover_resource_catalog",
+    "evaluate_scope_decisions",
     "infer_capacities",
     "load_schedule",
     "optimize_turnaround",
