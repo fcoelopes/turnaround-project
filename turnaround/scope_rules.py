@@ -95,6 +95,21 @@ class ScopeRuleRow(BaseModel):
                 raise ValueError(
                     f"Regra {self.id}: resolução event exige rotas de evento"
                 )
+
+            expected_events = set(self.events)
+            route_events = set(self.event_routes)
+            missing_routes = expected_events - route_events
+            extra_routes = route_events - expected_events
+            if missing_routes:
+                raise ValueError(
+                    f"Regra {self.id}: faltam rotas para eventos "
+                    f"{sorted(missing_routes)}"
+                )
+            if extra_routes:
+                raise ValueError(
+                    f"Regra {self.id}: rotas usam eventos fora do gatilho "
+                    f"{sorted(extra_routes)}"
+                )
         elif self.event_routes:
             raise ValueError(
                 f"Regra {self.id}: rotas de evento só podem ser usadas com resolução event"
@@ -189,6 +204,34 @@ def apply_scope_rule_rows(
         task.id: task.model_copy(deep=True)
         for task in project.tasks
     }
+
+    conditional_target_ids = {
+        resolve_task_reference(
+            project,
+            row.target_task_ref,
+            context=f"Regra {row.id}.atividade_alvo",
+        )
+        for row in enabled
+        if row.rule_type == "conditional"
+        and row.target_task_ref is not None
+    }
+    logical_member_ids = {
+        resolve_task_reference(
+            project,
+            ref,
+            context=f"Regra {row.id}.membros",
+        )
+        for row in enabled
+        if row.rule_type != "conditional"
+        for ref in row.member_task_refs
+    }
+    ambiguous_ids = conditional_target_ids & logical_member_ids
+    if ambiguous_ids:
+        raise ValueError(
+            "Atividades não podem ser alvo conditional e membro de grupo lógico "
+            "na mesma planilha: "
+            + ", ".join(sorted(ambiguous_ids))
+        )
 
     conditional_targets: dict[str, str] = {}
     groups: list[LogicalGroup] = [
