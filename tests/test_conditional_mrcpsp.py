@@ -4,6 +4,7 @@ import pytest
 
 from turnaround import (
     ActivationRule,
+    DiscoveredTask,
     ExecutionMode,
     ExecutionState,
     LogicalGroup,
@@ -15,6 +16,8 @@ from turnaround import (
     apply_scope_config,
     discover_resource_catalog,
     evaluate_scope_decisions,
+    materialize_dynamic_scope,
+    next_discovered_task_id,
     project_from_tasks,
     resolve_activation,
     reschedule_from_state,
@@ -1185,3 +1188,180 @@ def test_stability_metrics_ignore_new_scope_without_reference_start():
     assert result.stability_compared_tasks == 1
     assert result.total_start_deviation == pytest.approx(0)
     assert result.max_start_deviation == pytest.approx(0)
+
+
+def test_dynamic_scope_discovery_injects_unplanned_task_and_successor_gate():
+    inspection = task("I", "Inspecionar equipamento", 2)
+    close = task("C", "Fechar equipamento", 1, predecessors=["I"])
+    base = TurnaroundProject(
+        tasks=[inspection, close],
+        capacities={"Mecânica": 1},
+        deadline=10,
+    )
+
+    discovered = DiscoveredTask(
+        id="DS-001",
+        name="Reparar trinca descoberta",
+        discovered_at=2,
+        source_task_id="I",
+        source_event="crack_detected",
+        modes=[
+            ExecutionMode(
+                name="campo",
+                duration=3,
+                resources={"Soldador": 1},
+            )
+        ],
+        precedences=[Precedence(predecessor_id="I")],
+        successor_task_ids=["C"],
+    )
+
+    materialized = materialize_dynamic_scope(base, [discovered])
+
+    # O cronograma-base permanece intacto.
+    original_close = next(task for task in base.tasks if task.id == "C")
+    assert [p.predecessor_id for p in original_close.precedences] == ["I"]
+
+    effective = materialized.project
+    effective_close = next(task for task in effective.tasks if task.id == "C")
+    assert {p.predecessor_id for p in effective_close.precedences} == {
+        "I",
+        "DS-001",
+    }
+
+    dynamic = next(task for task in effective.tasks if task.id == "DS-001")
+    assert dynamic.activation.kind == "mandatory"
+    assert materialized.discovered_ids == {"DS-001"}
+
+    catalog = discover_resource_catalog(effective)
+    assert catalog["Soldador"].base_capacity is None
+    assert catalog["Soldador"].max_demand == pytest.approx(1)
+
+    scenario = effective.model_copy(
+        update={
+            "capacities": {
+                **effective.capacities,
+                "Soldador": 1,
+            }
+        }
+    )
+    state = ExecutionState(
+        current_time=2,
+        executions={
+            "I": TaskExecution(
+                status="completed",
+                start=0,
+                finish=2,
+                mode_name="base",
+            )
+        },
+    )
+
+    result = reschedule_from_state(
+        scenario,
+        state,
+        reference_start_times={"C": 2.0},
+        stability_weight=1.0,
+    )
+    by_id = {item.task_id: item for item in result.schedule.tasks}
+
+    assert by_id["DS-001"].start == pytest.approx(2)
+    assert by_id["DS-001"].finish == pytest.approx(5)
+    assert by_id["C"].start >= by_id["DS-001"].finish
+    assert result.schedule.makespan == pytest.approx(6)
+
+    # O novo trabalho não tinha início no plano anterior e não entra na métrica
+    # de estabilidade; somente C é comparada.
+    assert result.schedule.stability_compared_tasks == 1
+    assert result.schedule.total_start_deviation == pytest.approx(3)
+
+
+def test_dynamic_scope_can_chain_multiple_runtime_discoveries():
+    base = TurnaroundProject(
+        tasks=[
+            task("I", "Inspecionar", 1),
+            task("C", "Fechar", 1, predecessors=["I"]),
+        ],
+        capacities={},
+    )
+    first = DiscoveredTask(
+        id="DS-001",
+        name="Preparar reparo",
+        discovered_at=1,
+        modes=[ExecutionMode(name="campo", duration=2)],
+        precedences=[Precedence(predecessor_id="I")],
+    )
+    second = DiscoveredTask(
+        id="DS-002",
+        name="Executar reparo",
+        discovered_at=1,
+        modes=[ExecutionMode(name="campo", duration=3)],
+        precedences=[Precedence(predecessor_id="DS-001")],
+        successor_task_ids=["C"],
+    )
+
+    effective = materialize_dynamic_scope(
+        base,
+        [first, second],
+    ).project
+    result = reschedule_from_state(
+        effective,
+        ExecutionState(
+            current_time=1,
+            executions={
+                "I": TaskExecution(
+                    status="completed",
+                    start=0,
+                    finish=1,
+                    mode_name="base",
+                )
+            },
+        ),
+    )
+    by_id = {item.task_id: item for item in result.schedule.tasks}
+
+    assert by_id["DS-001"].start == pytest.approx(1)
+    assert by_id["DS-002"].start == pytest.approx(3)
+    assert by_id["C"].start == pytest.approx(6)
+    assert result.schedule.makespan == pytest.approx(7)
+
+
+def test_dynamic_scope_rejects_id_collision_and_unknown_reference():
+    base = TurnaroundProject(
+        tasks=[task("A", "A", 1)],
+        capacities={},
+    )
+
+    collision = DiscoveredTask(
+        id="A",
+        name="Colisão",
+        discovered_at=1,
+        modes=[ExecutionMode(name="campo", duration=1)],
+    )
+    with pytest.raises(ValueError, match="colidem"):
+        materialize_dynamic_scope(base, [collision])
+
+    unknown = DiscoveredTask(
+        id="DS-001",
+        name="Referência inválida",
+        discovered_at=1,
+        modes=[ExecutionMode(name="campo", duration=1)],
+        successor_task_ids=["ZZZ"],
+    )
+    with pytest.raises(ValueError, match="referências desconhecidas"):
+        materialize_dynamic_scope(base, [unknown])
+
+
+def test_dynamic_scope_generates_stable_session_ids():
+    base = TurnaroundProject(
+        tasks=[task("DS-001", "ID já usado no plano", 1)],
+        capacities={},
+    )
+    existing = DiscoveredTask(
+        id="DS-002",
+        name="Descoberta anterior",
+        discovered_at=1,
+        modes=[ExecutionMode(name="campo", duration=1)],
+    )
+
+    assert next_discovered_task_id(base, [existing]) == "DS-003"
