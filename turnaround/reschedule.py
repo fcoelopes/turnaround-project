@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from .activation import ActivationResult, ActivationState, resolve_activation
 from .advanced_models import ExecutionState, Precedence, TurnaroundProject, TurnaroundTask
+from .workforce import WorkforceProfile, skill_requirements
 from .mrcpsp import (
     AdvancedScheduleResult,
     AdvancedScheduledTask,
@@ -116,6 +117,7 @@ def reschedule_from_state(
     max_mode_combinations: int = 2000,
     reference_start_times: dict[str, float] | None = None,
     stability_weight: float = 0.0,
+    workforce: WorkforceProfile | None = None,
 ) -> RescheduleResult:
     activation = resolve_activation(project, state)
     task_by_id = {t.id: t for t in project.tasks}
@@ -133,6 +135,22 @@ def reschedule_from_state(
             (m for m in task.modes if m.name == execution.mode_name),
             task.modes[0],
         )
+        assignments = {
+            skill: tuple(person_ids)
+            for skill, person_ids in execution.skill_assignments.items()
+        }
+        human_requirements = skill_requirements(mode.resources, workforce)
+        if (
+            execution.status == "in_progress"
+            and execution.finish > state.current_time
+            and human_requirements
+            and not assignments
+        ):
+            raise ValueError(
+                f"Atividade {tid} está em andamento e exige habilidades "
+                "multi-skill, mas não possui pessoas congeladas no estado atual"
+            )
+
         fixed_task_times[tid] = (execution.start, execution.finish)
         frozen.append(
             AdvancedScheduledTask(
@@ -145,6 +163,7 @@ def reschedule_from_state(
                 resources=dict(mode.resources),
                 cost=mode.cost,
                 fixed=True,
+                skill_assignments=assignments,
             )
         )
         if execution.status == "in_progress" and execution.finish > state.current_time:
@@ -154,6 +173,7 @@ def reschedule_from_state(
                     start=state.current_time,
                     finish=execution.finish,
                     resources=dict(mode.resources),
+                    skill_assignments=assignments,
                 )
             )
 
@@ -184,6 +204,7 @@ def reschedule_from_state(
         fixed_task_times=fixed_task_times,
         reference_start_times=reference_start_times,
         stability_weight=stability_weight,
+        workforce=workforce,
     )
 
     combined_finish = max(
