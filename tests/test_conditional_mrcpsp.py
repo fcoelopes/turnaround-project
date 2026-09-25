@@ -13,6 +13,7 @@ from turnaround import (
     TurnaroundProject,
     TurnaroundTask,
     apply_scope_config,
+    discover_resource_catalog,
     project_from_tasks,
     resolve_activation,
     reschedule_from_state,
@@ -764,3 +765,70 @@ def test_kinder_ovo_motor_test_can_discover_motor_replacement():
         "Guindaste": 1.0,
     }
     assert closing_item.start >= replacement_item.finish
+
+
+def test_resource_catalog_includes_resources_used_only_by_modes():
+    base = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="A",
+                name="Reparo",
+                modes=[
+                    ExecutionMode(
+                        name="base",
+                        duration=4,
+                        resources={"Mecânica": 2},
+                    ),
+                    ExecutionMode(
+                        name="caldeiraria",
+                        duration=3,
+                        resources={
+                            "Mecânica": 1,
+                            "Caldeiraria": 2,
+                        },
+                    ),
+                ],
+            )
+        ],
+        capacities={"Mecânica": 3},
+    )
+
+    catalog = discover_resource_catalog(base)
+
+    assert set(catalog) == {"Mecânica", "Caldeiraria"}
+    assert catalog["Mecânica"].base_capacity == pytest.approx(3)
+    assert catalog["Mecânica"].max_demand == pytest.approx(2)
+    assert catalog["Caldeiraria"].base_capacity is None
+    assert catalog["Caldeiraria"].max_demand == pytest.approx(2)
+    assert catalog["Caldeiraria"].task_ids == ("A",)
+
+
+def test_missing_resource_capacity_is_explicit_and_scenario_can_enable_it():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="A",
+                name="Reparo de vaso",
+                modes=[
+                    ExecutionMode(
+                        name="caldeiraria",
+                        duration=3,
+                        resources={"Caldeiraria": 2},
+                    )
+                ],
+            )
+        ],
+        capacities={},
+    )
+
+    catalog = discover_resource_catalog(project)
+    assert catalog["Caldeiraria"].base_capacity is None
+
+    with pytest.raises(ValueError, match="não possui modo factível"):
+        solve_mrcpsp(project.tasks, project.capacities)
+
+    scenario = project.model_copy(
+        update={"capacities": {"Caldeiraria": 2}}
+    )
+    result = solve_mrcpsp(scenario.tasks, scenario.capacities)
+    assert result.makespan == pytest.approx(3)

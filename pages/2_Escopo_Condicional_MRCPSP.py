@@ -12,6 +12,7 @@ from turnaround import (
     TaskExecution,
     analyze_effective_criticality,
     apply_scope_config,
+    discover_resource_catalog,
     project_from_tasks,
     resolve_activation,
     reschedule_from_state,
@@ -90,39 +91,21 @@ def load_project():
 
 project, project_name = load_project()
 base_project = project
+resource_catalog = discover_resource_catalog(base_project)
 base_capacities = dict(base_project.capacities)
-
-empty_state = ExecutionState(current_time=0)
-baseline_activation = resolve_activation(base_project, empty_state)
-baseline_tasks = [
-    task
-    for task in base_project.tasks
-    if task.id in baseline_activation.active_ids
+unknown_resources = [
+    entry
+    for entry in resource_catalog.values()
+    if not entry.capacity_defined
 ]
-
-try:
-    baseline = solve_mrcpsp(
-        baseline_tasks,
-        base_project.capacities,
-        deadline=base_project.deadline,
-    )
-except ValueError as exc:
-    st.error(f"Planejamento-base inviável: {exc}")
-    st.stop()
-
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Makespan planejado", f"{baseline.makespan:.1f} h")
-m2.metric(
-    "Deadline",
-    "—" if base_project.deadline is None else f"{base_project.deadline:.1f} h",
-)
-m3.metric("Tarefas ativas na base", len(baseline.tasks))
-m4.metric("Escopo potencial", len(base_project.tasks) - len(baseline.tasks))
 
 section(
     "2",
     "Cenário MRCPSP de recursos",
-    "Mude a capacidade sem alterar o baseline. O app compara o mesmo escopo com recursos originais e com o cenário.",
+    (
+        "Os controles são gerados automaticamente pela união entre Resource Sheet, "
+        "recursos das tarefas e recursos de todos os modos MRCPSP."
+    ),
 )
 
 scenario_name = st.text_input(
@@ -139,31 +122,76 @@ if project_name == "Turnaround Kinder Ovo":
         "o segundo adiciona a substituição do motor (6 h, Elétrica:2, Mecânica:2, Guindaste:1)."
     )
 
-cols = st.columns(min(4, max(1, len(base_capacities))))
+if unknown_resources:
+    status(
+        (
+            "Foram encontrados recursos usados por tarefas/modos sem capacidade-base "
+            "declarada no Project/sidecar: "
+            + ", ".join(entry.name for entry in unknown_resources)
+            + ". Eles aparecem abaixo com base não informada e cenário inicial 0."
+        ),
+        tone="warn",
+        title="Capacidades de recursos precisam ser informadas.",
+    )
+
+cols = st.columns(min(4, max(1, len(resource_catalog))))
 scenario_capacities: dict[str, float] = {}
-for i, (resource, capacity) in enumerate(sorted(base_capacities.items())):
-    upper = max(2.0, float(capacity) * 2.5)
-    step = 1.0 if float(capacity).is_integer() else 0.5
+for i, (resource, entry) in enumerate(resource_catalog.items()):
+    base_capacity = entry.base_capacity
+    default_value = float(base_capacity) if base_capacity is not None else 0.0
+    upper = max(
+        2.0,
+        default_value * 2.5,
+        float(entry.max_demand) * 2.0,
+        float(entry.max_demand) + 2.0,
+    )
+    values_for_step = [float(entry.max_demand)]
+    if base_capacity is not None:
+        values_for_step.append(float(base_capacity))
+    step = (
+        1.0
+        if all(float(value).is_integer() for value in values_for_step)
+        else 0.5
+    )
+    help_text = (
+        f"Capacidade-base: {base_capacity:g}. "
+        if base_capacity is not None
+        else "Capacidade-base não informada. "
+    )
+    help_text += (
+        f"Maior demanda individual observada: {entry.max_demand:g}. "
+        f"Usado em {len(entry.task_ids)} atividade(s)."
+    )
     with cols[i % len(cols)]:
         scenario_capacities[resource] = st.slider(
             resource,
             min_value=0.0,
             max_value=float(upper),
-            value=float(capacity),
+            value=default_value,
             step=step,
-            key=f"advanced_cap_{i}",
-            help=f"Capacidade-base importada: {capacity:g}",
+            key=f"advanced_cap_{i}_{resource}",
+            help=help_text,
         )
 
 resource_scenario_df = pd.DataFrame(
     [
         {
             "Recurso": resource,
-            "Base": float(base_capacities[resource]),
+            "Base": (
+                float(entry.base_capacity)
+                if entry.base_capacity is not None
+                else "não informada"
+            ),
+            "Maior demanda": float(entry.max_demand),
             "Cenário": float(scenario_capacities[resource]),
-            "Δ": float(scenario_capacities[resource]) - float(base_capacities[resource]),
+            "Δ vs base": (
+                float(scenario_capacities[resource]) - float(entry.base_capacity)
+                if entry.base_capacity is not None
+                else "—"
+            ),
+            "Atividades que usam": len(entry.task_ids),
         }
-        for resource in sorted(base_capacities)
+        for resource, entry in resource_catalog.items()
     ]
 )
 st.dataframe(
@@ -176,7 +204,7 @@ project = base_project.model_copy(
     update={"capacities": scenario_capacities}
 )
 
-with st.expander("Modos disponíveis por atividade"):
+with st.expander("Modos disponíveis por atividade", expanded=bool(unknown_resources)):
     mode_rows = []
     for task in base_project.tasks:
         for mode in task.modes:
@@ -188,6 +216,11 @@ with st.expander("Modos disponíveis por atividade"):
                 demand <= scenario_capacities.get(resource, 0.0) + 1e-9
                 for resource, demand in mode.resources.items()
             )
+            missing_base = [
+                resource
+                for resource in mode.resources
+                if resource not in base_capacities
+            ]
             mode_rows.append(
                 {
                     "ID": task.id,
@@ -201,15 +234,90 @@ with st.expander("Modos disponíveis por atividade"):
                         for key, value in mode.resources.items()
                     ),
                     "Custo": mode.cost,
+                    "Capacidade ausente": ", ".join(missing_base) or "—",
                     "Factível na base": "sim" if feasible_base else "não",
                     "Factível no cenário": "sim" if feasible_scenario else "não",
-                    "Novo modo liberado": "SIM" if (not feasible_base and feasible_scenario) else "não",
+                    "Novo modo liberado": (
+                        "SIM"
+                        if (not feasible_base and feasible_scenario)
+                        else "não"
+                    ),
                 }
             )
     st.dataframe(
         pd.DataFrame(mode_rows),
         use_container_width=True,
         hide_index=True,
+    )
+
+empty_state = ExecutionState(current_time=0)
+baseline_activation = resolve_activation(base_project, empty_state)
+baseline_tasks = [
+    task
+    for task in base_project.tasks
+    if task.id in baseline_activation.active_ids
+]
+
+base_baseline = None
+base_baseline_error = None
+try:
+    base_baseline = solve_mrcpsp(
+        baseline_tasks,
+        base_project.capacities,
+        deadline=base_project.deadline,
+    )
+except ValueError as exc:
+    base_baseline_error = str(exc)
+
+scenario_baseline = None
+scenario_baseline_error = None
+try:
+    scenario_baseline = solve_mrcpsp(
+        baseline_tasks,
+        project.capacities,
+        deadline=project.deadline,
+    )
+except ValueError as exc:
+    scenario_baseline_error = str(exc)
+
+if scenario_baseline is None:
+    st.error(
+        "O cenário ainda não consegue programar o escopo-base. "
+        f"Ajuste as capacidades acima. Diagnóstico: {scenario_baseline_error}"
+    )
+    st.stop()
+
+# O estado da parada usa o planejamento-base quando ele é factível; caso a
+# capacidade-base esteja incompleta, usa o cenário informado como referência.
+baseline = base_baseline or scenario_baseline
+
+m1, m2, m3, m4 = st.columns(4)
+m1.metric(
+    "Makespan planejado",
+    "—" if base_baseline is None else f"{base_baseline.makespan:.1f} h",
+)
+m2.metric(
+    "Makespan · cenário-base",
+    f"{scenario_baseline.makespan:.1f} h",
+)
+m3.metric(
+    "Tarefas ativas na base",
+    len(scenario_baseline.tasks),
+)
+m4.metric(
+    "Escopo potencial",
+    len(base_project.tasks) - len(scenario_baseline.tasks),
+)
+
+if base_baseline is None:
+    status(
+        (
+            "O planejamento não pode ser resolvido apenas com as capacidades-base "
+            "declaradas. O estado da parada abaixo usa as capacidades do cenário. "
+            f"Diagnóstico base: {base_baseline_error}"
+        ),
+        tone="warn",
+        title="Baseline de recursos incompleto.",
     )
 
 section(
