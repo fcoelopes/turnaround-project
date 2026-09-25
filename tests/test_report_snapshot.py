@@ -123,9 +123,10 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
         if isinstance(item, Paragraph)
     ]
     assert any(
-        "Snapshot: abc123def456 · sessão session-xyz" in text
+        "Snapshot: abc123def456 · hora corrente 7.0 h" in text
         for text in paragraphs
     )
+    assert any("O estado atual ativou 1 atividade(s)" in text for text in paragraphs)
 
     metric_cards = [
         item
@@ -137,6 +138,8 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
     assert metrics["Baseline"] == "17.0 h"
     assert metrics["Reprogramado"] == "27.0 h"
     assert metrics["Impacto"] == "+10.0 h"
+    assert metrics["Excesso da janela"] == "3.0 h"
+    assert len(metrics) == 4
 
     table_text = []
     for item in story:
@@ -145,8 +148,8 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
         for row in item._cellvalues:
             table_text.extend(_plain(cell) for cell in row)
 
-    assert "Makespan reprogramado" in table_text
-    assert "27.0 h" in table_text
+    assert "Makespan reprogramado" not in table_text
+    assert "Sessão" not in table_text
     assert "Soldador" in table_text
     assert "1.0" in table_text
     assert "Reparo descoberto" in table_text
