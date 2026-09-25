@@ -1067,3 +1067,58 @@ def test_event_decision_reports_trigger_without_matching_route():
 
     assert decision_result.auto_resolved == {}
     assert decision_result.unresolved_event_groups == ["disposition"]
+
+
+def test_kinder_ovo_impeller_disposition_runs_on_autopilot():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    tasks, capacities = project_xml_to_tasks(
+        (root / "sample_data" / "turnaround_conditional_model.xml").read_bytes()
+    )
+    project = project_from_tasks(tasks, capacities)
+    project = apply_scope_config(
+        project,
+        root / "sample_data" / "turnaround_conditional_scope.json",
+    )
+
+    group = next(
+        group
+        for group in project.logical_groups
+        if group.id == "impeller_disposition"
+    )
+    assert group.resolution_mode == "optimize"
+
+    state = ExecutionState(
+        current_time=7,
+        events={"4": ["impeller_damage"]},
+        executions={
+            "1": TaskExecution(status="completed", start=0, finish=1, mode_name="base"),
+            "2": TaskExecution(status="completed", start=1, finish=3, mode_name="base"),
+            "3": TaskExecution(status="completed", start=3, finish=5, mode_name="base"),
+            "4": TaskExecution(status="completed", start=5, finish=7, mode_name="base"),
+            "13": TaskExecution(status="completed", start=3, finish=5, mode_name="base"),
+        },
+    )
+
+    decisions = evaluate_scope_decisions(project, state)
+
+    assert decisions.pending_human == []
+    assert decisions.auto_resolved == {
+        "impeller_disposition": ["10"]
+    }
+
+    decision = next(
+        item
+        for item in decisions.decisions
+        if item.group_id == "impeller_disposition"
+    )
+    assert decision.applied_selection == ("10",)
+    assert len(decision.impacts) == 2
+
+    impacts = {
+        impact.selection: impact
+        for impact in decision.impacts
+    }
+    assert impacts[("9",)].makespan == pytest.approx(17)
+    assert impacts[("10",)].makespan == pytest.approx(16)
