@@ -10,6 +10,7 @@ from turnaround import (
     TurnaroundProject,
     TurnaroundTask,
     WorkforceProfile,
+    analyze_effective_criticality,
     reschedule_from_state,
     solve_mrcpsp,
 )
@@ -254,3 +255,51 @@ def test_multiskill_filters_impossible_mode_and_keeps_feasible_alternative():
     assert result.makespan == 5.0
     assert result.tasks[0].mode_name == "lento"
     assert result.tasks[0].skill_assignments == {"Mecânica": ("P1",)}
+
+
+
+def test_multiskill_person_release_is_visible_as_criticality_driver():
+    tasks = [
+        _task("A", "Primeira", duration=4, resources={"Mecânica": 1}),
+        _task("B", "Segunda", duration=3, resources={"Soldagem": 1}),
+    ]
+    project = TurnaroundProject(
+        tasks=tasks,
+        capacities={"Mecânica": 1, "Soldagem": 1},
+    )
+    workforce = WorkforceProfile(
+        skills=["Mecânica", "Soldagem"],
+        people=[
+            Person(
+                id="P1",
+                name="Ana",
+                skills=["Mecânica", "Soldagem"],
+            )
+        ],
+    )
+
+    schedule = solve_mrcpsp(
+        tasks,
+        project.capacities,
+        workforce=workforce,
+    )
+    criticality = analyze_effective_criticality(
+        project=project,
+        effective_tasks=tasks,
+        items=schedule.tasks,
+        capacities={
+            "Mecânica": 1,
+            "Soldagem": 1,
+        },
+        current_time=0,
+        makespan=schedule.makespan,
+    )
+
+    assert criticality.path_ids == ["A", "B"]
+    assert any(
+        driver.kind == "person"
+        and driver.predecessor_id == "A"
+        and driver.successor_id == "B"
+        and driver.detail == "P1"
+        for driver in criticality.drivers
+    )
