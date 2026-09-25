@@ -567,6 +567,25 @@ if decision_engine.auto_resolved:
     auto_rows = []
     for group_id, selection in decision_engine.auto_resolved.items():
         group = known_groups[group_id]
+        decision = next(
+            (
+                item
+                for item in decision_engine.decisions
+                if item.group_id == group_id
+                and item.applied_selection is not None
+            ),
+            None,
+        )
+        applied_impact = None
+        if decision is not None:
+            applied_impact = next(
+                (
+                    impact
+                    for impact in decision.impacts
+                    if impact.selection == decision.applied_selection
+                ),
+                None,
+            )
         auto_rows.append(
             {
                 "Regra": group_id,
@@ -574,6 +593,31 @@ if decision_engine.auto_resolved:
                 "Ramo aplicado": " + ".join(
                     name_by_id.get(task_id, task_id)
                     for task_id in selection
+                ),
+                "Factível": (
+                    "sim"
+                    if applied_impact is not None and applied_impact.feasible
+                    else "não"
+                ),
+                "Makespan (h)": (
+                    applied_impact.makespan
+                    if applied_impact is not None and applied_impact.feasible
+                    else None
+                ),
+                "Atraso (h)": (
+                    applied_impact.tardiness
+                    if applied_impact is not None and applied_impact.feasible
+                    else None
+                ),
+                "Custo": (
+                    applied_impact.total_cost
+                    if applied_impact is not None and applied_impact.feasible
+                    else None
+                ),
+                "Diagnóstico": (
+                    applied_impact.error
+                    if applied_impact is not None and not applied_impact.feasible
+                    else ""
                 ),
             }
         )
