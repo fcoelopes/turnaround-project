@@ -743,6 +743,38 @@ with config_tab:
                     del st.session_state[key]
             st.rerun()
 
+with config_tab:
+    st.markdown("#### Auditoria da execução")
+    with st.expander("Histórico persistido da execução", expanded=False):
+        persisted_events = execution_store.list_events(
+            execution_session.id,
+            limit=100,
+        )
+        if persisted_events:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "ID": item.id,
+                            "Quando": item.occurred_at,
+                            "Evento": item.event_type,
+                            "Atividade": item.task_id or "—",
+                            "Detalhes": json.dumps(
+                                item.payload,
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            ),
+                        }
+                        for item in persisted_events
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.caption("Ainda não há eventos persistidos nesta sessão.")
+
+
 dynamic_materialization = materialize_dynamic_scope(
     planned_project,
     discovered_tasks,
@@ -1287,35 +1319,6 @@ with operation_tab:
                     f"dinâmica ainda depende dela: {exc}"
                 )
 
-    with st.expander("Histórico persistido da execução", expanded=False):
-        persisted_events = execution_store.list_events(
-            execution_session.id,
-            limit=100,
-        )
-        if persisted_events:
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "ID": item.id,
-                            "Quando": item.occurred_at,
-                            "Evento": item.event_type,
-                            "Atividade": item.task_id or "—",
-                            "Detalhes": json.dumps(
-                                item.payload,
-                                ensure_ascii=False,
-                                sort_keys=True,
-                            ),
-                        }
-                        for item in persisted_events
-                    ]
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.caption("Ainda não há eventos persistidos nesta sessão.")
-
     event_catalog: dict[str, set[str]] = {}
     for task in project.tasks:
         for condition in task.activation.conditions:
@@ -1339,30 +1342,30 @@ with operation_tab:
     events: dict[str, list[str]] = {}
 
     if event_catalog:
-        st.markdown("#### Resultados observados nas atividades gatilho")
-        for source_id, options in sorted(event_catalog.items()):
-            execution = executions.get(source_id)
-            completed = (
-                execution is not None
-                and execution.status == "completed"
-            )
-            label = (
-                f"{name_by_id.get(source_id, source_id)} · "
-                f"{'concluída' if completed else 'ainda não concluída'}"
-            )
-            selected = st.multiselect(
-                label,
-                options=sorted(options),
-                default=[
-                    event_name
-                    for event_name in execution_session.observed_events.get(source_id, [])
-                    if event_name in options
-                ],
-                disabled=not completed,
-                key=f"events_{execution_session.id[:8]}_{source_id}",
-            )
-            if selected:
-                events[source_id] = selected
+        with st.expander("Registrar achados nas atividades gatilho", expanded=True):
+            for source_id, options in sorted(event_catalog.items()):
+                execution = executions.get(source_id)
+                completed = (
+                    execution is not None
+                    and execution.status == "completed"
+                )
+                label = (
+                    f"{name_by_id.get(source_id, source_id)} · "
+                    f"{'concluída' if completed else 'ainda não concluída'}"
+                )
+                selected = st.multiselect(
+                    label,
+                    options=sorted(options),
+                    default=[
+                        event_name
+                        for event_name in execution_session.observed_events.get(source_id, [])
+                        if event_name in options
+                    ],
+                    disabled=not completed,
+                    key=f"events_{execution_session.id[:8]}_{source_id}",
+                )
+                if selected:
+                    events[source_id] = selected
 
     group_members = {
         task_id
@@ -1382,17 +1385,18 @@ with operation_tab:
             task.id: f"{task.id} · {task.name}"
             for task in independent_optional
         }
-        selected_optional_ids = st.multiselect(
-            "Atividades opcionais selecionadas",
-            options=list(labels),
-            default=[
-                task_id
-                for task_id in execution_session.selected_optional_ids
-                if task_id in labels
-            ],
-            format_func=lambda task_id: labels[task_id],
-            key=f"optional_{execution_session.id[:8]}",
-        )
+        with st.expander("Escopo opcional manual", expanded=False):
+            selected_optional_ids = st.multiselect(
+                "Atividades opcionais selecionadas",
+                options=list(labels),
+                default=[
+                    task_id
+                    for task_id in execution_session.selected_optional_ids
+                    if task_id in labels
+                ],
+                format_func=lambda task_id: labels[task_id],
+                key=f"optional_{execution_session.id[:8]}",
+            )
 
     known_groups = {group.id: group for group in project.logical_groups}
     stored_human_selections = {
@@ -1427,11 +1431,10 @@ with operation_tab:
         stability_weight=stability_weight,
     )
 
-    st.markdown("#### Decisões de escopo ativas")
-    if not decision_engine.pending_human:
+    if decision_engine.pending_human:
+        st.markdown("#### Decisão de escopo necessária")
         st.caption(
-            "Nenhuma decisão humana pendente. Regras sem gatilho permanecem dormentes "
-            "e não geram controles."
+            "Compare as consequências abaixo. A ferramenta informa impacto e factibilidade; a escolha técnica continua humana."
         )
 
     human_choices: dict[str, list[str]] = {}
