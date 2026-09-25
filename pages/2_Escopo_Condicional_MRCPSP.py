@@ -46,6 +46,35 @@ hero(
 )
 
 
+def _parse_resource_demands(raw: str) -> dict[str, float]:
+    demands: dict[str, float] = {}
+    if not raw.strip():
+        return demands
+
+    for part in raw.split(";"):
+        item = part.strip()
+        if not item:
+            continue
+        if "=" not in item:
+            raise ValueError(
+                f"Recurso inválido '{item}'. Use Nome=quantidade; Nome=quantidade."
+            )
+        name, raw_value = item.split("=", 1)
+        resource = name.strip()
+        if not resource:
+            raise ValueError("Nome do recurso não pode ser vazio")
+        try:
+            value = float(raw_value.strip().replace(",", "."))
+        except ValueError as exc:
+            raise ValueError(
+                f"Quantidade inválida para {resource}: {raw_value.strip()}"
+            ) from exc
+        if value < 0:
+            raise ValueError(f"Demanda de {resource} deve ser >= 0")
+        demands[resource] = value
+    return demands
+
+
 def load_project():
     section(
         "1",
@@ -406,6 +435,227 @@ for item in baseline.tasks:
             finish=item.finish,
             mode_name=item.mode_name,
         )
+
+st.markdown("#### Dynamic scope discovery")
+
+completed_ids = [
+    task_id
+    for task_id, execution in executions.items()
+    if execution.status == "completed"
+]
+task_labels = {
+    task.id: f"{task.id} · {task.name}"
+    for task in project.tasks
+}
+future_task_ids = [
+    task.id
+    for task in project.tasks
+    if task.id not in completed_ids
+]
+
+with st.expander(
+    "Registrar atividade não prevista no cronograma",
+    expanded=False,
+):
+    st.caption(
+        "Use isto quando o trabalho descoberto não existia no XML nem no sidecar. "
+        "A atividade entra como escopo obrigatório e pode bloquear atividades futuras."
+    )
+
+    next_dynamic_id = next_discovered_task_id(
+        planned_project,
+        discovered_tasks,
+    )
+    d1, d2, d3 = st.columns([2, 1, 1])
+    with d1:
+        dynamic_name = st.text_input(
+            "Nova atividade",
+            key="dynamic_scope_name",
+            placeholder="Ex.: Reparar trinca encontrada na carcaça",
+        )
+    with d2:
+        dynamic_duration = st.number_input(
+            "Duração (h)",
+            min_value=0.5,
+            value=4.0,
+            step=0.5,
+            key="dynamic_scope_duration",
+        )
+    with d3:
+        dynamic_cost = st.number_input(
+            "Custo do modo",
+            min_value=0.0,
+            value=0.0,
+            step=100.0,
+            key="dynamic_scope_cost",
+        )
+
+    dynamic_resources = st.text_input(
+        "Recursos demandados",
+        key="dynamic_scope_resources",
+        placeholder="Soldador=1; Mecânica=2; Guindaste=1",
+        help=(
+            "Recursos novos são aceitos. Após salvar, a página recarrega e cria "
+            "automaticamente o slider de capacidade correspondente."
+        ),
+    )
+
+    source_options = [None] + completed_ids
+    dynamic_source_task = st.selectbox(
+        "Atividade onde o achado foi identificado",
+        options=source_options,
+        format_func=lambda task_id: (
+            "— origem não informada —"
+            if task_id is None
+            else task_labels.get(task_id, task_id)
+        ),
+        key="dynamic_scope_source",
+    )
+    dynamic_source_event = st.text_input(
+        "Achado / evento de origem",
+        key="dynamic_scope_source_event",
+        placeholder="Ex.: crack_detected",
+        disabled=dynamic_source_task is None,
+    )
+
+    dynamic_predecessors = st.multiselect(
+        "Predecessoras adicionais",
+        options=list(task_labels),
+        format_func=lambda task_id: task_labels[task_id],
+        key="dynamic_scope_predecessors",
+        help=(
+            "A atividade de origem, quando informada, é incluída automaticamente "
+            "como predecessora FS."
+        ),
+    )
+    dynamic_successors = st.multiselect(
+        "Atividades futuras que esta descoberta deve bloquear",
+        options=future_task_ids,
+        format_func=lambda task_id: task_labels[task_id],
+        key="dynamic_scope_successors",
+        help=(
+            "Será injetada uma precedência FS da nova atividade para cada sucessora. "
+            "Ex.: o fechamento só começa após o reparo descoberto."
+        ),
+    )
+    dynamic_notes = st.text_area(
+        "Observação",
+        key="dynamic_scope_notes",
+        placeholder="Contexto técnico do achado, evidência ou decisão que criou o novo trabalho.",
+    )
+
+    if st.button(
+        f"Adicionar {next_dynamic_id} ao escopo",
+        type="primary",
+        key="dynamic_scope_add",
+    ):
+        try:
+            if not dynamic_name.strip():
+                raise ValueError("Informe o nome da nova atividade")
+
+            resources = _parse_resource_demands(dynamic_resources)
+            predecessor_ids = list(dynamic_predecessors)
+            if (
+                dynamic_source_task is not None
+                and dynamic_source_task not in predecessor_ids
+            ):
+                predecessor_ids.append(dynamic_source_task)
+
+            discovered = DiscoveredTask(
+                id=next_dynamic_id,
+                name=dynamic_name.strip(),
+                discovered_at=float(current_time),
+                source_task_id=dynamic_source_task,
+                source_event=(
+                    dynamic_source_event.strip()
+                    if dynamic_source_task is not None
+                    and dynamic_source_event.strip()
+                    else None
+                ),
+                wbs=f"DS.{len(discovered_tasks) + 1}",
+                modes=[
+                    ExecutionMode(
+                        name="campo",
+                        duration=float(dynamic_duration),
+                        resources=resources,
+                        cost=float(dynamic_cost),
+                    )
+                ],
+                precedences=[
+                    Precedence(
+                        predecessor_id=task_id,
+                        relation="FS",
+                        lag=0.0,
+                    )
+                    for task_id in predecessor_ids
+                ],
+                successor_task_ids=list(dynamic_successors),
+                notes=dynamic_notes.strip() or None,
+            )
+
+            candidate = [*discovered_tasks, discovered]
+            # Valida colisões, referências e gates antes de persistir na sessão.
+            materialize_dynamic_scope(planned_project, candidate)
+            st.session_state.dynamic_scope_tasks = [
+                item.model_dump()
+                for item in candidate
+            ]
+            st.rerun()
+        except ValueError as exc:
+            st.error(str(exc))
+
+if discovered_tasks:
+    st.markdown("##### Escopo descoberto em execução")
+    discovered_rows = []
+    for item in discovered_tasks:
+        discovered_rows.append(
+            {
+                "ID": item.id,
+                "Atividade": item.name,
+                "Descoberta em (h)": item.discovered_at,
+                "Origem": (
+                    task_labels.get(item.source_task_id, item.source_task_id)
+                    if item.source_task_id
+                    else "—"
+                ),
+                "Achado": item.source_event or "—",
+                "Duração (h)": item.modes[0].duration,
+                "Recursos": ", ".join(
+                    f"{resource}:{value:g}"
+                    for resource, value in item.modes[0].resources.items()
+                ) or "—",
+                "Bloqueia": ", ".join(
+                    task_labels.get(task_id, task_id)
+                    for task_id in item.successor_task_ids
+                ) or "—",
+            }
+        )
+    st.dataframe(
+        pd.DataFrame(discovered_rows),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    remove_id = st.selectbox(
+        "Reverter descoberta ainda não iniciada",
+        options=[None] + [item.id for item in discovered_tasks],
+        format_func=lambda task_id: (
+            "— selecionar —"
+            if task_id is None
+            else task_labels.get(task_id, task_id)
+        ),
+        key="dynamic_scope_remove_id",
+    )
+    if remove_id and st.button(
+        "Remover do escopo dinâmico",
+        key="dynamic_scope_remove",
+    ):
+        st.session_state.dynamic_scope_tasks = [
+            item.model_dump()
+            for item in discovered_tasks
+            if item.id != remove_id
+        ]
+        st.rerun()
 
 event_catalog: dict[str, set[str]] = {}
 for task in project.tasks:
