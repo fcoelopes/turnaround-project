@@ -25,7 +25,7 @@
   </Tasks>
   <Resources>
     <Resource><UID>1</UID><ID>1</ID><Name>Operação</Name><MaxUnits>2</MaxUnits></Resource>
-    <Resource><UID>2</UID><ID>2</ID><Name>Mecânica</Name><MaxUnits>6</MaxUnits></Resource>
+    <Resource><UID>2</UID><ID>2</ID><Name>Mecânica</Name><MaxUnits>4</MaxUnits></Resource>
     <Resource><UID>3</UID><ID>3</ID><Name>Inspeção</Name><MaxUnits>2</MaxUnits></Resource>
     <Resource><UID>4</UID><ID>4</ID><Name>Guindaste</Name><MaxUnits>1</MaxUnits></Resource>
   </Resources>

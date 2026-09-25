@@ -89,59 +89,103 @@ def load_project():
 
 
 project, project_name = load_project()
-
-section(
-    "2",
-    "Capacidade de recursos",
-    "Teste cenários de equipe e recursos compartilhados antes e durante a parada.",
-)
-cols = st.columns(min(4, max(1, len(project.capacities))))
-new_caps: dict[str, float] = {}
-for i, (resource, capacity) in enumerate(sorted(project.capacities.items())):
-    upper = max(2.0, float(capacity) * 2.5)
-    step = 1.0 if float(capacity).is_integer() else 0.5
-    with cols[i % len(cols)]:
-        new_caps[resource] = st.slider(
-            resource,
-            min_value=0.0,
-            max_value=float(upper),
-            value=float(capacity),
-            step=step,
-            key=f"advanced_cap_{i}",
-        )
-project = project.model_copy(update={"capacities": new_caps})
+base_project = project
+base_capacities = dict(base_project.capacities)
 
 empty_state = ExecutionState(current_time=0)
-baseline_activation = resolve_activation(project, empty_state)
+baseline_activation = resolve_activation(base_project, empty_state)
 baseline_tasks = [
     task
-    for task in project.tasks
+    for task in base_project.tasks
     if task.id in baseline_activation.active_ids
 ]
 
 try:
     baseline = solve_mrcpsp(
         baseline_tasks,
-        project.capacities,
-        deadline=project.deadline,
+        base_project.capacities,
+        deadline=base_project.deadline,
     )
 except ValueError as exc:
-    st.error(str(exc))
+    st.error(f"Planejamento-base inviável: {exc}")
     st.stop()
 
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Makespan base", f"{baseline.makespan:.1f} h")
+m1.metric("Makespan planejado", f"{baseline.makespan:.1f} h")
 m2.metric(
     "Deadline",
-    "—" if project.deadline is None else f"{project.deadline:.1f} h",
+    "—" if base_project.deadline is None else f"{base_project.deadline:.1f} h",
 )
 m3.metric("Tarefas ativas na base", len(baseline.tasks))
-m4.metric("Escopo potencial", len(project.tasks) - len(baseline.tasks))
+m4.metric("Escopo potencial", len(base_project.tasks) - len(baseline.tasks))
+
+section(
+    "2",
+    "Cenário MRCPSP de recursos",
+    "Mude a capacidade sem alterar o baseline. O app compara o mesmo escopo com recursos originais e com o cenário.",
+)
+
+scenario_name = st.text_input(
+    "Nome do cenário",
+    value="Cenário de recursos A",
+    key="mrcpsp_scenario_name",
+)
+
+if project_name == "Turnaround Kinder Ovo":
+    st.info(
+        "Teste guiado: avance até 7 h, marque bearing_damage e compare Mecânica=4 com Mecânica=5. "
+        "O modo de 'Trocar rolamentos P-101' deve mudar de normal (5 h) para reforço (3 h)."
+    )
+
+cols = st.columns(min(4, max(1, len(base_capacities))))
+scenario_capacities: dict[str, float] = {}
+for i, (resource, capacity) in enumerate(sorted(base_capacities.items())):
+    upper = max(2.0, float(capacity) * 2.5)
+    step = 1.0 if float(capacity).is_integer() else 0.5
+    with cols[i % len(cols)]:
+        scenario_capacities[resource] = st.slider(
+            resource,
+            min_value=0.0,
+            max_value=float(upper),
+            value=float(capacity),
+            step=step,
+            key=f"advanced_cap_{i}",
+            help=f"Capacidade-base importada: {capacity:g}",
+        )
+
+resource_scenario_df = pd.DataFrame(
+    [
+        {
+            "Recurso": resource,
+            "Base": float(base_capacities[resource]),
+            "Cenário": float(scenario_capacities[resource]),
+            "Δ": float(scenario_capacities[resource]) - float(base_capacities[resource]),
+        }
+        for resource in sorted(base_capacities)
+    ]
+)
+st.dataframe(
+    resource_scenario_df,
+    use_container_width=True,
+    hide_index=True,
+)
+
+project = base_project.model_copy(
+    update={"capacities": scenario_capacities}
+)
 
 with st.expander("Modos disponíveis por atividade"):
     mode_rows = []
-    for task in project.tasks:
+    for task in base_project.tasks:
         for mode in task.modes:
+            feasible_base = all(
+                demand <= base_capacities.get(resource, 0.0) + 1e-9
+                for resource, demand in mode.resources.items()
+            )
+            feasible_scenario = all(
+                demand <= scenario_capacities.get(resource, 0.0) + 1e-9
+                for resource, demand in mode.resources.items()
+            )
             mode_rows.append(
                 {
                     "ID": task.id,
@@ -154,6 +198,9 @@ with st.expander("Modos disponíveis por atividade"):
                         for key, value in mode.resources.items()
                     ),
                     "Custo": mode.cost,
+                    "Factível na base": "sim" if feasible_base else "não",
+                    "Factível no cenário": "sim" if feasible_scenario else "não",
+                    "Novo modo liberado": "SIM" if (not feasible_base and feasible_scenario) else "não",
                 }
             )
     st.dataframe(
@@ -311,10 +358,19 @@ if pending_groups:
         title="Decisão de escopo pendente.",
     )
 
+base_result = None
+base_result_error = None
+try:
+    base_result = reschedule_from_state(base_project, state)
+except ValueError as exc:
+    base_result_error = str(exc)
+
 try:
     result = reschedule_from_state(project, state)
 except ValueError as exc:
-    st.error(str(exc))
+    st.error(f"Cenário de recursos inviável: {exc}")
+    if base_result_error:
+        st.caption(f"Com os recursos-base também é inviável: {base_result_error}")
     st.stop()
 
 active_now = result.activation.active_ids
@@ -379,8 +435,131 @@ schedule_df = pd.DataFrame(
 
 section(
     "4",
+    "Comparação do cenário MRCPSP",
+    "Isole o efeito dos recursos: o escopo descoberto e o estado da parada são os mesmos; muda apenas a capacidade.",
+)
+
+if base_result is None:
+    status(
+        (
+            "O escopo descoberto é inviável com os recursos-base. "
+            f"Diagnóstico: {base_result_error}"
+        ),
+        tone="danger",
+        title="Recursos-base insuficientes.",
+    )
+else:
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(
+        "Makespan · recursos-base",
+        f"{base_result.schedule.makespan:.1f} h",
+    )
+    c2.metric(
+        "Makespan · cenário",
+        f"{result.schedule.makespan:.1f} h",
+        delta=f"{result.schedule.makespan - base_result.schedule.makespan:+.1f} h",
+    )
+    c3.metric(
+        "Horas recuperadas",
+        f"{max(0.0, base_result.schedule.makespan - result.schedule.makespan):.1f} h",
+    )
+    c4.metric(
+        "Δ custo de modos",
+        f"{result.schedule.total_cost - base_result.schedule.total_cost:+,.0f}",
+    )
+
+    base_future = {item.task_id: item for item in base_result.schedule.tasks}
+    scenario_future = {item.task_id: item for item in result.schedule.tasks}
+    mode_comparison_rows = []
+    for task_id in sorted(set(base_future) & set(scenario_future)):
+        before = base_future[task_id]
+        after = scenario_future[task_id]
+        mode_comparison_rows.append(
+            {
+                "ID": task_id,
+                "Atividade": after.task_name,
+                "Modo · base": before.mode_name,
+                "Modo · cenário": after.mode_name,
+                "Mudou modo?": "SIM" if before.mode_name != after.mode_name else "não",
+                "Duração base (h)": before.duration,
+                "Duração cenário (h)": after.duration,
+                "Fim base (h)": before.finish,
+                "Fim cenário (h)": after.finish,
+                "Δ fim (h)": after.finish - before.finish,
+            }
+        )
+
+    mode_comparison_df = pd.DataFrame(mode_comparison_rows)
+    changed_modes_df = (
+        mode_comparison_df[mode_comparison_df["Mudou modo?"] == "SIM"]
+        if not mode_comparison_df.empty
+        else mode_comparison_df
+    )
+
+    if not changed_modes_df.empty:
+        status(
+            f"O MRCPSP trocou o modo de {len(changed_modes_df)} atividade(s) neste cenário.",
+            tone="ok",
+            title="Mudança de estratégia de execução detectada.",
+        )
+        st.dataframe(
+            changed_modes_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info(
+            "Nenhuma atividade trocou de modo. O cenário ainda pode alterar o makespan "
+            "por permitir ou restringir paralelismo."
+        )
+
+    with st.expander("Comparação completa das atividades futuras", expanded=True):
+        st.dataframe(
+            mode_comparison_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.session_state.setdefault("mrcpsp_saved_scenarios", [])
+    save_col, clear_col = st.columns(2)
+    with save_col:
+        if st.button("Salvar cenário na comparação", type="primary"):
+            st.session_state.mrcpsp_saved_scenarios.append(
+                {
+                    "Cenário": scenario_name,
+                    "Makespan (h)": result.schedule.makespan,
+                    "Atraso (h)": result.schedule.tardiness,
+                    "Custo modos": result.schedule.total_cost,
+                    "Horas recuperadas": base_result.schedule.makespan - result.schedule.makespan,
+                    "Modos alterados": int(
+                        sum(
+                            row["Mudou modo?"] == "SIM"
+                            for row in mode_comparison_rows
+                        )
+                    ),
+                    "Recursos": "; ".join(
+                        f"{resource}={scenario_capacities[resource]:g}"
+                        for resource in sorted(scenario_capacities)
+                    ),
+                }
+            )
+            st.success(f"{scenario_name} salvo.")
+    with clear_col:
+        if st.button("Limpar cenários salvos"):
+            st.session_state.mrcpsp_saved_scenarios = []
+
+    if st.session_state.mrcpsp_saved_scenarios:
+        st.markdown("#### Cenários salvos nesta sessão")
+        st.dataframe(
+            pd.DataFrame(st.session_state.mrcpsp_saved_scenarios),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+section(
+    "5",
     "Impacto do scope discovery",
-    "Compare baseline, novo escopo, atraso e custo de modos em uma leitura gerencial.",
+    "Compare planejamento original, novo escopo, atraso e custo de modos em uma leitura gerencial.",
 )
 
 tab_exec, tab_activation, tab_schedule, tab_export = st.tabs(
