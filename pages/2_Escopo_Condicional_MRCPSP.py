@@ -159,32 +159,29 @@ def load_project():
     section(
         "1",
         "Planejamento-base e regras de escopo",
-        "O XML continua sendo a fonte do cronograma; o JSON acrescenta modos, gatilhos e decisões condicionais.",
+        "Carregue um XML real ou use o cenário demonstrativo. O JSON é opcional; regras novas também podem ser cadastradas pela planilha abaixo.",
     )
 
-    c1, c2 = st.columns(2)
-    with c1:
-        xml_upload = st.file_uploader(
-            "Microsoft Project XML",
-            type=["xml"],
-            key="advanced_xml",
-        )
-    with c2:
-        scope_upload = st.file_uploader(
-            "Regras de escopo / modos (JSON)",
-            type=["json"],
-            key="advanced_scope",
-        )
+    xml_upload = st.file_uploader(
+        "Microsoft Project XML",
+        type=["xml"],
+        key="advanced_xml",
+        help="Ao enviar um XML real, a planilha de regras continua disponível mesmo sem JSON.",
+    )
 
     use_demo = st.checkbox(
         "Usar cenário demonstrativo 'Kinder Ovo'",
         value=xml_upload is None,
+        disabled=xml_upload is not None,
+        help="Só é usado quando nenhum XML real foi enviado.",
     )
 
     if xml_upload is not None:
+        source_kind = "real"
         tasks, xml_caps = project_xml_to_tasks(xml_upload.getvalue())
         project_name = Path(xml_upload.name).stem.replace("_", " ")
     elif use_demo:
+        source_kind = "demo"
         tasks, xml_caps = project_xml_to_tasks(DEMO_XML.read_bytes())
         project_name = "Turnaround Kinder Ovo"
     else:
@@ -193,18 +190,32 @@ def load_project():
 
     project = project_from_tasks(tasks, xml_caps)
 
+    with st.expander("Importar regras existentes por JSON (opcional)", expanded=False):
+        scope_upload = st.file_uploader(
+            "Regras de escopo / modos (JSON)",
+            type=["json"],
+            key="advanced_scope",
+            help="Opcional. Você pode usar somente a planilha de regras para um plano real.",
+        )
+
     if scope_upload is not None:
         project = apply_scope_config(
             project,
             io.BytesIO(scope_upload.getvalue()),
         )
-    elif use_demo:
+    elif source_kind == "demo":
+        # O sidecar demonstrativo só pode ser aplicado ao próprio Kinder Ovo.
         project = apply_scope_config(project, DEMO_SCOPE)
 
-    return project, project_name
+    if source_kind == "real":
+        st.success(
+            "Plano real carregado. O JSON é opcional; use a planilha de regras abaixo para cadastrar novas regras."
+        )
+
+    return project, project_name, source_kind
 
 
-project, project_name = load_project()
+project, project_name, project_source_kind = load_project()
 base_planned_project = project
 
 # O fingerprint identifica o baseline + sidecar importado. Regras adicionadas
@@ -227,8 +238,13 @@ execution_store = _get_execution_store()
 
 st.markdown("#### Regras de escopo em planilha")
 st.caption(
-    "Adicione regras sem editar o JSON. Elas são salvas no SQLite e aplicadas "
-    "como uma camada adicional sobre o XML/sidecar importado."
+    (
+        "Plano real: a planilha abaixo é a entrada principal para cadastrar regras; "
+        "o JSON acima é opcional."
+        if project_source_kind == "real"
+        else
+        "Cenário demonstrativo: a planilha adiciona regras sobre o sidecar Kinder Ovo."
+    )
 )
 
 inherited_rule_rows = []
