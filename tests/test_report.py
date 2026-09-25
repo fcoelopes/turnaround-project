@@ -2,6 +2,7 @@ import pandas as pd
 
 from turnaround.report import (
     _GanttFlowable,
+    _gantt_chart_pages,
     build_base_management_pdf,
     build_conditional_management_pdf,
 )
@@ -164,3 +165,91 @@ def test_conditional_gantt_can_preserve_project_order():
     )
 
     assert gantt.schedule_df["ID"].tolist() == ["1", "2"]
+
+
+
+def test_conditional_gantt_paginates_without_dropping_trailing_scope_rows():
+    schedule_df = pd.DataFrame(
+        [
+            {
+                "_Ordem": index,
+                "ID": str(index + 1),
+                "Atividade": f"Atividade {index + 1}",
+                "Início (h)": float(index),
+                "Fim (h)": float(index + 1),
+                "Congelada": index < 5,
+            }
+            for index in range(20)
+        ]
+    )
+
+    pages = _gantt_chart_pages(
+        schedule_df,
+        order_column="_Ordem",
+        frozen_column="Congelada",
+        max_rows=18,
+    )
+
+    assert len(pages) == 2
+    ids = [
+        task_id
+        for page in pages
+        for task_id in page.schedule_df["ID"].tolist()
+    ]
+    assert ids == [str(index) for index in range(1, 21)]
+    assert pages[1].schedule_df["ID"].tolist() == ["19", "20"]
+    assert pages[0].time_bounds == pages[1].time_bounds == (0.0, 20.0)
+
+
+def test_conditional_management_pdf_supports_more_than_one_gantt_page():
+    activation_df = pd.DataFrame(
+        [
+            {
+                "ID": "1",
+                "Atividade": "Atividade 1",
+                "Tipo": "mandatory",
+                "Estado": "active",
+                "Motivo": "ativa",
+            }
+        ]
+    )
+    schedule_df = pd.DataFrame(
+        [
+            {
+                "_Ordem": index,
+                "ID": str(index + 1),
+                "Atividade": f"Atividade {index + 1}",
+                "Modo": "base",
+                "Início (h)": float(index),
+                "Fim (h)": float(index + 1),
+                "Duração (h)": 1.0,
+                "Congelada": False,
+                "Crítica atual": index >= 18,
+                "Controla por": (
+                    "término do cronograma"
+                    if index == 19
+                    else ""
+                ),
+            }
+            for index in range(20)
+        ]
+    )
+
+    pdf = build_conditional_management_pdf(
+        project_name="Turnaround longo",
+        baseline_makespan=18,
+        current_makespan=20,
+        deadline=24,
+        current_time=5,
+        total_cost=0,
+        new_scope_count=2,
+        strategy="enumeration+ssgs",
+        activation_df=activation_df,
+        schedule_df=schedule_df,
+        critical_ids={"19", "20"},
+        critical_path_label="19 → 20",
+    )
+
+    assert pdf.startswith(b"%PDF")
+    assert len(pdf) > 4000
+    assert b"%%EOF" in pdf[-1024:]
