@@ -650,12 +650,23 @@ if discovered_tasks:
         "Remover do escopo dinâmico",
         key="dynamic_scope_remove",
     ):
-        st.session_state.dynamic_scope_tasks = [
-            item.model_dump()
+        candidate = [
+            item
             for item in discovered_tasks
             if item.id != remove_id
         ]
-        st.rerun()
+        try:
+            materialize_dynamic_scope(planned_project, candidate)
+            st.session_state.dynamic_scope_tasks = [
+                item.model_dump()
+                for item in candidate
+            ]
+            st.rerun()
+        except ValueError as exc:
+            st.error(
+                "Não é possível remover esta descoberta porque outra atividade "
+                f"dinâmica ainda depende dela: {exc}"
+            )
 
 event_catalog: dict[str, set[str]] = {}
 for task in project.tasks:
@@ -1080,6 +1091,11 @@ activation_df = pd.DataFrame(
             "ID": task.id,
             "UID Project": task.project_uid or "—",
             "Atividade": task.name,
+            "Origem": (
+                "dynamic discovery"
+                if task.id in dynamic_scope_ids
+                else "planejamento / regra"
+            ),
             "Tipo": task.activation.kind,
             "Estado": result.activation.states[task.id].value,
             "Motivo": result.activation.reasons[task.id],
@@ -1110,6 +1126,11 @@ schedule_df = pd.DataFrame(
             "ID": item.task_id,
             "WBS": wbs_by_id.get(str(item.task_id), ""),
             "Atividade": item.task_name,
+            "Origem": (
+                "dynamic discovery"
+                if str(item.task_id) in dynamic_scope_ids
+                else "planejamento / regra"
+            ),
             "Modo": item.mode_name,
             "Início (h)": item.start,
             "Fim (h)": item.finish,
@@ -1309,6 +1330,11 @@ with tab_exec:
     r2.metric("Atraso", f"{result.schedule.tardiness:.1f} h")
     r3.metric("Novas tarefas ativas", len(new_scope))
     r4.metric("Custo dos modos", f"{result.schedule.total_cost:,.0f}")
+    if dynamic_scope_ids:
+        st.caption(
+            f"{len(dynamic_scope_ids)} atividade(s) foram criadas em execução por "
+            "dynamic scope discovery; elas não pertenciam ao planejamento-base."
+        )
 
     sr1, sr2, sr3, sr4 = st.columns(4)
     sr1.metric(
