@@ -1127,3 +1127,61 @@ def test_kinder_ovo_impeller_disposition_remains_human_decision():
     assert impacts[("9",)].makespan == pytest.approx(17)
     assert impacts[("10",)].makespan == pytest.approx(16)
 
+
+
+def test_stability_aware_solver_prefers_smaller_start_time_changes():
+    tasks = [
+        task("A", "Atividade A", 4, {"Equipe": 1}),
+        task("B", "Atividade B", 1, {"Equipe": 1}),
+    ]
+    capacities = {"Equipe": 1}
+    reference_starts = {"A": 0.0, "B": 4.0}
+
+    legacy = solve_mrcpsp(
+        tasks,
+        capacities,
+        reference_start_times=reference_starts,
+        stability_weight=0.0,
+    )
+    legacy_by_id = {item.task_id: item for item in legacy.tasks}
+
+    # Sem estabilidade, o comportamento histórico prioriza primeiro a atividade
+    # curta quando makespan/custo empatam.
+    assert legacy_by_id["B"].start == pytest.approx(0)
+    assert legacy_by_id["A"].start == pytest.approx(1)
+    assert legacy.total_start_deviation == pytest.approx(5)
+
+    stable = solve_mrcpsp(
+        tasks,
+        capacities,
+        reference_start_times=reference_starts,
+        stability_weight=1.0,
+    )
+    stable_by_id = {item.task_id: item for item in stable.tasks}
+
+    assert stable.makespan == pytest.approx(5)
+    assert stable_by_id["A"].start == pytest.approx(0)
+    assert stable_by_id["B"].start == pytest.approx(4)
+    assert stable.total_start_deviation == pytest.approx(0)
+    assert stable.max_start_deviation == pytest.approx(0)
+    assert stable.stability_compared_tasks == 2
+    assert stable.stability_weight == pytest.approx(1)
+    assert stable.strategy.endswith("+stability")
+
+
+def test_stability_metrics_ignore_new_scope_without_reference_start():
+    tasks = [
+        task("A", "Planejada", 2),
+        task("NEW", "Descoberta", 3, predecessors=["A"]),
+    ]
+
+    result = solve_mrcpsp(
+        tasks,
+        capacities={},
+        reference_start_times={"A": 0.0},
+        stability_weight=1.0,
+    )
+
+    assert result.stability_compared_tasks == 1
+    assert result.total_start_deviation == pytest.approx(0)
+    assert result.max_start_deviation == pytest.approx(0)
