@@ -147,6 +147,16 @@ O arquivo `sample_data/cronograma_exemplo.csv` pode ser usado imediatamente.
 - `sample_data/turnaround_conditional_model.xml` — cenário de inspeção "Kinder Ovo";
 - `sample_data/turnaround_conditional_scope.json` — regras de ativação e modos.
 
+No cenário **Kinder Ovo**, há agora duas fontes independentes de scope discovery:
+
+- inspeção mecânica da P-101: rolamento, selo, eixo e impelidor;
+- ensaio do motor elétrico da P-101: usa 2 eletricistas por 2 h e pode gerar
+  `motor_replacement_required`.
+
+Se a substituição do motor for ativada, entram 6 h de trabalho com
+`Elétrica:2`, `Mecânica:2` e `Guindaste:1`. O fechamento/alinhamento da
+bomba só é liberado depois dessa atividade quando ela pertence ao escopo ativo.
+
 ## Próxima evolução
 
 O núcleo foi separado da interface para substituir o heurístico por **CP-SAT/MILP** sem refazer a tela. Próximas camadas sugeridas:

@@ -4,50 +4,133 @@
     "5": {
       "activation": {
         "kind": "conditional",
-        "conditions": [{"source_task_uid": "4", "events": ["bearing_damage"]}],
+        "conditions": [
+          {
+            "source_task_uid": "4",
+            "events": [
+              "bearing_damage"
+            ]
+          }
+        ],
         "condition_logic": "all"
       },
       "modes": [
-        {"name": "normal", "duration": 5, "resources": {"Mecânica": 3}, "cost": 0},
-        {"name": "reforco", "duration": 3, "resources": {"Mecânica": 5}, "cost": 1200}
+        {
+          "name": "normal",
+          "duration": 5,
+          "resources": {
+            "Mecânica": 3
+          },
+          "cost": 0
+        },
+        {
+          "name": "reforco",
+          "duration": 3,
+          "resources": {
+            "Mecânica": 5
+          },
+          "cost": 1200
+        }
       ]
     },
     "6": {
       "activation": {
         "kind": "conditional",
-        "conditions": [{"source_task_uid": "4", "events": ["seal_damage"]}],
+        "conditions": [
+          {
+            "source_task_uid": "4",
+            "events": [
+              "seal_damage"
+            ]
+          }
+        ],
         "condition_logic": "all"
       }
     },
     "7": {
       "activation": {
         "kind": "conditional",
-        "conditions": [{"source_task_uid": "4", "events": ["shaft_damage"]}],
+        "conditions": [
+          {
+            "source_task_uid": "4",
+            "events": [
+              "shaft_damage"
+            ]
+          }
+        ],
         "condition_logic": "all"
       },
       "modes": [
-        {"name": "normal", "duration": 7, "resources": {"Mecânica": 3}, "cost": 0},
-        {"name": "ataque", "duration": 4, "resources": {"Mecânica": 5}, "cost": 2500}
+        {
+          "name": "normal",
+          "duration": 7,
+          "resources": {
+            "Mecânica": 3
+          },
+          "cost": 0
+        },
+        {
+          "name": "ataque",
+          "duration": 4,
+          "resources": {
+            "Mecânica": 5
+          },
+          "cost": 2500
+        }
       ]
     },
     "8": {
       "activation": {
         "kind": "conditional",
-        "conditions": [{"source_task_uid": "4", "events": ["shaft_damage"]}],
+        "conditions": [
+          {
+            "source_task_uid": "4",
+            "events": [
+              "shaft_damage"
+            ]
+          }
+        ],
         "condition_logic": "all"
       }
     },
-    "9": {"activation": {"kind": "optional"}},
-    "10": {"activation": {"kind": "optional"}}
+    "9": {
+      "activation": {
+        "kind": "optional"
+      }
+    },
+    "10": {
+      "activation": {
+        "kind": "optional"
+      }
+    },
+    "14": {
+      "activation": {
+        "kind": "conditional",
+        "conditions": [
+          {
+            "source_task_uid": "13",
+            "events": [
+              "motor_replacement_required"
+            ]
+          }
+        ],
+        "condition_logic": "all"
+      }
+    }
   },
   "logical_groups": [
     {
       "id": "impeller_disposition",
       "operator": "xor",
-      "member_task_uids": ["9", "10"],
+      "member_task_uids": [
+        "9",
+        "10"
+      ],
       "when": {
         "source_task_uid": "4",
-        "events": ["impeller_damage"],
+        "events": [
+          "impeller_damage"
+        ],
         "event_logic": "any",
         "require_completed": true
       }
