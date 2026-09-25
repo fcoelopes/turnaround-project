@@ -214,3 +214,43 @@ def test_multiskill_requires_frozen_assignment_for_in_progress_human_task():
             state,
             workforce=workforce,
         )
+
+
+
+def test_multiskill_filters_impossible_mode_and_keeps_feasible_alternative():
+    task = TurnaroundTask(
+        id="A",
+        name="Escolha de modo",
+        modes=[
+            ExecutionMode(
+                name="rapido",
+                duration=2,
+                resources={"Mecânica": 1, "Soldagem": 1},
+            ),
+            ExecutionMode(
+                name="lento",
+                duration=5,
+                resources={"Mecânica": 1},
+            ),
+        ],
+    )
+    workforce = WorkforceProfile(
+        skills=["Mecânica", "Soldagem"],
+        people=[
+            Person(
+                id="P1",
+                name="Ana",
+                skills=["Mecânica", "Soldagem"],
+            )
+        ],
+    )
+
+    result = solve_mrcpsp(
+        [task],
+        capacities={"Mecânica": 1, "Soldagem": 1},
+        workforce=workforce,
+    )
+
+    assert result.makespan == 5.0
+    assert result.tasks[0].mode_name == "lento"
+    assert result.tasks[0].skill_assignments == {"Mecânica": ("P1",)}
