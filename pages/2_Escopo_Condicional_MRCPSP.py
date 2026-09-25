@@ -186,7 +186,7 @@ def load_project():
         project_name = "Turnaround Kinder Ovo"
     else:
         st.info("Envie um XML do Project ou habilite o cenário demonstrativo.")
-        st.stop()
+        return None, None, None
 
     project = project_from_tasks(tasks, xml_caps)
 
@@ -215,7 +215,49 @@ def load_project():
     return project, project_name, source_kind
 
 
-project, project_name, project_source_kind = load_project()
+planning_tab, config_tab = st.tabs(
+    ["📋 Planejamento", "⚙️ Configuração"]
+)
+
+with planning_tab:
+    project, project_name, project_source_kind = load_project()
+
+if project is None:
+    with config_tab:
+        st.markdown("### Configuração de regras de escopo")
+        st.caption(
+            "A planilha de regras fica nesta aba e não depende do cenário Kinder Ovo. "
+            "Carregue um XML na aba Planejamento para habilitar as referências de atividades."
+        )
+        st.data_editor(
+            pd.DataFrame(
+                columns=[
+                    "Excluir",
+                    "Regra",
+                    "Ativa",
+                    "Tipo",
+                    "Atividade alvo",
+                    "Gatilho",
+                    "Eventos",
+                    "Lógica eventos",
+                    "Membros",
+                    "Resolução",
+                    "Rotas event",
+                    "Observação",
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            disabled=True,
+            key="scope_rule_editor_empty",
+        )
+        st.info(
+            "A configuração está disponível para planos reais. "
+            "O JSON é opcional e o Kinder Ovo não precisa ser habilitado."
+        )
+    st.stop()
+
 base_planned_project = project
 
 # O fingerprint identifica o baseline + sidecar importado. Regras adicionadas
@@ -236,324 +278,332 @@ project_key = hashlib.sha256(
 
 execution_store = _get_execution_store()
 
-st.markdown("#### Regras de escopo em planilha")
-st.caption(
-    (
-        "Plano real: a planilha abaixo é a entrada principal para cadastrar regras; "
-        "o JSON acima é opcional."
-        if project_source_kind == "real"
-        else
-        "Cenário demonstrativo: a planilha adiciona regras sobre o sidecar Kinder Ovo."
+with config_tab:
+    st.markdown("### Configuração de regras de escopo")
+    st.caption(
+        "Esta aba existe para qualquer plano carregado. "
+        "O JSON é apenas uma fonte opcional de regras herdadas."
     )
-)
 
-inherited_rule_rows = []
-for task in base_planned_project.tasks:
-    if task.activation.kind != "conditional":
-        continue
-    for index, condition in enumerate(task.activation.conditions, start=1):
+    st.markdown("#### Regras de escopo em planilha")
+    st.caption(
+        (
+            "Plano real: a planilha abaixo é a entrada principal para cadastrar regras; "
+            "o JSON acima é opcional."
+            if project_source_kind == "real"
+            else
+            "Cenário demonstrativo: a planilha adiciona regras sobre o sidecar Kinder Ovo."
+        )
+    )
+
+    inherited_rule_rows = []
+    for task in base_planned_project.tasks:
+        if task.activation.kind != "conditional":
+            continue
+        for index, condition in enumerate(task.activation.conditions, start=1):
+            inherited_rule_rows.append(
+                {
+                    "Origem": "JSON / sidecar",
+                    "Regra": f"activation:{task.id}:{index}",
+                    "Tipo": "conditional",
+                    "Alvo / membros": f"{task.id} · {task.name}",
+                    "Gatilho": condition.source_task_id,
+                    "Eventos": "; ".join(condition.events),
+                    "Resolução": "—",
+                }
+            )
+
+    for group in base_planned_project.logical_groups:
         inherited_rule_rows.append(
             {
                 "Origem": "JSON / sidecar",
-                "Regra": f"activation:{task.id}:{index}",
-                "Tipo": "conditional",
-                "Alvo / membros": f"{task.id} · {task.name}",
-                "Gatilho": condition.source_task_id,
-                "Eventos": "; ".join(condition.events),
-                "Resolução": "—",
+                "Regra": group.id,
+                "Tipo": group.operator,
+                "Alvo / membros": "; ".join(group.member_task_ids),
+                "Gatilho": (
+                    group.when.source_task_id
+                    if group.when is not None
+                    else "—"
+                ),
+                "Eventos": (
+                    "; ".join(group.when.events)
+                    if group.when is not None
+                    else "—"
+                ),
+                "Resolução": group.resolution_mode,
             }
         )
 
-for group in base_planned_project.logical_groups:
-    inherited_rule_rows.append(
-        {
-            "Origem": "JSON / sidecar",
-            "Regra": group.id,
-            "Tipo": group.operator,
-            "Alvo / membros": "; ".join(group.member_task_ids),
-            "Gatilho": (
-                group.when.source_task_id
-                if group.when is not None
-                else "—"
-            ),
-            "Eventos": (
-                "; ".join(group.when.events)
-                if group.when is not None
-                else "—"
-            ),
-            "Resolução": group.resolution_mode,
-        }
-    )
+    if inherited_rule_rows:
+        with st.expander(
+            f"Regras herdadas do JSON / sidecar ({len(inherited_rule_rows)})",
+            expanded=False,
+        ):
+            st.dataframe(
+                pd.DataFrame(inherited_rule_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.caption(
+                "Estas regras continuam válidas e não são editadas pela planilha. "
+                "A grade abaixo adiciona uma camada complementar."
+            )
 
-if inherited_rule_rows:
-    with st.expander(
-        f"Regras herdadas do JSON / sidecar ({len(inherited_rule_rows)})",
-        expanded=False,
-    ):
+    stored_scope_rules = execution_store.load_scope_rules(project_key)
+    scope_ref_catalog = task_reference_catalog(base_planned_project)
+    scope_label_to_ref = {
+        label: reference
+        for reference, label in scope_ref_catalog.items()
+    }
+    scope_ref_to_label = dict(scope_ref_catalog)
+
+    scope_rule_rows = [
+        {
+            "Excluir": False,
+            "Regra": row.id,
+            "Ativa": row.enabled,
+            "Tipo": row.rule_type,
+            "Atividade alvo": (
+                scope_ref_to_label.get(row.target_task_ref, row.target_task_ref)
+                if row.target_task_ref
+                else ""
+            ),
+            "Gatilho": (
+                scope_ref_to_label.get(row.trigger_task_ref, row.trigger_task_ref)
+                if row.trigger_task_ref
+                else ""
+            ),
+            "Eventos": "; ".join(row.events),
+            "Lógica eventos": row.event_logic,
+            "Membros": "; ".join(row.member_task_refs),
+            "Resolução": row.resolution_mode,
+            "Rotas event": _format_scope_event_routes(row.event_routes),
+            "Observação": row.notes or "",
+        }
+        for row in stored_scope_rules
+    ]
+
+    scope_draft_key = f"scope_rule_draft_{project_key[:12]}"
+    scope_editor_key = f"scope_rule_editor_{project_key[:12]}"
+    if scope_draft_key not in st.session_state:
+        st.session_state[scope_draft_key] = scope_rule_rows
+
+    add_rule_col, save_rule_col, discard_rule_col = st.columns([1, 1, 1])
+    with add_rule_col:
+        if st.button(
+            "➕ Adicionar regra",
+            type="primary",
+            key=f"add_scope_rule_{project_key[:12]}",
+        ):
+            draft = list(st.session_state.get(scope_draft_key, []))
+            draft.append(
+                {
+                    "Excluir": False,
+                    "Regra": _next_scope_rule_id(draft),
+                    "Ativa": True,
+                    "Tipo": "conditional",
+                    "Atividade alvo": "",
+                    "Gatilho": "",
+                    "Eventos": "",
+                    "Lógica eventos": "any",
+                    "Membros": "",
+                    "Resolução": "human",
+                    "Rotas event": "",
+                    "Observação": "",
+                }
+            )
+            st.session_state[scope_draft_key] = draft
+            st.rerun()
+
+    scope_editor_df = pd.DataFrame(st.session_state[scope_draft_key])
+    if scope_editor_df.empty:
+        scope_editor_df = pd.DataFrame(
+            columns=[
+                "Excluir",
+                "Regra",
+                "Ativa",
+                "Tipo",
+                "Atividade alvo",
+                "Gatilho",
+                "Eventos",
+                "Lógica eventos",
+                "Membros",
+                "Resolução",
+                "Rotas event",
+                "Observação",
+            ]
+        )
+
+    edited_scope_df = st.data_editor(
+        scope_editor_df,
+        key=scope_editor_key,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        column_config={
+            "Excluir": st.column_config.CheckboxColumn(
+                "Excluir",
+                help="Marque e clique em Salvar regras para remover a linha.",
+            ),
+            "Regra": st.column_config.TextColumn(
+                "Regra",
+                help="ID único da regra, por exemplo RULE-001 ou P101_impeller.",
+            ),
+            "Ativa": st.column_config.CheckboxColumn("Ativa"),
+            "Tipo": st.column_config.SelectboxColumn(
+                "Tipo",
+                options=["conditional", "xor", "or", "and"],
+                required=True,
+            ),
+            "Atividade alvo": st.column_config.SelectboxColumn(
+                "Atividade alvo",
+                options=["", *scope_ref_catalog.values()],
+                help="Usada por regras conditional.",
+            ),
+            "Gatilho": st.column_config.SelectboxColumn(
+                "Gatilho",
+                options=["", *scope_ref_catalog.values()],
+                help="Atividade cuja conclusão/evento libera a regra.",
+            ),
+            "Eventos": st.column_config.TextColumn(
+                "Eventos",
+                help="Um ou mais eventos separados por ;. Ex.: crack_detected; wear_high",
+            ),
+            "Lógica eventos": st.column_config.SelectboxColumn(
+                "Lógica eventos",
+                options=["any", "all"],
+            ),
+            "Membros": st.column_config.TextColumn(
+                "Membros",
+                help="Para XOR/OR/AND: referências separadas por ;. Ex.: uid:9009; uid:9010",
+            ),
+            "Resolução": st.column_config.SelectboxColumn(
+                "Resolução",
+                options=["human", "event"],
+                help="human mantém a decisão com o planejador; event apenas aplica uma regra determinística previamente definida.",
+            ),
+            "Rotas event": st.column_config.TextColumn(
+                "Rotas event",
+                help="Somente resolution=event. Ex.: repairable=>uid:9 | replacement_required=>uid:10",
+            ),
+            "Observação": st.column_config.TextColumn("Observação"),
+        },
+    )
+    st.session_state[scope_draft_key] = edited_scope_df.to_dict("records")
+
+    with st.expander("Referências para preencher Membros / Rotas", expanded=False):
         st.dataframe(
-            pd.DataFrame(inherited_rule_rows),
+            pd.DataFrame(
+                [
+                    {
+                        "Referência": reference,
+                        "ID atual": task.id,
+                        "UID Project": task.project_uid or "—",
+                        "Atividade": task.name,
+                    }
+                    for task in base_planned_project.tasks
+                    for reference in [
+                        (
+                            f"uid:{task.project_uid}"
+                            if task.project_uid is not None
+                            else f"id:{task.id}"
+                        )
+                    ]
+                ]
+            ),
             use_container_width=True,
             hide_index=True,
         )
-        st.caption(
-            "Estas regras continuam válidas e não são editadas pela planilha. "
-            "A grade abaixo adiciona uma camada complementar."
-        )
 
-stored_scope_rules = execution_store.load_scope_rules(project_key)
-scope_ref_catalog = task_reference_catalog(base_planned_project)
-scope_label_to_ref = {
-    label: reference
-    for reference, label in scope_ref_catalog.items()
-}
-scope_ref_to_label = dict(scope_ref_catalog)
+    with save_rule_col:
+        if st.button(
+            "💾 Salvar regras",
+            key=f"save_scope_rules_{project_key[:12]}",
+        ):
+            try:
+                parsed_rows: list[ScopeRuleRow] = []
+                for index, raw in enumerate(
+                    edited_scope_df.to_dict("records"),
+                    start=1,
+                ):
+                    if bool(raw.get("Excluir", False)):
+                        continue
 
-scope_rule_rows = [
-    {
-        "Excluir": False,
-        "Regra": row.id,
-        "Ativa": row.enabled,
-        "Tipo": row.rule_type,
-        "Atividade alvo": (
-            scope_ref_to_label.get(row.target_task_ref, row.target_task_ref)
-            if row.target_task_ref
-            else ""
-        ),
-        "Gatilho": (
-            scope_ref_to_label.get(row.trigger_task_ref, row.trigger_task_ref)
-            if row.trigger_task_ref
-            else ""
-        ),
-        "Eventos": "; ".join(row.events),
-        "Lógica eventos": row.event_logic,
-        "Membros": "; ".join(row.member_task_refs),
-        "Resolução": row.resolution_mode,
-        "Rotas event": _format_scope_event_routes(row.event_routes),
-        "Observação": row.notes or "",
-    }
-    for row in stored_scope_rules
-]
+                    rule_id = str(raw.get("Regra", "") or "").strip()
+                    if not rule_id:
+                        raise ValueError(
+                            f"Linha {index}: informe o ID da regra"
+                        )
 
-scope_draft_key = f"scope_rule_draft_{project_key[:12]}"
-scope_editor_key = f"scope_rule_editor_{project_key[:12]}"
-if scope_draft_key not in st.session_state:
-    st.session_state[scope_draft_key] = scope_rule_rows
+                    target_label = str(
+                        raw.get("Atividade alvo", "") or ""
+                    ).strip()
+                    trigger_label = str(
+                        raw.get("Gatilho", "") or ""
+                    ).strip()
 
-add_rule_col, save_rule_col, discard_rule_col = st.columns([1, 1, 1])
-with add_rule_col:
-    if st.button(
-        "➕ Adicionar regra",
-        type="primary",
-        key=f"add_scope_rule_{project_key[:12]}",
-    ):
-        draft = list(st.session_state.get(scope_draft_key, []))
-        draft.append(
-            {
-                "Excluir": False,
-                "Regra": _next_scope_rule_id(draft),
-                "Ativa": True,
-                "Tipo": "conditional",
-                "Atividade alvo": "",
-                "Gatilho": "",
-                "Eventos": "",
-                "Lógica eventos": "any",
-                "Membros": "",
-                "Resolução": "human",
-                "Rotas event": "",
-                "Observação": "",
-            }
-        )
-        st.session_state[scope_draft_key] = draft
-        st.rerun()
-
-scope_editor_df = pd.DataFrame(st.session_state[scope_draft_key])
-if scope_editor_df.empty:
-    scope_editor_df = pd.DataFrame(
-        columns=[
-            "Excluir",
-            "Regra",
-            "Ativa",
-            "Tipo",
-            "Atividade alvo",
-            "Gatilho",
-            "Eventos",
-            "Lógica eventos",
-            "Membros",
-            "Resolução",
-            "Rotas event",
-            "Observação",
-        ]
-    )
-
-edited_scope_df = st.data_editor(
-    scope_editor_df,
-    key=scope_editor_key,
-    use_container_width=True,
-    hide_index=True,
-    num_rows="fixed",
-    column_config={
-        "Excluir": st.column_config.CheckboxColumn(
-            "Excluir",
-            help="Marque e clique em Salvar regras para remover a linha.",
-        ),
-        "Regra": st.column_config.TextColumn(
-            "Regra",
-            help="ID único da regra, por exemplo RULE-001 ou P101_impeller.",
-        ),
-        "Ativa": st.column_config.CheckboxColumn("Ativa"),
-        "Tipo": st.column_config.SelectboxColumn(
-            "Tipo",
-            options=["conditional", "xor", "or", "and"],
-            required=True,
-        ),
-        "Atividade alvo": st.column_config.SelectboxColumn(
-            "Atividade alvo",
-            options=["", *scope_ref_catalog.values()],
-            help="Usada por regras conditional.",
-        ),
-        "Gatilho": st.column_config.SelectboxColumn(
-            "Gatilho",
-            options=["", *scope_ref_catalog.values()],
-            help="Atividade cuja conclusão/evento libera a regra.",
-        ),
-        "Eventos": st.column_config.TextColumn(
-            "Eventos",
-            help="Um ou mais eventos separados por ;. Ex.: crack_detected; wear_high",
-        ),
-        "Lógica eventos": st.column_config.SelectboxColumn(
-            "Lógica eventos",
-            options=["any", "all"],
-        ),
-        "Membros": st.column_config.TextColumn(
-            "Membros",
-            help="Para XOR/OR/AND: referências separadas por ;. Ex.: uid:9009; uid:9010",
-        ),
-        "Resolução": st.column_config.SelectboxColumn(
-            "Resolução",
-            options=["human", "event"],
-            help="human mantém a decisão com o planejador; event apenas aplica uma regra determinística previamente definida.",
-        ),
-        "Rotas event": st.column_config.TextColumn(
-            "Rotas event",
-            help="Somente resolution=event. Ex.: repairable=>uid:9 | replacement_required=>uid:10",
-        ),
-        "Observação": st.column_config.TextColumn("Observação"),
-    },
-)
-st.session_state[scope_draft_key] = edited_scope_df.to_dict("records")
-
-with st.expander("Referências para preencher Membros / Rotas", expanded=False):
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {
-                    "Referência": reference,
-                    "ID atual": task.id,
-                    "UID Project": task.project_uid or "—",
-                    "Atividade": task.name,
-                }
-                for task in base_planned_project.tasks
-                for reference in [
-                    (
-                        f"uid:{task.project_uid}"
-                        if task.project_uid is not None
-                        else f"id:{task.id}"
-                    )
-                ]
-            ]
-        ),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-with save_rule_col:
-    if st.button(
-        "💾 Salvar regras",
-        key=f"save_scope_rules_{project_key[:12]}",
-    ):
-        try:
-            parsed_rows: list[ScopeRuleRow] = []
-            for index, raw in enumerate(
-                edited_scope_df.to_dict("records"),
-                start=1,
-            ):
-                if bool(raw.get("Excluir", False)):
-                    continue
-
-                rule_id = str(raw.get("Regra", "") or "").strip()
-                if not rule_id:
-                    raise ValueError(
-                        f"Linha {index}: informe o ID da regra"
+                    parsed_rows.append(
+                        ScopeRuleRow(
+                            id=rule_id,
+                            enabled=bool(raw.get("Ativa", True)),
+                            rule_type=str(raw.get("Tipo", "conditional")),
+                            target_task_ref=(
+                                scope_label_to_ref.get(target_label, target_label)
+                                if target_label
+                                else None
+                            ),
+                            trigger_task_ref=(
+                                scope_label_to_ref.get(trigger_label, trigger_label)
+                                if trigger_label
+                                else None
+                            ),
+                            events=_split_scope_values(raw.get("Eventos", "")),
+                            event_logic=str(
+                                raw.get("Lógica eventos", "any") or "any"
+                            ),
+                            member_task_refs=_split_scope_values(
+                                raw.get("Membros", "")
+                            ),
+                            resolution_mode=str(
+                                raw.get("Resolução", "human") or "human"
+                            ),
+                            event_routes=_parse_scope_event_routes(
+                                raw.get("Rotas event", "")
+                            ),
+                            notes=(
+                                str(raw.get("Observação", "") or "").strip()
+                                or None
+                            ),
+                        )
                     )
 
-                target_label = str(
-                    raw.get("Atividade alvo", "") or ""
-                ).strip()
-                trigger_label = str(
-                    raw.get("Gatilho", "") or ""
-                ).strip()
-
-                parsed_rows.append(
-                    ScopeRuleRow(
-                        id=rule_id,
-                        enabled=bool(raw.get("Ativa", True)),
-                        rule_type=str(raw.get("Tipo", "conditional")),
-                        target_task_ref=(
-                            scope_label_to_ref.get(target_label, target_label)
-                            if target_label
-                            else None
-                        ),
-                        trigger_task_ref=(
-                            scope_label_to_ref.get(trigger_label, trigger_label)
-                            if trigger_label
-                            else None
-                        ),
-                        events=_split_scope_values(raw.get("Eventos", "")),
-                        event_logic=str(
-                            raw.get("Lógica eventos", "any") or "any"
-                        ),
-                        member_task_refs=_split_scope_values(
-                            raw.get("Membros", "")
-                        ),
-                        resolution_mode=str(
-                            raw.get("Resolução", "human") or "human"
-                        ),
-                        event_routes=_parse_scope_event_routes(
-                            raw.get("Rotas event", "")
-                        ),
-                        notes=(
-                            str(raw.get("Observação", "") or "").strip()
-                            or None
-                        ),
-                    )
+                # Valida a composição inteira antes de escrever no banco.
+                apply_scope_rule_rows(base_planned_project, parsed_rows)
+                execution_store.replace_scope_rules(
+                    project_key,
+                    parsed_rows,
                 )
+                st.session_state.pop(scope_draft_key, None)
+                st.session_state.pop(scope_editor_key, None)
+                st.success(f"{len(parsed_rows)} regra(s) salva(s).")
+                st.rerun()
+            except (ValueError, TypeError) as exc:
+                st.error(f"Não foi possível salvar as regras: {exc}")
 
-            # Valida a composição inteira antes de escrever no banco.
-            apply_scope_rule_rows(base_planned_project, parsed_rows)
-            execution_store.replace_scope_rules(
-                project_key,
-                parsed_rows,
-            )
+    with discard_rule_col:
+        if st.button(
+            "↩ Descartar alterações",
+            key=f"discard_scope_rules_{project_key[:12]}",
+        ):
             st.session_state.pop(scope_draft_key, None)
             st.session_state.pop(scope_editor_key, None)
-            st.success(f"{len(parsed_rows)} regra(s) salva(s).")
             st.rerun()
-        except (ValueError, TypeError) as exc:
-            st.error(f"Não foi possível salvar as regras: {exc}")
 
-with discard_rule_col:
-    if st.button(
-        "↩ Descartar alterações",
-        key=f"discard_scope_rules_{project_key[:12]}",
-    ):
-        st.session_state.pop(scope_draft_key, None)
-        st.session_state.pop(scope_editor_key, None)
-        st.rerun()
+    if stored_scope_rules:
+        st.caption(
+            f"{len(stored_scope_rules)} regra(s) adicionais persistida(s) neste baseline."
+        )
 
-if stored_scope_rules:
-    st.caption(
-        f"{len(stored_scope_rules)} regra(s) adicionais persistida(s) neste baseline."
-    )
 
 planned_project = apply_scope_rule_rows(
     base_planned_project,
