@@ -675,6 +675,19 @@ O Gantt permite visualizar:
 
 ---
 
+## 24.1 Ordem visual das atividades
+
+O Discovery preserva a ordem original das atividades importadas do Microsoft Project para a leitura da tabela, do Gantt e do PDF. Essa ordem é apenas de apresentação.
+
+O solver continua livre para calcular a sequência real de execução com base em precedências, recursos, modos e horário corrente. Portanto:
+
+```text
+ordem visual = Project / WBS / posição original
+ordem de execução = resultado do MRCPSP
+```
+
+Isso evita que uma atividade “mude de linha” no Gantt apenas porque começou mais cedo ou mais tarde após o replanejamento.
+
 ## 25. Aba Cronograma
 
 A tabela detalhada apresenta:
