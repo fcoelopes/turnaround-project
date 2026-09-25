@@ -62,6 +62,7 @@ class TurnaroundTask(BaseModel):
     id: str
     name: str
     wbs: str | None = None
+    project_uid: str | None = None
     modes: list[ExecutionMode]
     precedences: list[Precedence] = Field(default_factory=list)
     activation: ActivationRule = Field(default_factory=ActivationRule)
@@ -129,7 +130,30 @@ class TurnaroundProject(BaseModel):
         ids = [t.id for t in self.tasks]
         if len(ids) != len(set(ids)):
             raise ValueError("IDs de atividades devem ser únicos")
+
+        project_uids = [
+            t.project_uid
+            for t in self.tasks
+            if t.project_uid is not None
+        ]
+        if len(project_uids) != len(set(project_uids)):
+            raise ValueError("UIDs do Microsoft Project devem ser únicos")
+
+        group_ids = [group.id for group in self.logical_groups]
+        if len(group_ids) != len(set(group_ids)):
+            duplicates = sorted(
+                group_id
+                for group_id in set(group_ids)
+                if group_ids.count(group_id) > 1
+            )
+            raise ValueError(
+                "IDs de grupos lógicos devem ser únicos: "
+                + ", ".join(duplicates)
+            )
+
         known = set(ids)
+        selective_membership: dict[str, str] = {}
+
         for task in self.tasks:
             for p in task.precedences:
                 if p.predecessor_id not in known:
@@ -141,12 +165,31 @@ class TurnaroundProject(BaseModel):
                     raise ValueError(
                         f"Atividade {task.id}: trigger desconhecido {c.source_task_id}"
                     )
+
         for group in self.logical_groups:
             missing = set(group.member_task_ids) - known
             if missing:
-                raise ValueError(f"Grupo {group.id}: atividades desconhecidas {sorted(missing)}")
+                raise ValueError(
+                    f"Grupo {group.id}: atividades desconhecidas {sorted(missing)}"
+                )
             if group.when and group.when.source_task_id not in known:
-                raise ValueError(f"Grupo {group.id}: trigger desconhecido {group.when.source_task_id}")
+                raise ValueError(
+                    f"Grupo {group.id}: trigger desconhecido {group.when.source_task_id}"
+                )
+
+            # XOR/OR são grupos seletivos. Uma mesma atividade em dois grupos
+            # seletivos criaria duas regras concorrentes capazes de sobrescrever
+            # seu estado de ativação. Rejeitamos essa ambiguidade na carga.
+            if group.operator in {"xor", "or"}:
+                for task_id in group.member_task_ids:
+                    previous = selective_membership.get(task_id)
+                    if previous is not None:
+                        raise ValueError(
+                            f"Atividade {task_id} pertence a mais de um grupo "
+                            f"seletivo: {previous} e {group.id}"
+                        )
+                    selective_membership[task_id] = group.id
+
         bad_caps = {k: v for k, v in self.capacities.items() if v < 0}
         if bad_caps:
             raise ValueError(f"Capacidades devem ser >= 0: {bad_caps}")
