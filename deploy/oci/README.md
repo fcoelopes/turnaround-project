@@ -1,6 +1,11 @@
-# Deploy na OCI
+# Deploy na OCI com Docker Compose
 
-Arquitetura:
+> **Alternativa containerizada.** Este documento descreve a opção Docker/Compose.
+> A VPS de produção usada pelo workflow `deploy-vps.yml` atualmente segue outra arquitetura:
+> **uv + systemd + Caddy**, documentada em `docs/deploy-automatico-vps.md`.
+> Não misture os dois procedimentos na mesma instalação.
+
+Arquitetura desta alternativa:
 
 Internet -> Caddy (80/443, TLS automático) -> Streamlit (8501 somente na rede Docker)
 
