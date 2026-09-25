@@ -62,6 +62,9 @@ class ExecutionSessionRecord(Base):
     current_time: Mapped[float] = mapped_column(Float, default=0.0)
     observed_events_json: Mapped[str] = mapped_column(Text, default="{}")
     human_selections_json: Mapped[str] = mapped_column(Text, default="{}")
+    selected_optional_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    scenario_capacities_json: Mapped[str] = mapped_column(Text, default="{}")
+    stability_weight: Mapped[float] = mapped_column(Float, default=1.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
@@ -185,6 +188,9 @@ class ExecutionSessionSnapshot:
     current_time: float
     observed_events: dict[str, list[str]]
     human_selections: dict[str, list[str]]
+    selected_optional_ids: list[str]
+    scenario_capacities: dict[str, float]
+    stability_weight: float
 
 
 @dataclass(frozen=True)
@@ -198,6 +204,15 @@ class ExecutionEvent:
 
 def _json_dump(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _json_load_list(raw: str | None) -> list[Any]:
+    if not raw:
+        return []
+    value = json.loads(raw)
+    if not isinstance(value, list):
+        raise ValueError("JSON persistido deveria ser lista")
+    return value
 
 
 def _json_load_dict(raw: str | None) -> dict[str, Any]:
@@ -276,6 +291,9 @@ class ExecutionStore:
                     current_time=float(initial_current_time),
                     observed_events_json="{}",
                     human_selections_json="{}",
+                    selected_optional_ids_json="[]",
+                    scenario_capacities_json="{}",
+                    stability_weight=1.0,
                     created_at=utc_now(),
                     updated_at=utc_now(),
                 )
@@ -323,6 +341,9 @@ class ExecutionStore:
                 current_time=float(initial_current_time),
                 observed_events_json="{}",
                 human_selections_json="{}",
+                selected_optional_ids_json="[]",
+                scenario_capacities_json="{}",
+                stability_weight=1.0,
                 created_at=utc_now(),
                 updated_at=utc_now(),
             )
@@ -445,6 +466,9 @@ class ExecutionStore:
         current_time: float,
         observed_events: dict[str, list[str]],
         human_selections: dict[str, list[str]],
+        selected_optional_ids: list[str],
+        scenario_capacities: dict[str, float],
+        stability_weight: float,
     ) -> ExecutionSessionSnapshot:
         normalized_events = {
             str(task_id): sorted(set(values))
@@ -456,6 +480,11 @@ class ExecutionStore:
             for group_id, values in human_selections.items()
             if values
         }
+        normalized_optional_ids = sorted(set(selected_optional_ids))
+        normalized_capacities = {
+            str(resource): float(value)
+            for resource, value in scenario_capacities.items()
+        }
 
         with self.SessionLocal.begin() as db:
             record = self._require_session(db, session_id)
@@ -463,6 +492,9 @@ class ExecutionStore:
             old_time = float(record.current_time)
             old_events = _json_load_dict(record.observed_events_json)
             old_selections = _json_load_dict(record.human_selections_json)
+            old_optional_ids = _json_load_list(record.selected_optional_ids_json)
+            old_capacities = _json_load_dict(record.scenario_capacities_json)
+            old_stability_weight = float(record.stability_weight)
 
             changed: dict[str, Any] = {}
             if abs(old_time - float(current_time)) > 1e-9:
@@ -482,6 +514,24 @@ class ExecutionStore:
                 changed["human_selections"] = {
                     "from": old_selections,
                     "to": normalized_selections,
+                }
+            if old_optional_ids != normalized_optional_ids:
+                record.selected_optional_ids_json = _json_dump(normalized_optional_ids)
+                changed["selected_optional_ids"] = {
+                    "from": old_optional_ids,
+                    "to": normalized_optional_ids,
+                }
+            if old_capacities != normalized_capacities:
+                record.scenario_capacities_json = _json_dump(normalized_capacities)
+                changed["scenario_capacities"] = {
+                    "from": old_capacities,
+                    "to": normalized_capacities,
+                }
+            if abs(old_stability_weight - float(stability_weight)) > 1e-9:
+                record.stability_weight = float(stability_weight)
+                changed["stability_weight"] = {
+                    "from": old_stability_weight,
+                    "to": float(stability_weight),
                 }
 
             if changed:
@@ -534,6 +584,15 @@ class ExecutionStore:
                 str(key): list(value)
                 for key, value in _json_load_dict(record.human_selections_json).items()
             },
+            selected_optional_ids=[
+                str(value)
+                for value in _json_load_list(record.selected_optional_ids_json)
+            ],
+            scenario_capacities={
+                str(key): float(value)
+                for key, value in _json_load_dict(record.scenario_capacities_json).items()
+            },
+            stability_weight=float(record.stability_weight),
         )
 
     @staticmethod
