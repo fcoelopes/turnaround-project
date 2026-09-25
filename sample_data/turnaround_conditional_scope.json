@@ -1,10 +1,10 @@
 {
   "deadline": 24,
-  "task_overrides": {
+  "task_uid_overrides": {
     "5": {
       "activation": {
         "kind": "conditional",
-        "conditions": [{"source_task_id": "4", "events": ["bearing_damage"]}],
+        "conditions": [{"source_task_uid": "4", "events": ["bearing_damage"]}],
         "condition_logic": "all"
       },
       "modes": [
@@ -15,14 +15,14 @@
     "6": {
       "activation": {
         "kind": "conditional",
-        "conditions": [{"source_task_id": "4", "events": ["seal_damage"]}],
+        "conditions": [{"source_task_uid": "4", "events": ["seal_damage"]}],
         "condition_logic": "all"
       }
     },
     "7": {
       "activation": {
         "kind": "conditional",
-        "conditions": [{"source_task_id": "4", "events": ["shaft_damage"]}],
+        "conditions": [{"source_task_uid": "4", "events": ["shaft_damage"]}],
         "condition_logic": "all"
       },
       "modes": [
@@ -33,7 +33,7 @@
     "8": {
       "activation": {
         "kind": "conditional",
-        "conditions": [{"source_task_id": "4", "events": ["shaft_damage"]}],
+        "conditions": [{"source_task_uid": "4", "events": ["shaft_damage"]}],
         "condition_logic": "all"
       }
     },
@@ -44,9 +44,9 @@
     {
       "id": "impeller_disposition",
       "operator": "xor",
-      "member_task_ids": ["9", "10"],
+      "member_task_uids": ["9", "10"],
       "when": {
-        "source_task_id": "4",
+        "source_task_uid": "4",
         "events": ["impeller_damage"],
         "event_logic": "any",
         "require_completed": true
