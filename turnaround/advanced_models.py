@@ -192,6 +192,7 @@ class TaskExecution(BaseModel):
     start: float | None = None
     finish: float | None = None
     mode_name: str | None = None
+    skill_assignments: dict[str, list[str]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_times(self):
