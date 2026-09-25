@@ -41,8 +41,8 @@ st.set_page_config(
 apply_app_style()
 hero(
     "Escopo condicional + MRCPSP",
-    "Transforme achados de inspeção em novo escopo e veja o impacto operacional antes de comprometer a janela da parada.",
-    "SCOPE DISCOVERY · REPLANEJAMENTO",
+    "Ative escopo previsto ou crie trabalho realmente descoberto em campo e replaneje a parada sem reescrever o baseline.",
+    "DYNAMIC SCOPE DISCOVERY · REPLANEJAMENTO",
 )
 
 
@@ -1533,6 +1533,7 @@ with tab_export:
         current_time=float(current_time),
         total_cost=float(result.schedule.total_cost),
         new_scope_count=len(new_scope),
+        dynamic_scope_count=len(dynamic_scope_ids),
         strategy=result.schedule.strategy,
         activation_df=activation_df,
         schedule_df=schedule_df,
