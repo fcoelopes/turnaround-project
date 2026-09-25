@@ -1069,7 +1069,7 @@ def build_conditional_management_pdf(
             s["body"],
         ),
         _p(
-            "A cadeia considera precedências ativas, gates do scope discovery e contenção de recursos.",
+            "A cadeia considera precedências ativas, gates do scope discovery, contenção de recursos e, quando habilitado, disputa por pessoas multi-skill.",
             s["muted"],
         ),
         PageBreak(),
@@ -1160,39 +1160,47 @@ def build_conditional_management_pdf(
             ]
         )
 
+    detail_columns = [
+        "ID",
+        "Atividade",
+        "Modo",
+        "Início (h)",
+        "Fim (h)",
+        "Crítica atual",
+        "Controla por",
+    ]
+    detail_widths = [
+        10 * mm,
+        43 * mm,
+        18 * mm,
+        15 * mm,
+        15 * mm,
+        18 * mm,
+        25 * mm,
+    ]
+    if (
+        "Pessoas" in schedule_df.columns
+        and schedule_df["Pessoas"].fillna("—").astype(str).ne("—").any()
+    ):
+        detail_columns.append("Pessoas")
+        detail_widths.append(45 * mm)
+
     story.extend(
         [
             Spacer(1, 5 * mm),
             _p("Detalhamento do cronograma", s["h2"]),
             _dataframe_table(
                 schedule_df,
-                [
-                    "ID",
-                    "Atividade",
-                    "Modo",
-                    "Início (h)",
-                    "Fim (h)",
-                    "Duração (h)",
-                    "Crítica atual",
-                    "Controla por",
-                ],
+                detail_columns,
                 max_rows=60,
-                widths=[
-                    10 * mm,
-                    48 * mm,
-                    20 * mm,
-                    16 * mm,
-                    16 * mm,
-                    18 * mm,
-                    20 * mm,
-                    26 * mm,
-                ],
+                widths=detail_widths,
             ),
             Spacer(1, 4 * mm),
             _p(
                 "Nota metodológica: o MRCPSP atual combina enumeração de modos em espaços pequenos "
-                "e busca heurística em espaços maiores, sempre com SSGS. O resultado é um plano factível, "
-                "não uma prova de ótimo global para instâncias grandes.",
+                "e busca heurística em espaços maiores, sempre com SSGS. Quando multi-skill está habilitado, "
+                "cada vaga de habilidade recebe uma pessoa e a mesma pessoa não pode ocupar duas atividades "
+                "sobrepostas. O resultado é um plano factível, não uma prova de ótimo global para instâncias grandes.",
                 s["muted"],
             ),
         ]

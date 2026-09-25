@@ -32,6 +32,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, rela
 
 from .advanced_models import DiscoveredTask
 from .scope_rules import ScopeRuleRow
+from .workforce import WorkforceProfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -316,6 +317,15 @@ class ScopeRuleRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class WorkforceProfileRecord(Base):
+    __tablename__ = "workforce_profiles"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ExecutionEventRecord(Base):
     __tablename__ = "execution_events"
 
@@ -416,6 +426,38 @@ class ExecutionStore:
             expire_on_commit=False,
             class_=Session,
         )
+
+    def load_workforce_profile(
+        self,
+        profile_id: str = "default",
+    ) -> WorkforceProfile:
+        with self.SessionLocal() as db:
+            record = db.get(WorkforceProfileRecord, profile_id)
+            if record is None:
+                return WorkforceProfile()
+            return WorkforceProfile.model_validate_json(record.payload_json)
+
+    def save_workforce_profile(
+        self,
+        profile: WorkforceProfile,
+        profile_id: str = "default",
+    ) -> WorkforceProfile:
+        payload = profile.model_dump_json()
+        now = utc_now()
+        with self.SessionLocal.begin() as db:
+            record = db.get(WorkforceProfileRecord, profile_id)
+            if record is None:
+                record = WorkforceProfileRecord(
+                    id=profile_id,
+                    payload_json=payload,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(record)
+            else:
+                record.payload_json = payload
+                record.updated_at = now
+        return profile
 
     def load_scope_rules(self, project_key: str) -> list[ScopeRuleRow]:
         with self.SessionLocal() as db:

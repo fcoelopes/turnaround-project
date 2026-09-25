@@ -14,13 +14,17 @@ from turnaround import (
     ExecutionMode,
     ExecutionState,
     ExecutionStore,
+    Person,
     Precedence,
     ScopeRuleRow,
     TaskExecution,
+    WorkforceProfile,
     analyze_effective_criticality,
     apply_scope_config,
+    assign_people_to_skills,
     apply_scope_rule_rows,
     discover_resource_catalog,
+    effective_capacities,
     evaluate_scope_decisions,
     materialize_dynamic_scope,
     next_discovered_task_id,
@@ -28,6 +32,8 @@ from turnaround import (
     resolve_activation,
     reschedule_from_state,
     solve_mrcpsp,
+    skill_capacities,
+    skill_requirements,
     task_reference_catalog,
     upgrade_database,
 )
@@ -113,6 +119,301 @@ def _format_scope_event_routes(routes: dict[str, list[str]]) -> str:
     )
 
 
+def _next_person_id(rows: list[dict]) -> str:
+    existing = {
+        str(row.get("ID", "")).strip()
+        for row in rows
+    }
+    index = 1
+    while True:
+        candidate = f"P-{index:03d}"
+        if candidate not in existing:
+            return candidate
+        index += 1
+
+
+def _render_people_tab(
+    store: ExecutionStore,
+    project=None,
+) -> WorkforceProfile:
+    profile = store.load_workforce_profile()
+    st.markdown("### Pessoas e habilidades")
+    st.caption(
+        "Cadastre pessoas reais e marque quais recursos do cronograma representam "
+        "habilidades humanas. Uma pessoa multi-skill só pode ocupar uma vaga por vez."
+    )
+
+    enabled = st.checkbox(
+        "Aplicar multi-skill ao scheduling",
+        value=bool(profile.enabled),
+        key="workforce_enabled",
+    )
+
+    project_resources: list[str] = []
+    if project is not None:
+        project_resources = list(discover_resource_catalog(project))
+        selected_skills = st.multiselect(
+            "Recursos do plano tratados como habilidades humanas",
+            options=project_resources,
+            default=[
+                skill
+                for skill in profile.skills
+                if skill in project_resources
+            ],
+            help=(
+                "Ex.: Mecânica, Elétrica, Soldagem. Equipamentos como Guindaste "
+                "continuam como recursos agregados e não devem ser selecionados."
+            ),
+            key="workforce_project_skills",
+        )
+        custom_default = "; ".join(
+            skill
+            for skill in profile.skills
+            if skill not in project_resources
+        )
+    else:
+        selected_skills = []
+        custom_default = "; ".join(profile.skills)
+        st.info(
+            "A equipe pode ser cadastrada sem um projeto. Quando um XML for carregado, "
+            "você poderá classificar os recursos do plano que representam habilidades humanas."
+        )
+
+    custom_skills = st.text_input(
+        "Outras habilidades",
+        value=custom_default,
+        key="workforce_custom_skills",
+        placeholder="Instrumentação; Andaime; Caldeiraria",
+        help="Separe por ;. Também serve para manter uma skill mesmo sem pessoa qualificada ativa.",
+    )
+    configured_skills = []
+    for skill in [*selected_skills, *_split_scope_values(custom_skills)]:
+        if skill and skill not in configured_skills:
+            configured_skills.append(skill)
+
+    stored_rows = [
+        {
+            "Excluir": False,
+            "ID": person.id,
+            "Nome": person.name,
+            "Ativo": person.active,
+            "Habilidades": "; ".join(person.skills),
+            "Observação": person.notes or "",
+        }
+        for person in profile.people
+    ]
+    draft_key = "workforce_people_draft"
+    editor_key = "workforce_people_editor"
+    if draft_key not in st.session_state:
+        st.session_state[draft_key] = stored_rows
+
+    add_col, save_col, discard_col = st.columns([1, 1, 1])
+    with add_col:
+        if st.button("➕ Adicionar pessoa", type="primary", key="add_workforce_person"):
+            draft = list(st.session_state.get(draft_key, []))
+            draft.append(
+                {
+                    "Excluir": False,
+                    "ID": _next_person_id(draft),
+                    "Nome": "",
+                    "Ativo": True,
+                    "Habilidades": "",
+                    "Observação": "",
+                }
+            )
+            st.session_state[draft_key] = draft
+            st.rerun()
+
+    people_df = pd.DataFrame(st.session_state[draft_key])
+    if people_df.empty:
+        people_df = pd.DataFrame(
+            columns=[
+                "Excluir",
+                "ID",
+                "Nome",
+                "Ativo",
+                "Habilidades",
+                "Observação",
+            ]
+        )
+
+    edited_people_df = st.data_editor(
+        people_df,
+        key=editor_key,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        column_config={
+            "Excluir": st.column_config.CheckboxColumn("Excluir"),
+            "ID": st.column_config.TextColumn(
+                "ID",
+                help="Identificador estável da pessoa no roster.",
+            ),
+            "Nome": st.column_config.TextColumn("Nome"),
+            "Ativo": st.column_config.CheckboxColumn(
+                "Ativo",
+                help="Pessoa disponível para este pool de planejamento.",
+            ),
+            "Habilidades": st.column_config.TextColumn(
+                "Habilidades",
+                help="Separe por ;. Ex.: Mecânica; Soldagem",
+            ),
+            "Observação": st.column_config.TextColumn("Observação"),
+        },
+    )
+    st.session_state[draft_key] = edited_people_df.to_dict("records")
+
+    with save_col:
+        if st.button("💾 Salvar equipe", key="save_workforce"):
+            try:
+                people: list[Person] = []
+                for row_number, raw in enumerate(
+                    edited_people_df.to_dict("records"),
+                    start=1,
+                ):
+                    if bool(raw.get("Excluir", False)):
+                        continue
+                    person_id = str(raw.get("ID", "") or "").strip()
+                    name = str(raw.get("Nome", "") or "").strip()
+                    if not person_id and not name:
+                        continue
+                    people.append(
+                        Person(
+                            id=person_id,
+                            name=name,
+                            active=bool(raw.get("Ativo", True)),
+                            skills=_split_scope_values(raw.get("Habilidades", "")),
+                            notes=(
+                                str(raw.get("Observação", "") or "").strip()
+                                or None
+                            ),
+                        )
+                    )
+
+                saved = WorkforceProfile(
+                    enabled=enabled,
+                    skills=configured_skills,
+                    people=people,
+                )
+                store.save_workforce_profile(saved)
+                st.session_state.pop(draft_key, None)
+                st.session_state.pop(editor_key, None)
+                st.success(
+                    f"Equipe salva: {len(saved.people)} pessoa(s), "
+                    f"{len(saved.skills)} habilidade(s)."
+                )
+                st.rerun()
+            except (ValueError, TypeError) as exc:
+                st.error(f"Não foi possível salvar a equipe: {exc}")
+
+    with discard_col:
+        if st.button("↩ Descartar alterações", key="discard_workforce"):
+            st.session_state.pop(draft_key, None)
+            st.session_state.pop(editor_key, None)
+            st.rerun()
+
+    current = store.load_workforce_profile()
+    if current.people:
+        st.markdown("#### Cobertura de habilidades")
+        capacities = skill_capacities(current)
+        resource_catalog = (
+            discover_resource_catalog(project)
+            if project is not None
+            else {}
+        )
+        coverage_rows = []
+        for skill in current.skills:
+            entry = resource_catalog.get(skill)
+            coverage_rows.append(
+                {
+                    "Habilidade": skill,
+                    "Pessoas ativas qualificadas": int(capacities.get(skill, 0)),
+                    "Pessoas qualificadas no cadastro": sum(
+                        1
+                        for person in current.people
+                        if skill in person.skills
+                    ),
+                    "Maior demanda de um modo": (
+                        float(entry.max_demand)
+                        if entry is not None
+                        else "—"
+                    ),
+                    "Atividades/modos usam": (
+                        len(entry.task_ids)
+                        if entry is not None
+                        else 0
+                    ),
+                }
+            )
+        st.dataframe(
+            pd.DataFrame(coverage_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if current.enabled and project is not None:
+            uncovered = [
+                row
+                for row in coverage_rows
+                if row["Maior demanda de um modo"] != "—"
+                and float(row["Maior demanda de um modo"])
+                > float(row["Pessoas ativas qualificadas"])
+            ]
+            if uncovered:
+                status(
+                    (
+                        "Há habilidades cuja maior demanda individual supera o número "
+                        "de pessoas ativas qualificadas: "
+                        + ", ".join(row["Habilidade"] for row in uncovered)
+                    ),
+                    tone="warn",
+                    title="Cobertura multi-skill insuficiente.",
+                )
+
+            impossible_modes = []
+            for task in project.tasks:
+                for mode in task.modes:
+                    requirements = skill_requirements(
+                        mode.resources,
+                        current,
+                    )
+                    if not requirements:
+                        continue
+                    if assign_people_to_skills(requirements, current) is None:
+                        impossible_modes.append(
+                            {
+                                "ID": task.id,
+                                "Atividade": task.name,
+                                "Modo": mode.name,
+                                "Habilidades exigidas": "; ".join(
+                                    f"{skill}={count}"
+                                    for skill, count in requirements.items()
+                                ),
+                            }
+                        )
+            if impossible_modes:
+                status(
+                    (
+                        f"{len(impossible_modes)} modo(s) têm quantidade por skill aparentemente "
+                        "suficiente, mas não existe matching de pessoas que preencha todas as vagas."
+                    ),
+                    tone="warn",
+                    title="Composição de equipe impossível.",
+                )
+                with st.expander("Ver modos com conflito de composição", expanded=False):
+                    st.dataframe(
+                        pd.DataFrame(impossible_modes),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+    st.caption(
+        "Nesta primeira versão, habilidade é binária: a pessoa possui ou não possui. "
+        "Níveis de proficiência e produtividade entram em uma evolução posterior."
+    )
+    return current
+
+
 def _next_scope_rule_id(rows: list[dict]) -> str:
     existing = {
         str(row.get("Regra", "")).strip()
@@ -179,7 +480,8 @@ def render_manual() -> None:
     st.markdown(
         """
 - **Operação:** carregar o plano, avançar a execução, registrar achados, resolver decisões e acompanhar impacto.
-- **Configuração:** regras de escopo, capacidades dos recursos, estabilidade do replanejamento e sessão persistida.
+- **Configuração:** regras de escopo, capacidades de equipamentos/recursos, estabilidade e sessão persistida.
+- **Pessoas:** roster da parada, habilidades humanas e cobertura multi-skill.
 - **Manual:** este guia e o glossário rápido.
         """
     )
@@ -217,8 +519,9 @@ regra previamente cadastrada.
             """
 1. Envie somente o **XML**.
 2. Vá para **Configuração** e cadastre regras na planilha; o JSON é opcional.
-3. Confira as capacidades dos recursos. Recurso demandado sem capacidade começa em 0.
-4. Volte para **Operação**, informe a hora corrente e registre os achados.
+3. Na aba **Pessoas**, cadastre o roster e classifique quais recursos do plano são habilidades humanas.
+4. Confira as capacidades dos recursos não humanos em **Configuração**.
+5. Volte para **Operação**, informe a hora corrente e registre os achados.
 5. Resolva apenas as decisões que realmente forem disparadas.
 6. Gere o PDF quando a visão executiva representar o cenário que você quer comunicar.
         """
@@ -305,8 +608,10 @@ def load_project():
     return project, project_name, source_kind
 
 
-operation_tab, config_tab, manual_tab = st.tabs(
-    ["▶️ Operação", "⚙️ Configuração", "📘 Manual"]
+execution_store = _get_execution_store()
+
+operation_tab, config_tab, people_tab, manual_tab = st.tabs(
+    ["▶️ Operação", "⚙️ Configuração", "👥 Pessoas", "📘 Manual"]
 )
 
 with manual_tab:
@@ -314,6 +619,9 @@ with manual_tab:
 
 with operation_tab:
     project, project_name, project_source_kind = load_project()
+
+with people_tab:
+    workforce = _render_people_tab(execution_store, project)
 
 if project is None:
     with config_tab:
@@ -368,8 +676,6 @@ project_key = hashlib.sha256(
         separators=(",", ":"),
     ).encode("utf-8")
 ).hexdigest()
-
-execution_store = _get_execution_store()
 
 with config_tab:
     st.markdown("### Configuração de regras de escopo")
@@ -787,7 +1093,13 @@ base_capacities = dict(base_project.capacities)
 unknown_resources = [
     entry
     for entry in resource_catalog.values()
-    if not entry.capacity_defined
+    if (
+        not entry.capacity_defined
+        and not (
+            workforce.enabled
+            and entry.name in workforce.skills
+        )
+    )
 ]
 
 with config_tab:
@@ -823,6 +1135,11 @@ with config_tab:
             title="Capacidades de recursos precisam ser informadas.",
         )
 
+    workforce_skill_capacities = (
+        skill_capacities(workforce)
+        if workforce.enabled
+        else {}
+    )
     cols = st.columns(min(4, max(1, len(resource_catalog))))
     scenario_capacities: dict[str, float] = {}
     for i, (resource, entry) in enumerate(resource_catalog.items()):
@@ -857,15 +1174,38 @@ with config_tab:
             f"Usado em {len(entry.task_ids)} atividade(s)."
         )
         with cols[i % len(cols)]:
-            scenario_capacities[resource] = st.slider(
-                resource,
-                min_value=0.0,
-                max_value=float(upper),
-                value=default_value,
-                step=step,
-                key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
-                help=help_text,
-            )
+            if workforce.enabled and resource in workforce.skills:
+                scenario_capacities[resource] = float(
+                    workforce_skill_capacities.get(resource, 0.0)
+                )
+                st.metric(
+                    resource,
+                    f"{scenario_capacities[resource]:g} pessoa(s)",
+                    help=(
+                        "Capacidade derivada das pessoas ativas qualificadas. "
+                        "Para esta habilidade, o slider agregado é substituído "
+                        "pela alocação individual multi-skill."
+                    ),
+                )
+            else:
+                scenario_capacities[resource] = st.slider(
+                    resource,
+                    min_value=0.0,
+                    max_value=float(upper),
+                    value=default_value,
+                    step=step,
+                    key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
+                    help=help_text,
+                )
+
+    effective_base_capacities = effective_capacities(
+        base_capacities,
+        workforce,
+    )
+    effective_scenario_capacities = effective_capacities(
+        scenario_capacities,
+        workforce,
+    )
 
     resource_scenario_df = pd.DataFrame(
         [
@@ -878,6 +1218,11 @@ with config_tab:
                 ),
                 "Maior demanda": float(entry.max_demand),
                 "Cenário": float(scenario_capacities[resource]),
+                "Fonte da capacidade": (
+                    "Pessoas / multi-skill"
+                    if workforce.enabled and resource in workforce.skills
+                    else "Capacidade agregada"
+                ),
                 "Δ vs base": (
                     float(scenario_capacities[resource]) - float(entry.base_capacity)
                     if entry.base_capacity is not None
@@ -902,18 +1247,42 @@ with config_tab:
         mode_rows = []
         for task in base_project.tasks:
             for mode in task.modes:
-                feasible_base = all(
-                    demand <= base_capacities.get(resource, 0.0) + 1e-9
-                    for resource, demand in mode.resources.items()
+                human_requirements = skill_requirements(
+                    mode.resources,
+                    workforce,
                 )
-                feasible_scenario = all(
-                    demand <= scenario_capacities.get(resource, 0.0) + 1e-9
-                    for resource, demand in mode.resources.items()
+                workforce_match = (
+                    assign_people_to_skills(
+                        human_requirements,
+                        workforce,
+                    )
+                    if human_requirements
+                    else {}
+                )
+                feasible_base = (
+                    all(
+                        demand <= effective_base_capacities.get(resource, 0.0) + 1e-9
+                        for resource, demand in mode.resources.items()
+                    )
+                    and workforce_match is not None
+                )
+                feasible_scenario = (
+                    all(
+                        demand <= effective_scenario_capacities.get(resource, 0.0) + 1e-9
+                        for resource, demand in mode.resources.items()
+                    )
+                    and workforce_match is not None
                 )
                 missing_base = [
                     resource
                     for resource in mode.resources
-                    if resource not in base_capacities
+                    if (
+                        resource not in base_capacities
+                        and not (
+                            workforce.enabled
+                            and resource in workforce.skills
+                        )
+                    )
                 ]
                 mode_rows.append(
                     {
@@ -985,6 +1354,7 @@ try:
         baseline_tasks,
         planned_project.capacities,
         deadline=planned_project.deadline,
+        workforce=workforce,
     )
 except ValueError as exc:
     base_baseline_error = str(exc)
@@ -996,6 +1366,7 @@ try:
         baseline_tasks,
         project.capacities,
         deadline=project.deadline,
+        workforce=workforce,
     )
 except ValueError as exc:
     scenario_baseline_error = str(exc)
@@ -1078,6 +1449,10 @@ with operation_tab:
                 start=item.start,
                 finish=item.finish,
                 mode_name=item.mode_name,
+                skill_assignments={
+                    skill: list(person_ids)
+                    for skill, person_ids in item.skill_assignments.items()
+                },
             )
         elif item.start < current_time < item.finish:
             executions[item.task_id] = TaskExecution(
@@ -1085,6 +1460,10 @@ with operation_tab:
                 start=item.start,
                 finish=item.finish,
                 mode_name=item.mode_name,
+                skill_assignments={
+                    skill: list(person_ids)
+                    for skill, person_ids in item.skill_assignments.items()
+                },
             )
 
     st.markdown("#### Dynamic scope discovery")
@@ -1429,6 +1808,7 @@ with operation_tab:
         state,
         reference_start_times=reference_start_times,
         stability_weight=stability_weight,
+        workforce=workforce,
     )
 
     if decision_engine.pending_human:
@@ -1568,6 +1948,7 @@ with operation_tab:
         state,
         reference_start_times=reference_start_times,
         stability_weight=stability_weight,
+        workforce=workforce,
     )
     state = decision_engine.state
 
@@ -1738,6 +2119,7 @@ with operation_tab:
             state,
             reference_start_times=reference_start_times,
             stability_weight=stability_weight,
+            workforce=workforce,
         )
     except ValueError as exc:
         base_result_error = str(exc)
@@ -1748,6 +2130,7 @@ with operation_tab:
             state,
             reference_start_times=reference_start_times,
             stability_weight=stability_weight,
+            workforce=workforce,
         )
     except ValueError as exc:
         st.error(f"Cenário de recursos inviável: {exc}")
@@ -1778,6 +2161,10 @@ with operation_tab:
     )
 
     all_items = result.frozen_tasks + result.schedule.tasks
+    person_name_by_id = {
+        person.id: person.name
+        for person in workforce.people
+    }
     criticality = analyze_effective_criticality(
         project=project,
         effective_tasks=result.effective_tasks,
@@ -1820,6 +2207,16 @@ with operation_tab:
                     f"{key}:{value:g}"
                     for key, value in item.resources.items()
                 ),
+                "Pessoas": "; ".join(
+                    (
+                        f"{skill}: "
+                        + ", ".join(
+                            person_name_by_id.get(person_id, person_id)
+                            for person_id in person_ids
+                        )
+                    )
+                    for skill, person_ids in item.skill_assignments.items()
+                ) or "—",
             }
             for item in sorted(
                 all_items,
@@ -1889,6 +2286,7 @@ with operation_tab:
             for key, value in sorted(scenario_capacities.items())
         },
         "stability_weight": float(stability_weight),
+        "workforce": workforce.model_dump(mode="json"),
         "events": {
             key: sorted(value)
             for key, value in sorted(events.items())
@@ -1925,6 +2323,10 @@ with operation_tab:
                     "start": float(item.start),
                     "finish": float(item.finish),
                     "fixed": bool(item.fixed),
+                    "skill_assignments": {
+                        skill: list(person_ids)
+                        for skill, person_ids in item.skill_assignments.items()
+                    },
                 }
                 for item in all_items
             ],
@@ -1964,6 +2366,15 @@ with operation_tab:
                 "Valor": (
                     ", ".join(row.id for row in stored_scope_rules if row.enabled)
                     or "—"
+                ),
+            },
+            {
+                "Parâmetro": "Multi-skill",
+                "Valor": (
+                    f"{len(workforce.active_people)} pessoa(s) ativa(s) · "
+                    f"{len(workforce.skills)} habilidade(s)"
+                    if workforce.enabled
+                    else "desativado"
                 ),
             },
             {"Parâmetro": "Estratégia solver", "Valor": result.schedule.strategy},

@@ -10,7 +10,9 @@ from turnaround import (
     DiscoveredTask,
     ExecutionMode,
     ExecutionStore,
+    Person,
     Precedence,
+    WorkforceProfile,
     upgrade_database,
 )
 
@@ -33,6 +35,7 @@ def test_alembic_creates_execution_schema_and_sqlite_pragmas(tmp_path):
         "discovered_task_predecessors",
         "discovered_task_successors",
         "execution_events",
+        "workforce_profiles",
     }.issubset(tables)
 
     with store.engine.connect() as connection:
@@ -261,7 +264,7 @@ def test_upgrade_repairs_unversioned_initial_schema_without_deleting_data(tmp_pa
             text("SELECT project_name FROM execution_sessions WHERE id='recover-me'")
         ).scalar_one()
 
-    assert revision == "0002_scope_rule_rows"
+    assert revision == "0003_multiskill_workforce"
     assert preserved == "Parada interrompida"
 
 
@@ -282,4 +285,35 @@ def test_concurrent_upgrade_database_calls_are_serialized(tmp_path):
             text("SELECT version_num FROM alembic_version")
         ).scalars().all()
 
-    assert revisions == ["0002_scope_rule_rows"]
+    assert revisions == ["0003_multiskill_workforce"]
+
+
+
+def test_workforce_profile_survives_store_restart(tmp_path):
+    url = _database_url(tmp_path)
+    upgrade_database(url)
+
+    profile = WorkforceProfile(
+        enabled=True,
+        skills=["Mecânica", "Soldagem", "Elétrica"],
+        people=[
+            Person(
+                id="P-001",
+                name="Ana",
+                skills=["Mecânica", "Soldagem"],
+            ),
+            Person(
+                id="P-002",
+                name="Bruno",
+                skills=["Mecânica"],
+            ),
+        ],
+    )
+
+    first = ExecutionStore(url)
+    first.save_workforce_profile(profile)
+
+    second = ExecutionStore(url)
+    restored = second.load_workforce_profile()
+
+    assert restored == profile

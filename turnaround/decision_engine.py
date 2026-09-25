@@ -6,6 +6,7 @@ from itertools import combinations
 from .activation import resolve_activation
 from .advanced_models import ExecutionState, LogicalGroup, TurnaroundProject
 from .reschedule import RescheduleResult, reschedule_from_state
+from .workforce import WorkforceProfile, effective_capacities
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,7 @@ def _candidate_selections(
 def _resource_gaps_for_selection(
     project: TurnaroundProject,
     selection: tuple[str, ...],
+    workforce: WorkforceProfile | None = None,
 ) -> dict[str, float]:
     """Retorna faltas estáticas de capacidade para os ramos selecionados.
 
@@ -108,13 +110,14 @@ def _resource_gaps_for_selection(
     menor falta total apenas para explicar o gargalo ao usuário.
     """
     task_by_id = {task.id: task for task in project.tasks}
+    capacities = effective_capacities(project.capacities, workforce)
     gaps: dict[str, float] = {}
 
     for task_id in selection:
         task = task_by_id[task_id]
         feasible_mode_exists = any(
             all(
-                demand <= project.capacities.get(resource, 0.0) + 1e-9
+                demand <= capacities.get(resource, 0.0) + 1e-9
                 for resource, demand in mode.resources.items()
             )
             for mode in task.modes
@@ -125,9 +128,9 @@ def _resource_gaps_for_selection(
         mode_shortages: list[tuple[float, dict[str, float]]] = []
         for mode in task.modes:
             shortages = {
-                resource: demand - project.capacities.get(resource, 0.0)
+                resource: demand - capacities.get(resource, 0.0)
                 for resource, demand in mode.resources.items()
-                if demand > project.capacities.get(resource, 0.0) + 1e-9
+                if demand > capacities.get(resource, 0.0) + 1e-9
             }
             mode_shortages.append((sum(shortages.values()), shortages))
 
@@ -150,6 +153,7 @@ def _evaluate_selection(
     max_mode_combinations: int,
     reference_start_times: dict[str, float] | None,
     stability_weight: float,
+    workforce: WorkforceProfile | None,
 ) -> DecisionImpact:
     selections = {
         key: list(value)
@@ -158,7 +162,11 @@ def _evaluate_selection(
     selections[group.id] = list(selection)
     candidate_state = _copy_state_with_selections(state, selections)
     task_by_id = {task.id: task for task in project.tasks}
-    resource_gaps = _resource_gaps_for_selection(project, selection)
+    resource_gaps = _resource_gaps_for_selection(
+        project,
+        selection,
+        workforce=workforce,
+    )
 
     try:
         result: RescheduleResult = reschedule_from_state(
@@ -167,6 +175,7 @@ def _evaluate_selection(
             max_mode_combinations=max_mode_combinations,
             reference_start_times=reference_start_times,
             stability_weight=stability_weight,
+            workforce=workforce,
         )
     except ValueError as exc:
         return DecisionImpact(
@@ -231,6 +240,7 @@ def evaluate_scope_decisions(
     max_mode_combinations: int = 2000,
     reference_start_times: dict[str, float] | None = None,
     stability_weight: float = 0.0,
+    workforce: WorkforceProfile | None = None,
 ) -> DecisionEngineResult:
     """Avalia decisões de escopo sob demanda sem decidir a ação técnica.
 
@@ -281,6 +291,7 @@ def evaluate_scope_decisions(
                 max_mode_combinations=max_mode_combinations,
                 reference_start_times=reference_start_times,
                 stability_weight=stability_weight,
+                workforce=workforce,
             )
             selections = {
                 key: list(value)
@@ -341,6 +352,7 @@ def evaluate_scope_decisions(
                 max_mode_combinations=max_mode_combinations,
                 reference_start_times=reference_start_times,
                 stability_weight=stability_weight,
+                workforce=workforce,
             )
             for selection in candidates
         ]

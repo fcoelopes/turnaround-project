@@ -84,6 +84,29 @@ As regras são armazenadas em `scope_rule_rows`, vinculadas ao fingerprint do
 baseline + sidecar. O JSON existente continua compatível; a planilha funciona
 como uma camada adicional.
 
+### Multi-skill workforce (MS-RCPSP)
+
+A página avançada possui a aba **Pessoas** para cadastrar o roster da parada e
+classificar quais recursos do cronograma representam habilidades humanas.
+
+O modelo segue a formulação-base do MS-RCPSP:
+
+- uma pessoa pode possuir uma ou mais habilidades;
+- cada atividade/modo pode exigir uma quantidade inteira de pessoas por habilidade;
+- o scheduler escolhe quais pessoas atendem cada vaga;
+- uma mesma pessoa não pode ocupar duas vagas simultâneas, mesmo sendo multi-skill;
+- recursos não humanos (guindaste, munck, ferramenta especial etc.) continuam
+  usando capacidade agregada normal;
+- atividades em andamento congelam também as pessoas já alocadas.
+
+Exemplo: se Ana possui `Mecânica; Soldagem`, ela conta como qualificada para
+ambas, mas **não** permite executar simultaneamente uma atividade que exige
+1 Mecânica e outra que exige 1 Soldagem sem uma segunda pessoa disponível.
+
+Nesta primeira versão a habilidade é binária (possui/não possui). Níveis de
+proficiência, produtividade, aprendizagem e calendários individuais são
+extensões futuras e não são inferidos pelo scheduler.
+
 ### Dynamic scope discovery
 
 O framework diferencia dois tipos de mudança de escopo durante a parada:
@@ -416,7 +439,7 @@ bomba só é liberado depois dessa atividade quando ela pertence ao escopo ativo
 O núcleo foi separado da interface para substituir o heurístico por **CP-SAT/MILP** sem refazer a tela. Próximas camadas sugeridas:
 
 - calendários e turnos 24x7;
-- multi-skill RCPSP;
+- níveis de proficiência e produtividade por habilidade;
 - crew sizing e dimensionamento multi-skill;
 - custos de overtime e contratação;
 - restrições de área, LOTO, acesso, guindaste e simultaneidade;
