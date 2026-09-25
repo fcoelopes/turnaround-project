@@ -14,6 +14,7 @@ from turnaround import (
     TurnaroundTask,
     apply_scope_config,
     discover_resource_catalog,
+    evaluate_scope_decisions,
     project_from_tasks,
     resolve_activation,
     reschedule_from_state,
@@ -832,3 +833,237 @@ def test_missing_resource_capacity_is_explicit_and_scenario_can_enable_it():
     )
     result = solve_mrcpsp(scenario.tasks, scenario.capacities)
     assert result.makespan == pytest.approx(3)
+
+
+def test_lazy_human_decision_stays_dormant_until_trigger_occurs():
+    inspection = task("I", "Inspecionar", 1)
+    repair = task(
+        "R",
+        "Reparar",
+        4,
+        activation=ActivationRule(kind="optional"),
+    )
+    replace = task(
+        "S",
+        "Substituir",
+        2,
+        activation=ActivationRule(kind="optional"),
+    )
+    project = TurnaroundProject(
+        tasks=[inspection, repair, replace],
+        capacities={},
+        logical_groups=[
+            LogicalGroup(
+                id="disposition",
+                operator="xor",
+                member_task_ids=["R", "S"],
+                resolution_mode="human",
+                when=TriggerCondition(
+                    source_task_id="I",
+                    events=["damage"],
+                ),
+            )
+        ],
+    )
+
+    dormant = evaluate_scope_decisions(project, ExecutionState())
+    assert dormant.pending_human == []
+    assert dormant.auto_resolved == {}
+
+    triggered_state = ExecutionState(
+        current_time=1,
+        events={"I": ["damage"]},
+        executions={
+            "I": TaskExecution(
+                status="completed",
+                start=0,
+                finish=1,
+                mode_name="base",
+            )
+        },
+    )
+    triggered = evaluate_scope_decisions(project, triggered_state)
+
+    assert len(triggered.pending_human) == 1
+    decision = triggered.pending_human[0]
+    assert decision.group_id == "disposition"
+    assert len(decision.impacts) == 2
+    assert {impact.selection for impact in decision.impacts} == {
+        ("R",),
+        ("S",),
+    }
+    assert triggered.state.group_selections == {}
+
+
+def test_optimize_decision_auto_applies_best_shadow_scenario():
+    inspection = task("I", "Inspecionar", 1)
+    repair = task(
+        "R",
+        "Reparar",
+        5,
+        predecessors=["I"],
+        activation=ActivationRule(kind="optional"),
+    )
+    replace = task(
+        "S",
+        "Substituir",
+        2,
+        predecessors=["I"],
+        activation=ActivationRule(kind="optional"),
+    )
+    close = task("C", "Fechar", 1, predecessors=["R", "S"])
+    project = TurnaroundProject(
+        tasks=[inspection, repair, replace, close],
+        capacities={},
+        deadline=10,
+        logical_groups=[
+            LogicalGroup(
+                id="disposition",
+                operator="xor",
+                member_task_ids=["R", "S"],
+                resolution_mode="optimize",
+                when=TriggerCondition(
+                    source_task_id="I",
+                    events=["damage"],
+                ),
+            )
+        ],
+    )
+    state = ExecutionState(
+        current_time=1,
+        events={"I": ["damage"]},
+        executions={
+            "I": TaskExecution(
+                status="completed",
+                start=0,
+                finish=1,
+                mode_name="base",
+            )
+        },
+    )
+
+    decision_result = evaluate_scope_decisions(project, state)
+
+    assert decision_result.auto_resolved == {"disposition": ["S"]}
+    assert decision_result.state.group_selections == {
+        "disposition": ["S"]
+    }
+    auto = next(
+        decision
+        for decision in decision_result.decisions
+        if decision.group_id == "disposition"
+    )
+    assert auto.status == "auto_resolved"
+    assert auto.applied_selection == ("S",)
+    assert auto.recommended_selection == ("S",)
+
+    schedule = reschedule_from_state(project, decision_result.state)
+    assert schedule.schedule.makespan == pytest.approx(4)
+
+
+def test_event_decision_routes_without_human_selection():
+    inspection = task("I", "Inspecionar", 1)
+    repair = task(
+        "R",
+        "Reparar",
+        4,
+        activation=ActivationRule(kind="optional"),
+    )
+    replace = task(
+        "S",
+        "Substituir",
+        3,
+        activation=ActivationRule(kind="optional"),
+    )
+    project = TurnaroundProject(
+        tasks=[inspection, repair, replace],
+        capacities={},
+        logical_groups=[
+            LogicalGroup(
+                id="disposition",
+                operator="xor",
+                member_task_ids=["R", "S"],
+                resolution_mode="event",
+                event_routes={
+                    "repairable": ["R"],
+                    "replacement_required": ["S"],
+                },
+                when=TriggerCondition(
+                    source_task_id="I",
+                    events=["repairable", "replacement_required"],
+                ),
+            )
+        ],
+    )
+    state = ExecutionState(
+        current_time=1,
+        events={"I": ["replacement_required"]},
+        executions={
+            "I": TaskExecution(
+                status="completed",
+                start=0,
+                finish=1,
+                mode_name="base",
+            )
+        },
+    )
+
+    decision_result = evaluate_scope_decisions(project, state)
+
+    assert decision_result.pending_human == []
+    assert decision_result.auto_resolved == {
+        "disposition": ["S"]
+    }
+    activation = resolve_activation(project, decision_result.state)
+    assert "S" in activation.active_ids
+    assert "R" in activation.inactive_ids
+
+
+def test_event_decision_reports_trigger_without_matching_route():
+    inspection = task("I", "Inspecionar", 1)
+    repair = task(
+        "R",
+        "Reparar",
+        4,
+        activation=ActivationRule(kind="optional"),
+    )
+    replace = task(
+        "S",
+        "Substituir",
+        3,
+        activation=ActivationRule(kind="optional"),
+    )
+    project = TurnaroundProject(
+        tasks=[inspection, repair, replace],
+        capacities={},
+        logical_groups=[
+            LogicalGroup(
+                id="disposition",
+                operator="xor",
+                member_task_ids=["R", "S"],
+                resolution_mode="event",
+                event_routes={"repairable": ["R"]},
+                when=TriggerCondition(
+                    source_task_id="I",
+                    events=["damage"],
+                ),
+            )
+        ],
+    )
+    state = ExecutionState(
+        current_time=1,
+        events={"I": ["damage"]},
+        executions={
+            "I": TaskExecution(
+                status="completed",
+                start=0,
+                finish=1,
+                mode_name="base",
+            )
+        },
+    )
+
+    decision_result = evaluate_scope_decisions(project, state)
+
+    assert decision_result.auto_resolved == {}
+    assert decision_result.unresolved_event_groups == ["disposition"]
