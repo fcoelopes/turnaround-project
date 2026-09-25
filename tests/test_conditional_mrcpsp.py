@@ -544,3 +544,139 @@ def test_kinder_ovo_resource_scenario_switches_mode_and_recovers_hours():
     assert scenario_bearing.mode_name == "reforco"
     assert scenario_bearing.duration == pytest.approx(3)
     assert scenario_result.schedule.makespan == pytest.approx(15)
+
+
+def test_duplicate_logical_group_ids_are_rejected():
+    inspection = task("I", "Inspecionar", 1)
+    a = task("A", "Alternativa A", 1, activation=ActivationRule(kind="optional"))
+    b = task("B", "Alternativa B", 1, activation=ActivationRule(kind="optional"))
+    c = task("C", "Alternativa C", 1, activation=ActivationRule(kind="optional"))
+
+    with pytest.raises(ValueError, match="grupos lógicos devem ser únicos"):
+        TurnaroundProject(
+            tasks=[inspection, a, b, c],
+            capacities={},
+            logical_groups=[
+                LogicalGroup(
+                    id="decision",
+                    operator="xor",
+                    member_task_ids=["A", "B"],
+                ),
+                LogicalGroup(
+                    id="decision",
+                    operator="xor",
+                    member_task_ids=["B", "C"],
+                ),
+            ],
+        )
+
+
+def test_task_cannot_belong_to_two_selective_groups():
+    a = task("A", "A", 1, activation=ActivationRule(kind="optional"))
+    b = task("B", "B", 1, activation=ActivationRule(kind="optional"))
+    c = task("C", "C", 1, activation=ActivationRule(kind="optional"))
+
+    with pytest.raises(ValueError, match="mais de um grupo seletivo"):
+        TurnaroundProject(
+            tasks=[a, b, c],
+            capacities={},
+            logical_groups=[
+                LogicalGroup(
+                    id="xor_1",
+                    operator="xor",
+                    member_task_ids=["A", "B"],
+                ),
+                LogicalGroup(
+                    id="or_2",
+                    operator="or",
+                    member_task_ids=["B", "C"],
+                ),
+            ],
+        )
+
+
+def test_and_group_can_share_member_with_selective_group():
+    a = task("A", "A", 1, activation=ActivationRule(kind="optional"))
+    b = task("B", "B", 1, activation=ActivationRule(kind="optional"))
+    c = task("C", "C", 1, activation=ActivationRule(kind="optional"))
+
+    project = TurnaroundProject(
+        tasks=[a, b, c],
+        capacities={},
+        logical_groups=[
+            LogicalGroup(
+                id="xor_1",
+                operator="xor",
+                member_task_ids=["A", "B"],
+            ),
+            LogicalGroup(
+                id="and_1",
+                operator="and",
+                member_task_ids=["B", "C"],
+            ),
+        ],
+    )
+    assert len(project.logical_groups) == 2
+
+
+def test_project_uid_survives_visual_id_change_and_scope_rules_follow_uid():
+    xml_before = b'''<?xml version="1.0" encoding="UTF-8"?>
+    <Project xmlns="http://schemas.microsoft.com/project">
+      <Tasks>
+        <Task><UID>9004</UID><ID>104</ID><Name>Inspecionar P-101</Name><WBS>1</WBS><Summary>0</Summary><Milestone>0</Milestone><Duration>PT2H0M0S</Duration></Task>
+        <Task><UID>9009</UID><ID>109</ID><Name>Recuperar impelidor P-101</Name><WBS>2</WBS><Summary>0</Summary><Milestone>0</Milestone><Duration>PT5H0M0S</Duration></Task>
+        <Task><UID>9010</UID><ID>110</ID><Name>Substituir impelidor P-101</Name><WBS>3</WBS><Summary>0</Summary><Milestone>0</Milestone><Duration>PT4H0M0S</Duration></Task>
+      </Tasks>
+    </Project>'''
+
+    xml_after = b'''<?xml version="1.0" encoding="UTF-8"?>
+    <Project xmlns="http://schemas.microsoft.com/project">
+      <Tasks>
+        <Task><UID>9004</UID><ID>204</ID><Name>Inspecionar P-101</Name><WBS>1</WBS><Summary>0</Summary><Milestone>0</Milestone><Duration>PT2H0M0S</Duration></Task>
+        <Task><UID>9009</UID><ID>209</ID><Name>Recuperar impelidor P-101</Name><WBS>2</WBS><Summary>0</Summary><Milestone>0</Milestone><Duration>PT5H0M0S</Duration></Task>
+        <Task><UID>9010</UID><ID>210</ID><Name>Substituir impelidor P-101</Name><WBS>3</WBS><Summary>0</Summary><Milestone>0</Milestone><Duration>PT4H0M0S</Duration></Task>
+      </Tasks>
+    </Project>'''
+
+    sidecar = {
+        "task_uid_overrides": {
+            "9009": {"activation": {"kind": "optional"}},
+            "9010": {"activation": {"kind": "optional"}},
+        },
+        "logical_groups": [
+            {
+                "id": "P101_impeller_disposition",
+                "operator": "xor",
+                "member_task_uids": ["9009", "9010"],
+                "when": {
+                    "source_task_uid": "9004",
+                    "events": ["impeller_damage"],
+                },
+            }
+        ],
+    }
+
+    tasks_before, caps_before = project_xml_to_tasks(xml_before)
+    before = apply_scope_config(
+        project_from_tasks(tasks_before, caps_before),
+        sidecar,
+    )
+
+    tasks_after, caps_after = project_xml_to_tasks(xml_after)
+    after = apply_scope_config(
+        project_from_tasks(tasks_after, caps_after),
+        sidecar,
+    )
+
+    assert {task.project_uid for task in before.tasks} == {"9004", "9009", "9010"}
+    assert {task.project_uid for task in after.tasks} == {"9004", "9009", "9010"}
+
+    assert before.logical_groups[0].member_task_ids == ["109", "110"]
+    assert before.logical_groups[0].when.source_task_id == "104"
+
+    assert after.logical_groups[0].member_task_ids == ["209", "210"]
+    assert after.logical_groups[0].when.source_task_id == "204"
+
+    after_by_uid = {task.project_uid: task for task in after.tasks}
+    assert after_by_uid["9009"].activation.kind == "optional"
+    assert after_by_uid["9010"].activation.kind == "optional"

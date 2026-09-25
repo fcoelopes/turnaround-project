@@ -265,6 +265,7 @@ def project_xml_to_tasks(content: bytes, hours_per_day: int = 8) -> Tuple[List[T
                 baseline_start=_child_text(node, "Start"),
                 baseline_finish=_child_text(node, "Finish"),
                 wbs=_child_text(node, "WBS"),
+                project_uid=str(uid),
             )
         )
     if not tasks:
