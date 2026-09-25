@@ -13,7 +13,7 @@ from .advanced_models import (
     TurnaroundTask,
 )
 from .io import load_schedule
-from .mrcpsp import AdvancedScheduleResult, solve_mrcpsp
+from .mrcpsp import AdvancedScheduleResult, ResourceCatalogEntry, discover_resource_catalog, solve_mrcpsp
 from .rcpsp import infer_capacities, optimize_turnaround
 from .reschedule import RescheduleResult, reschedule_from_state
 from .scope import apply_scope_config
@@ -30,12 +30,14 @@ __all__ = [
     "LogicalGroup",
     "Precedence",
     "RescheduleResult",
+    "ResourceCatalogEntry",
     "TaskExecution",
     "TriggerCondition",
     "TurnaroundProject",
     "TurnaroundTask",
     "analyze_effective_criticality",
     "apply_scope_config",
+    "discover_resource_catalog",
     "infer_capacities",
     "load_schedule",
     "optimize_turnaround",
