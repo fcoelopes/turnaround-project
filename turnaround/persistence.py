@@ -22,6 +22,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    delete,
     event,
     inspect,
     select,
@@ -30,6 +31,7 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from .advanced_models import DiscoveredTask
+from .scope_rules import ScopeRuleRow
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -295,6 +297,25 @@ class DiscoveredTaskSuccessorRecord(Base):
     successor_id: Mapped[str] = mapped_column(String(64))
 
 
+class ScopeRuleRecord(Base):
+    __tablename__ = "scope_rule_rows"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_key",
+            "rule_id",
+            name="uq_scope_rule_project_rule",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_key: Mapped[str] = mapped_column(String(64), index=True)
+    rule_id: Mapped[str] = mapped_column(String(128))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ExecutionEventRecord(Base):
     __tablename__ = "execution_events"
 
@@ -395,6 +416,46 @@ class ExecutionStore:
             expire_on_commit=False,
             class_=Session,
         )
+
+    def load_scope_rules(self, project_key: str) -> list[ScopeRuleRow]:
+        with self.SessionLocal() as db:
+            rows = db.scalars(
+                select(ScopeRuleRecord)
+                .where(ScopeRuleRecord.project_key == project_key)
+                .order_by(ScopeRuleRecord.sort_order, ScopeRuleRecord.id)
+            ).all()
+            return [
+                ScopeRuleRow.model_validate_json(row.payload_json)
+                for row in rows
+            ]
+
+    def replace_scope_rules(
+        self,
+        project_key: str,
+        rows: list[ScopeRuleRow],
+    ) -> None:
+        ids = [row.id for row in rows]
+        if len(ids) != len(set(ids)):
+            raise ValueError("IDs de regras da planilha devem ser únicos")
+
+        with self.SessionLocal.begin() as db:
+            db.execute(
+                delete(ScopeRuleRecord).where(
+                    ScopeRuleRecord.project_key == project_key
+                )
+            )
+            now = utc_now()
+            for index, row in enumerate(rows):
+                db.add(
+                    ScopeRuleRecord(
+                        project_key=project_key,
+                        rule_id=row.id,
+                        sort_order=index,
+                        payload_json=row.model_dump_json(),
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
 
     def get_or_create_active_session(
         self,
