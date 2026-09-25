@@ -905,6 +905,10 @@ def build_conditional_management_pdf(
     new_scope_count: int,
     strategy: str,
     activation_df: pd.DataFrame,
+    total_start_deviation: float = 0.0,
+    max_start_deviation: float = 0.0,
+    stability_compared_tasks: int = 0,
+    stability_weight: float = 0.0,
     schedule_df: pd.DataFrame,
     critical_ids: set[str] | None = None,
     critical_path_label: str | None = None,
@@ -963,9 +967,29 @@ def build_conditional_management_pdf(
                 ("Hora corrente", f"{current_time:.1f} h"),
                 ("Novo escopo", str(new_scope_count)),
                 ("Custo modos", f"{total_cost:,.0f}"),
+                ("Δ início acum.", f"{total_start_deviation:.1f} h"),
+                ("Maior Δ início", f"{max_start_deviation:.1f} h"),
+                ("Ativ. comparadas", str(stability_compared_tasks)),
+                ("Peso estabilidade", f"{stability_weight:.1f}"),
                 ("Ativas", str(active_counts.get("active", 0))),
                 ("Pendentes", str(active_counts.get("pending", 0))),
             ]
+        ),
+        _p("Estabilidade do replanejamento", s["h2"]),
+        _p(
+            (
+                f"Foram comparadas {stability_compared_tasks} atividades futuras "
+                f"que já existiam no plano anterior. A soma dos deslocamentos de "
+                f"início é {total_start_deviation:.1f} h e o maior deslocamento "
+                f"individual é {max_start_deviation:.1f} h. "
+                f"O peso de estabilidade λ é {stability_weight:.1f}."
+            ),
+            s["body"],
+        ),
+        _p(
+            "Atividades de novo escopo não recebem penalidade de estabilidade, "
+            "pois não possuíam início planejado antes do scope discovery.",
+            s["muted"],
         ),
         _p("Cadeia controladora atual", s["h2"]),
         _p(
