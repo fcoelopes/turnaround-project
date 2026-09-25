@@ -9,11 +9,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: turnaround-production-vps
+  cancel-in-progress: false
+
 jobs:
   deploy:
     if: >
-      github.event_name == 'workflow_dispatch' ||
       (
+        github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main'
+      ) ||
+      (
+        github.event_name == 'workflow_run' &&
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.event == 'push'
@@ -22,6 +30,29 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Resolve tested commit
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            DEPLOY_SHA="$WORKFLOW_RUN_SHA"
+          else
+            DEPLOY_SHA="$DISPATCH_SHA"
+          fi
+
+          if [[ ! "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "SHA de deploy inválido: $DEPLOY_SHA" >&2
+            exit 1
+          fi
+
+          echo "sha=$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+          echo "Commit autorizado para deploy: $DEPLOY_SHA"
+
       - name: Check deploy configuration
         id: deploy_config
         env:
@@ -49,20 +80,52 @@ jobs:
           printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy main to VPS
+      - name: Deploy tested commit to VPS
         if: steps.deploy_config.outputs.configured == 'true'
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_SHA: ${{ steps.target.outputs.sha }}
         run: |
+          set -euo pipefail
+
           ssh \
             -i ~/.ssh/turnaround_deploy \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             "$VPS_USER@$VPS_HOST" \
-            'set -euo pipefail
-             cd /home/ubuntu/turnaround-project
-             git fetch origin main
-             git checkout main
-             git pull --ff-only origin main
-             bash scripts/deploy_vps.sh'
+            "bash -s -- '$DEPLOY_SHA'" <<'REMOTE'
+          set -euo pipefail
+
+          DEPLOY_SHA="$1"
+          APP_DIR="/home/ubuntu/turnaround-project"
+
+          cd "$APP_DIR"
+
+          git fetch --prune origin main
+          git cat-file -e "${DEPLOY_SHA}^{commit}"
+
+          if ! git merge-base --is-ancestor "$DEPLOY_SHA" origin/main; then
+            echo "O commit $DEPLOY_SHA não pertence à main remota. Deploy recusado." >&2
+            exit 1
+          fi
+
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          if [[ "$CURRENT_SHA" != "$DEPLOY_SHA" ]] &&
+             git merge-base --is-ancestor "$DEPLOY_SHA" "$CURRENT_SHA"; then
+            echo "Deploy obsoleto ignorado: $DEPLOY_SHA; servidor já está em $CURRENT_SHA."
+            exit 0
+          fi
+
+          git checkout -q main
+          git reset --hard "$DEPLOY_SHA"
+
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          if [[ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]]; then
+            echo "Checkout incorreto: esperado $DEPLOY_SHA, atual $ACTUAL_SHA" >&2
+            exit 1
+          fi
+
+          echo "Publicando commit testado: $ACTUAL_SHA"
+          bash scripts/deploy_vps.sh "$DEPLOY_SHA"
+          REMOTE

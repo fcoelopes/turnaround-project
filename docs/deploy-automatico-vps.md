@@ -15,13 +15,41 @@ workflow deploy-vps
       ↓
 SSH na VPS
       ↓
-git pull --ff-only origin main
+checkout do SHA exato aprovado pelos testes
       ↓
 uv sync --frozen
       ↓
 systemctl restart turnaround
       ↓
 healthcheck local do Streamlit
+```
+
+## Provisionamento do serviço
+
+O workflow automático desta instalação usa **uv + systemd + Caddy**, sem Docker.
+
+Antes de habilitar o deploy automático, a VPS precisa ter o ambiente sincronizado e o unit do serviço instalado:
+
+```bash
+cd /home/ubuntu/turnaround-project
+uv sync --frozen
+
+sudo cp deploy/systemd/turnaround.service /etc/systemd/system/turnaround.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now turnaround.service
+```
+
+Valide:
+
+```bash
+systemctl status turnaround.service --no-pager
+curl -fsS http://127.0.0.1:8501/_stcore/health && echo
+```
+
+O arquivo versionado usado como fonte é:
+
+```text
+deploy/systemd/turnaround.service
 ```
 
 ## Configuração única
@@ -65,6 +93,12 @@ A chave privada usada pelo Actions deve ser exclusiva para deploy e não deve se
 
 Depois da configuração inicial, nenhum `git pull` manual é necessário.
 
+O deploy **não publica simplesmente a ponta atual de `main`**. Quando o workflow `test` termina verde, o `deploy-vps` recebe o SHA exato daquele run, busca a `main` remota apenas para validar que o commit pertence a ela e faz checkout/reset exatamente para esse SHA antes de reiniciar o serviço.
+
+Isso evita a corrida em que um commit mais novo chega à `main` enquanto o deploy anterior está aguardando. Um run verde só pode publicar o commit que ele realmente testou.
+
+Deploys obsoletos também são ignorados se o servidor já estiver em um descendente mais novo daquele SHA.
+
 Se um teste falhar, o deploy não acontece.
 
-Se o restart ocorrer mas o healthcheck não responder, o workflow falha e mostra o status do serviço.
+Se o serviço não estiver provisionado, se o SHA não corresponder ao esperado ou se o healthcheck não responder, o workflow falha.
