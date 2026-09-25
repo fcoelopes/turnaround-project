@@ -1365,3 +1365,28 @@ def test_dynamic_scope_generates_stable_session_ids():
     )
 
     assert next_discovered_task_id(base, [existing]) == "DS-003"
+
+
+def test_dynamic_scope_respects_discovery_release_time():
+    base = TurnaroundProject(
+        tasks=[task("A", "Planejada", 1)],
+        capacities={},
+    )
+    discovered = DiscoveredTask(
+        id="DS-001",
+        name="Trabalho descoberto depois",
+        discovered_at=5,
+        modes=[ExecutionMode(name="campo", duration=2)],
+    )
+    effective = materialize_dynamic_scope(base, [discovered]).project
+
+    result = solve_mrcpsp(
+        effective.tasks,
+        effective.capacities,
+        earliest_start=0,
+    )
+    dynamic = next(item for item in result.tasks if item.task_id == "DS-001")
+
+    assert next(task for task in effective.tasks if task.id == "DS-001").release_time == pytest.approx(5)
+    assert dynamic.start == pytest.approx(5)
+    assert dynamic.finish == pytest.approx(7)
