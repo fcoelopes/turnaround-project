@@ -16,16 +16,8 @@ class DecisionImpact:
     makespan: float | None = None
     tardiness: float | None = None
     total_cost: float | None = None
+    resource_gaps: dict[str, float] = field(default_factory=dict)
     error: str | None = None
-
-    @property
-    def score(self) -> tuple[float, float, float]:
-        if not self.feasible:
-            return (float("inf"), float("inf"), float("inf"))
-        assert self.tardiness is not None
-        assert self.makespan is not None
-        assert self.total_cost is not None
-        return (self.tardiness, self.makespan, self.total_cost)
 
 
 @dataclass
@@ -34,7 +26,6 @@ class DecisionEvaluation:
     operator: str
     resolution_mode: str
     impacts: list[DecisionImpact] = field(default_factory=list)
-    recommended_selection: tuple[str, ...] | None = None
     applied_selection: tuple[str, ...] | None = None
     exhaustive: bool = True
     status: str = "pending"
@@ -86,14 +77,11 @@ def _candidate_selections(
             result.extend(combinations(members, size))
         return result, True
 
-    # OR grande: evita 2^n. Avalia primeiro escolhas simples e depois pares,
-    # reservando uma vaga para "todos". Isso produz boa visibilidade marginal
-    # sem explodir o número de cenários sombra.
+    # OR grande: evita 2^n. A ferramenta avalia apenas um conjunto de
+    # cenários sombra para informar impacto; ela não escolhe nenhum deles.
     result = [(task_id,) for task_id in members[:max_or_candidates]]
     if len(result) < max_or_candidates - 1:
         for pair in combinations(members, 2):
-            if pair in result:
-                continue
             result.append(pair)
             if len(result) >= max_or_candidates - 1:
                 break
@@ -105,6 +93,50 @@ def _candidate_selections(
         else:
             result.append(all_members)
     return result, False
+
+
+def _resource_gaps_for_selection(
+    project: TurnaroundProject,
+    selection: tuple[str, ...],
+) -> dict[str, float]:
+    """Retorna faltas estáticas de capacidade para os ramos selecionados.
+
+    Para cada atividade alternativa, se ao menos um modo cabe nas capacidades
+    atuais, não há gap estático. Caso nenhum modo caiba, escolhemos o modo com
+    menor falta total apenas para explicar o gargalo ao usuário.
+    """
+    task_by_id = {task.id: task for task in project.tasks}
+    gaps: dict[str, float] = {}
+
+    for task_id in selection:
+        task = task_by_id[task_id]
+        feasible_mode_exists = any(
+            all(
+                demand <= project.capacities.get(resource, 0.0) + 1e-9
+                for resource, demand in mode.resources.items()
+            )
+            for mode in task.modes
+        )
+        if feasible_mode_exists:
+            continue
+
+        mode_shortages: list[tuple[float, dict[str, float]]] = []
+        for mode in task.modes:
+            shortages = {
+                resource: demand - project.capacities.get(resource, 0.0)
+                for resource, demand in mode.resources.items()
+                if demand > project.capacities.get(resource, 0.0) + 1e-9
+            }
+            mode_shortages.append((sum(shortages.values()), shortages))
+
+        if not mode_shortages:
+            continue
+
+        _, best_explanation = min(mode_shortages, key=lambda item: item[0])
+        for resource, shortage in best_explanation.items():
+            gaps[resource] = max(gaps.get(resource, 0.0), float(shortage))
+
+    return gaps
 
 
 def _evaluate_selection(
@@ -122,6 +154,7 @@ def _evaluate_selection(
     selections[group.id] = list(selection)
     candidate_state = _copy_state_with_selections(state, selections)
     task_by_id = {task.id: task for task in project.tasks}
+    resource_gaps = _resource_gaps_for_selection(project, selection)
 
     try:
         result: RescheduleResult = reschedule_from_state(
@@ -137,6 +170,7 @@ def _evaluate_selection(
                 task_by_id[task_id].name
                 for task_id in selection
             ),
+            resource_gaps=resource_gaps,
             error=str(exc),
         )
 
@@ -150,6 +184,7 @@ def _evaluate_selection(
         makespan=float(result.schedule.makespan),
         tardiness=float(result.schedule.tardiness),
         total_cost=float(result.schedule.total_cost),
+        resource_gaps=resource_gaps,
     )
 
 
@@ -157,6 +192,11 @@ def _event_selection(
     group: LogicalGroup,
     state: ExecutionState,
 ) -> tuple[str, ...] | None:
+    """Aplica apenas uma regra determinística previamente configurada.
+
+    Isto não é uma decisão do scheduler. O evento já codifica qual escopo deve
+    entrar; o motor apenas materializa a regra definida pelo planejador.
+    """
     assert group.when is not None
     observed = state.events.get(group.when.source_task_id, [])
     selected: list[str] = []
@@ -182,23 +222,24 @@ def evaluate_scope_decisions(
     max_or_candidates: int = 32,
     max_mode_combinations: int = 2000,
 ) -> DecisionEngineResult:
-    """Resolve decisões de escopo sob demanda e avalia cenários sombra.
+    """Avalia decisões de escopo sob demanda sem decidir a ação técnica.
 
-    - event: o evento observado seleciona o ramo via event_routes;
-    - optimize: avalia os ramos e aplica o melhor score
-      (tardiness, makespan, custo), um grupo por vez;
-    - human: avalia os ramos, mas não aplica nenhum. A UI recebe apenas as
-      decisões cujo gatilho já ocorreu.
+    - human: quando o gatilho ocorre, simula alternativas e deixa a decisão
+      pendente para a pessoa responsável;
+    - event: somente para regras determinísticas previamente definidas, nas
+      quais o próprio evento já determina qual tarefa deve entrar.
 
-    Grupos ainda sem gatilho não geram cenários nem controles.
+    Não existe modo de resolução por otimização. Makespan, atraso, custo e
+    factibilidade são informação de apoio à decisão, nunca critério para o
+    scheduler escolher entre reparar/substituir/etc.
     """
     working_state = state.model_copy(deep=True)
     decisions: list[DecisionEvaluation] = []
     auto_resolved: dict[str, list[str]] = {}
     unresolved_event_groups: list[str] = []
 
-    # Resolve automaticamente event/optimize em rolling horizon. Cada escolha
-    # aplicada altera o estado usado para avaliar a próxima decisão.
+    # Apenas regras determinísticas event-driven podem alterar o estado sem
+    # intervenção humana. Isso pode liberar outras regras event-driven em cadeia.
     while True:
         activation = resolve_activation(project, working_state)
         pending_ids = {
@@ -213,107 +254,53 @@ def evaluate_scope_decisions(
                 continue
             if group.id in working_state.group_selections:
                 continue
+            if group.resolution_mode != "event":
+                continue
 
-            if group.resolution_mode == "event":
-                selection = _event_selection(group, working_state)
-                if selection is None:
-                    if group.id not in unresolved_event_groups:
-                        unresolved_event_groups.append(group.id)
-                    continue
-                impact = _evaluate_selection(
-                    project,
-                    working_state,
-                    group,
-                    selection,
-                    max_mode_combinations=max_mode_combinations,
-                )
-                selections = {
-                    key: list(value)
-                    for key, value in working_state.group_selections.items()
-                }
-                selections[group.id] = list(selection)
-                working_state = _copy_state_with_selections(
-                    working_state,
-                    selections,
-                )
-                auto_resolved[group.id] = list(selection)
-                decisions.append(
-                    DecisionEvaluation(
-                        group_id=group.id,
-                        operator=group.operator,
-                        resolution_mode=group.resolution_mode,
-                        impacts=[impact],
-                        recommended_selection=selection,
-                        applied_selection=selection,
-                        status=(
-                            "auto_resolved"
-                            if impact.feasible
-                            else "auto_resolved_infeasible"
-                        ),
-                    )
-                )
-                progressed = True
-                break
+            selection = _event_selection(group, working_state)
+            if selection is None:
+                if group.id not in unresolved_event_groups:
+                    unresolved_event_groups.append(group.id)
+                continue
 
-            if group.resolution_mode == "optimize":
-                candidates, exhaustive = _candidate_selections(
-                    group,
-                    max_or_candidates=max_or_candidates,
+            impact = _evaluate_selection(
+                project,
+                working_state,
+                group,
+                selection,
+                max_mode_combinations=max_mode_combinations,
+            )
+            selections = {
+                key: list(value)
+                for key, value in working_state.group_selections.items()
+            }
+            selections[group.id] = list(selection)
+            working_state = _copy_state_with_selections(
+                working_state,
+                selections,
+            )
+            auto_resolved[group.id] = list(selection)
+            decisions.append(
+                DecisionEvaluation(
+                    group_id=group.id,
+                    operator=group.operator,
+                    resolution_mode=group.resolution_mode,
+                    impacts=[impact],
+                    applied_selection=selection,
+                    status=(
+                        "rule_applied"
+                        if impact.feasible
+                        else "rule_applied_infeasible"
+                    ),
                 )
-                impacts = [
-                    _evaluate_selection(
-                        project,
-                        working_state,
-                        group,
-                        selection,
-                        max_mode_combinations=max_mode_combinations,
-                    )
-                    for selection in candidates
-                ]
-                feasible = [impact for impact in impacts if impact.feasible]
-                if not feasible:
-                    decisions.append(
-                        DecisionEvaluation(
-                            group_id=group.id,
-                            operator=group.operator,
-                            resolution_mode=group.resolution_mode,
-                            impacts=impacts,
-                            exhaustive=exhaustive,
-                            status="infeasible",
-                        )
-                    )
-                    continue
-
-                best = min(feasible, key=lambda impact: impact.score)
-                selections = {
-                    key: list(value)
-                    for key, value in working_state.group_selections.items()
-                }
-                selections[group.id] = list(best.selection)
-                working_state = _copy_state_with_selections(
-                    working_state,
-                    selections,
-                )
-                auto_resolved[group.id] = list(best.selection)
-                decisions.append(
-                    DecisionEvaluation(
-                        group_id=group.id,
-                        operator=group.operator,
-                        resolution_mode=group.resolution_mode,
-                        impacts=impacts,
-                        recommended_selection=best.selection,
-                        applied_selection=best.selection,
-                        exhaustive=exhaustive,
-                        status="auto_resolved",
-                    )
-                )
-                progressed = True
-                break
+            )
+            progressed = True
+            break
 
         if not progressed:
             break
 
-    # Só agora materializa decisões humanas. Grupos dormentes nunca aparecem.
+    # Decisões reais são sempre humanas e só aparecem depois do gatilho.
     activation = resolve_activation(project, working_state)
     pending_ids = {
         group_id
@@ -343,19 +330,12 @@ def evaluate_scope_decisions(
             )
             for selection in candidates
         ]
-        feasible = [impact for impact in impacts if impact.feasible]
-        recommended = (
-            min(feasible, key=lambda impact: impact.score).selection
-            if feasible
-            else None
-        )
         decisions.append(
             DecisionEvaluation(
                 group_id=group.id,
                 operator=group.operator,
                 resolution_mode=group.resolution_mode,
                 impacts=impacts,
-                recommended_selection=recommended,
                 exhaustive=exhaustive,
                 status="pending",
             )
