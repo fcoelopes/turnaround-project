@@ -1732,6 +1732,7 @@ with operation_tab:
         state,
         reference_start_times=reference_start_times,
         stability_weight=stability_weight,
+        workforce=workforce,
     )
 
     if decision_engine.pending_human:
