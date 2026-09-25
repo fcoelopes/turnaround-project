@@ -75,6 +75,9 @@ def test_execution_session_and_dynamic_scope_survive_store_restart(tmp_path):
         current_time=7.0,
         observed_events={"I": ["crack_detected"]},
         human_selections={"decision-1": ["A"]},
+        selected_optional_ids=["OPT-1"],
+        scenario_capacities={"Mecânica": 4.0, "Soldador": 1.0},
+        stability_weight=0.8,
     )
 
     # Simula reinicialização do processo/aplicação.
@@ -90,6 +93,12 @@ def test_execution_session_and_dynamic_scope_survive_store_restart(tmp_path):
     assert restored.current_time == 7.0
     assert restored.observed_events == {"I": ["crack_detected"]}
     assert restored.human_selections == {"decision-1": ["A"]}
+    assert restored.selected_optional_ids == ["OPT-1"]
+    assert restored.scenario_capacities == {
+        "Mecânica": 4.0,
+        "Soldador": 1.0,
+    }
+    assert restored.stability_weight == 0.8
     assert len(restored_tasks) == 1
     assert restored_tasks[0] == task
 
