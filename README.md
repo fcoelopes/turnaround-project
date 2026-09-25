@@ -39,6 +39,52 @@ O parser de XML é o mesmo do MVP base. Não existe um segundo modelo de importa
 o cronograma é lido uma vez e convertido para o domínio avançado somente quando
 essa página é usada.
 
+### Identidade estável das regras de escopo
+
+Para XML do Microsoft Project, o sidecar deve preferir o **UID da tarefa** em vez
+do ID visual. O ID pode mudar quando linhas são inseridas, removidas ou
+reordenadas; o UID é preservado pelo Project para a mesma tarefa enquanto ela
+não for excluída/recriada.
+
+Formas recomendadas:
+
+```json
+{
+  "task_uid_overrides": {
+    "9009": {
+      "activation": {
+        "kind": "conditional",
+        "conditions": [
+          {
+            "source_task_uid": "9004",
+            "events": ["impeller_damage"]
+          }
+        ]
+      }
+    }
+  },
+  "logical_groups": [
+    {
+      "id": "P101_impeller_disposition",
+      "operator": "xor",
+      "member_task_uids": ["9009", "9010"],
+      "when": {
+        "source_task_uid": "9004",
+        "events": ["impeller_damage"]
+      }
+    }
+  ]
+}
+```
+
+As formas antigas baseadas em `task ID` continuam aceitas por compatibilidade.
+Na carga do sidecar, UID é resolvido para o ID atual do cronograma.
+
+O modelo rejeita duas ambiguidades estruturais:
+
+- IDs duplicados de `logical_groups`;
+- uma mesma tarefa pertencendo a mais de um grupo seletivo `XOR/OR`.
+
 ## Interface e saída gerencial
 
 A interface Streamlit separa a análise em visão executiva, cronograma, recursos, risco e exportação. O PDF é a saída gerencial para comunicação da parada; o Excel permanece como saída técnica para exploração e auditoria dos dados. A página de scope discovery possui relatório próprio, registrando baseline, novo escopo, mapa de ativação e cronograma reprogramado.
