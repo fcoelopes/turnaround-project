@@ -1390,3 +1390,24 @@ def test_dynamic_scope_respects_discovery_release_time():
     assert next(task for task in effective.tasks if task.id == "DS-001").release_time == pytest.approx(5)
     assert dynamic.start == pytest.approx(5)
     assert dynamic.finish == pytest.approx(7)
+
+
+def test_dynamic_scope_rejects_precedence_cycle():
+    base = TurnaroundProject(
+        tasks=[
+            task("A", "A", 1),
+            task("B", "B", 1, predecessors=["A"]),
+        ],
+        capacities={},
+    )
+    discovered = DiscoveredTask(
+        id="DS-001",
+        name="Novo trabalho",
+        discovered_at=1,
+        modes=[ExecutionMode(name="campo", duration=1)],
+        precedences=[Precedence(predecessor_id="B")],
+        successor_task_ids=["A"],
+    )
+
+    with pytest.raises(ValueError, match="ciclo de precedência"):
+        materialize_dynamic_scope(base, [discovered])
