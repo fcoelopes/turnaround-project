@@ -27,15 +27,18 @@ fi
 
 "$UV" sync --frozen
 
-mkdir -p "$APP_DIR/data"
-"$UV" run alembic upgrade head
-
 if ! systemctl cat turnaround.service >/dev/null 2>&1; then
   echo "turnaround.service não está instalado. Consulte docs/deploy-automatico-vps.md." >&2
   exit 1
 fi
 
-sudo -n systemctl restart turnaround.service
+# Impede que uma sessão Streamlit antiga dispute a migration com o deploy.
+sudo -n systemctl stop turnaround.service
+
+mkdir -p "$APP_DIR/data"
+"$UV" run python -c "from turnaround.persistence import upgrade_database; upgrade_database()"
+
+sudo -n systemctl start turnaround.service
 
 for attempt in {1..20}; do
   if curl -fsS "$HEALTH_URL" >/dev/null; then
