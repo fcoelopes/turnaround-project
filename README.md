@@ -153,6 +153,28 @@ No cenário **Kinder Ovo**, há agora duas fontes independentes de scope discove
 - ensaio do motor elétrico da P-101: usa 2 eletricistas por 2 h e pode gerar
   `motor_replacement_required`.
 
+### Catálogo dinâmico de recursos
+
+A página avançada não depende de uma lista fixa de profissões/equipamentos. O
+catálogo usado para gerar os sliders é a união de:
+
+- capacidades declaradas no Microsoft Project / sidecar;
+- recursos demandados pelas atividades;
+- recursos demandados por qualquer modo MRCPSP.
+
+Assim, um modo que use `Caldeiraria`, `Soldagem`, `Munck` ou outro recurso
+novo faz esse recurso aparecer automaticamente na interface.
+
+Se o recurso for demandado mas não tiver capacidade-base declarada, o sistema
+**não infere capacidade a partir da demanda**. Ele mostra:
+
+- capacidade-base: não informada;
+- maior demanda observada;
+- capacidade do cenário iniciando em 0.
+
+O planejador precisa informar explicitamente a capacidade do cenário para que
+tarefas/modos dependentes daquele recurso possam se tornar factíveis.
+
 Se a substituição do motor for ativada, entram 6 h de trabalho com
 `Elétrica:2`, `Mecânica:2` e `Guindaste:1`. O fechamento/alinhamento da
 bomba só é liberado depois dessa atividade quando ela pertence ao escopo ativo.
