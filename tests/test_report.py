@@ -1,6 +1,7 @@
 import pandas as pd
 
 from turnaround.report import (
+    _GanttFlowable,
     build_base_management_pdf,
     build_conditional_management_pdf,
 )
@@ -135,3 +136,31 @@ def test_conditional_management_pdf_is_valid_binary():
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 2500
     assert b"%%EOF" in pdf[-1024:]
+
+
+def test_conditional_gantt_can_preserve_project_order():
+    schedule_df = pd.DataFrame(
+        [
+            {
+                "_Ordem": 1,
+                "ID": "2",
+                "Atividade": "Atividade 2",
+                "Início (h)": 8,
+                "Fim (h)": 10,
+            },
+            {
+                "_Ordem": 0,
+                "ID": "1",
+                "Atividade": "Atividade 1",
+                "Início (h)": 12,
+                "Fim (h)": 14,
+            },
+        ]
+    )
+
+    gantt = _GanttFlowable(
+        schedule_df,
+        order_column="_Ordem",
+    )
+
+    assert gantt.schedule_df["ID"].tolist() == ["1", "2"]
