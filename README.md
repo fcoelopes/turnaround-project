@@ -40,6 +40,53 @@ O parser de XML é o mesmo do MVP base. Não existe um segundo modelo de importa
 o cronograma é lido uma vez e convertido para o domínio avançado somente quando
 essa página é usada.
 
+### Dynamic scope discovery
+
+O framework diferencia dois tipos de mudança de escopo durante a parada:
+
+- **escopo condicional pré-modelado**: atividades potenciais já existiam no
+  sidecar e são ativadas quando um gatilho ocorre;
+- **escopo descoberto dinamicamente**: a atividade não existia no XML nem no
+  sidecar e é criada durante a execução a partir de um achado de campo.
+
+Uma atividade dinâmica recebe um ID estável da sessão (`DS-001`, `DS-002`,
+...), hora do achado, origem opcional, duração, recursos, custo, predecessoras e
+atividades futuras que ela deve bloquear.
+
+Exemplo conceitual:
+
+```text
+Inspecionar carcaça
+        ↓
+achado não previsto: trinca
+        ↓
+DS-001 · Reparar trinca
+  Soldador:1
+  Mecânica:1
+  4 h
+        ↓
+Fechar equipamento
+```
+
+A materialização não modifica o cronograma-base. O projeto efetivo é construído
+em memória com a nova atividade como `mandatory` e, quando necessário, são
+injetadas precedências FS nas sucessoras indicadas. O rescheduling então trata
+a atividade nova junto com o restante do escopo ativo.
+
+Se a descoberta introduzir um recurso que não existia na Resource Sheet, por
+exemplo `Soldador`, o catálogo dinâmico de recursos passa a exibi-lo
+automaticamente com capacidade-base não informada. A tarefa permanece inviável
+até que o planejador informe capacidade no cenário.
+
+Atividades criadas por dynamic scope discovery não recebem penalidade de
+estabilidade, porque não possuíam horário de início no plano anterior. As
+atividades futuras já planejadas continuam sujeitas ao stability-aware
+rescheduling.
+
+A interface atual mantém essas descobertas no `session_state` do Streamlit.
+Persistência durável em banco/event log é uma evolução separada; o baseline
+importado permanece imutável.
+
 ### Stability-aware rescheduling
 
 Quando o plano precisa ser refeito durante a execução, o solver pode considerar
