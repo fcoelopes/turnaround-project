@@ -86,9 +86,53 @@ estabilidade, porque não possuíam horário de início no plano anterior. As
 atividades futuras já planejadas continuam sujeitas ao stability-aware
 rescheduling.
 
-A interface atual mantém essas descobertas no `session_state` do Streamlit.
-Persistência durável em banco/event log é uma evolução separada; o baseline
-importado permanece imutável.
+As descobertas e o estado operacional da execução são persistidos em SQLite.
+O baseline importado permanece imutável; o projeto efetivo continua sendo
+reconstruído a partir do baseline + regras + eventos + atividades `DS-*`.
+
+### Persistência da execução — SQLite + SQLAlchemy + Alembic
+
+Por padrão, a aplicação usa:
+
+```text
+data/turnaround.db
+```
+
+O SQLite roda com:
+
+```text
+PRAGMA journal_mode=WAL
+PRAGMA foreign_keys=ON
+PRAGMA synchronous=NORMAL
+```
+
+A camada SQLAlchemy persiste:
+
+- sessões de execução por baseline;
+- hora corrente da parada;
+- eventos/achados observados;
+- decisões humanas já resolvidas;
+- atividades `DS-*`;
+- recursos, predecessoras e sucessoras das atividades descobertas;
+- event log append-only para criação/remoção de `DS-*` e mudanças de estado.
+
+O schema é versionado por Alembic. Localmente:
+
+```bash
+uv run alembic upgrade head
+```
+
+No deploy da VPS, `scripts/deploy_vps.sh` executa a migração antes de reiniciar
+o serviço Streamlit.
+
+Para usar outro arquivo SQLite ou migrar futuramente para outro banco compatível
+com SQLAlchemy, defina:
+
+```bash
+export TURNAROUND_DATABASE_URL="sqlite:////caminho/turnaround.db"
+```
+
+O banco não é versionado pelo Git; arquivos `data/*.db*` são ignorados.
 
 ### Stability-aware rescheduling
 
@@ -278,6 +322,7 @@ O arquivo `sample_data/cronograma_exemplo.csv` pode ser usado imediatamente.
 ## Limitações intencionais do MVP
 
 - O motor é heurístico, não prova ótimo global.
+- A persistência operacional usa SQLite, adequada ao deploy atual em uma única VPS; concorrência multiusuário intensa exigirá evolução para Postgres.
 - Ainda não há calendário por turno, folga de refeição, indisponibilidade individual ou overtime.
 - O CPM exibido é uma aproximação de folga para vínculos complexos; o agendador respeita FS/SS/FF/SF e lag na programação.
 - Recursos do Excel/CSV usam demanda unitária por padrão; a coluna `Demandas` permite sobrescrever.
