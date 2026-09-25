@@ -360,10 +360,12 @@ for task in project.tasks:
 
 for group in project.logical_groups:
     if group.when:
+        group_events = set(group.when.events)
+        group_events.update(group.event_routes)
         event_catalog.setdefault(
             group.when.source_task_id,
             set(),
-        ).update(group.when.events)
+        ).update(group_events)
 
 name_by_id = {task.id: task.name for task in project.tasks}
 project_order = {task.id: index for index, task in enumerate(project.tasks)}
