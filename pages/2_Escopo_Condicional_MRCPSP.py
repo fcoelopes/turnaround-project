@@ -1239,7 +1239,13 @@ with config_tab:
                 missing_base = [
                     resource
                     for resource in mode.resources
-                    if resource not in base_capacities
+                    if (
+                        resource not in base_capacities
+                        and not (
+                            workforce.enabled
+                            and resource in workforce.skills
+                        )
+                    )
                 ]
                 mode_rows.append(
                     {
