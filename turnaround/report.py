@@ -259,9 +259,10 @@ class _GanttFlowable(Flowable):
         critical_ids: set[str] | None = None,
         deadline: float | None = None,
         current_time: float | None = None,
-        max_rows: int = 18,
+        max_rows: int | None = 18,
         frozen_column: str | None = None,
         order_column: str | None = None,
+        time_bounds: tuple[float, float] | None = None,
     ):
         super().__init__()
         self.schedule_df = schedule_df.copy()
@@ -271,6 +272,7 @@ class _GanttFlowable(Flowable):
         self.max_rows = max_rows
         self.frozen_column = frozen_column
         self.order_column = order_column
+        self.time_bounds = time_bounds
         self.row_height = 6.4 * mm
         self.axis_height = 12 * mm
         self.legend_height = 7 * mm
@@ -296,12 +298,14 @@ class _GanttFlowable(Flowable):
                 self.schedule_df = self.schedule_df.sort_values(
                     [self.order_column],
                     kind="stable",
-                ).head(self.max_rows)
+                )
             else:
                 self.schedule_df = self.schedule_df.sort_values(
                     [self.start_col, self.finish_col],
                     kind="stable",
-                ).head(self.max_rows)
+                )
+            if self.max_rows is not None:
+                self.schedule_df = self.schedule_df.head(self.max_rows)
 
         self.rows = len(self.schedule_df)
         self.height = (
@@ -315,21 +319,13 @@ class _GanttFlowable(Flowable):
         return avail_width, self.height
 
     def _time_bounds(self):
-        if self.schedule_df.empty:
-            return 0.0, 1.0
-
-        start = float(self.schedule_df[self.start_col].min())
-        finish = float(self.schedule_df[self.finish_col].max())
-        start = min(0.0, start)
-
-        if self.deadline is not None:
-            finish = max(finish, float(self.deadline))
-        if self.current_time is not None:
-            finish = max(finish, float(self.current_time))
-
-        if finish <= start:
-            finish = start + 1.0
-        return start, finish
+        if self.time_bounds is not None:
+            return self.time_bounds
+        return _schedule_time_bounds(
+            self.schedule_df,
+            deadline=self.deadline,
+            current_time=self.current_time,
+        )
 
     def draw(self):
         canvas = self.canv
@@ -527,6 +523,107 @@ class _GanttFlowable(Flowable):
         canvas.restoreState()
 
 
+def _schedule_time_bounds(
+    schedule_df: pd.DataFrame,
+    *,
+    deadline: float | None = None,
+    current_time: float | None = None,
+) -> tuple[float, float]:
+    if schedule_df.empty:
+        return 0.0, 1.0
+
+    start_col = (
+        "Inicio_h"
+        if "Inicio_h" in schedule_df.columns
+        else "Início (h)"
+    )
+    finish_col = (
+        "Fim_h"
+        if "Fim_h" in schedule_df.columns
+        else "Fim (h)"
+    )
+
+    start = min(0.0, float(schedule_df[start_col].min()))
+    finish = float(schedule_df[finish_col].max())
+
+    if deadline is not None:
+        finish = max(finish, float(deadline))
+    if current_time is not None:
+        finish = max(finish, float(current_time))
+
+    if finish <= start:
+        finish = start + 1.0
+    return start, finish
+
+
+def _gantt_chart_pages(
+    schedule_df: pd.DataFrame,
+    *,
+    critical_ids: set[str] | None = None,
+    deadline: float | None = None,
+    current_time: float | None = None,
+    frozen_column: str | None = None,
+    order_column: str | None = None,
+    max_rows: int = 18,
+) -> list[Flowable]:
+    """Paginate a Gantt without dropping rows.
+
+    Sorting is applied once to the full schedule, then the ordered dataframe is
+    split into pages. Every page shares the same time bounds so the horizontal
+    scale remains comparable throughout the report.
+    """
+    if max_rows <= 0:
+        raise ValueError("max_rows deve ser maior que zero")
+
+    ordered = schedule_df.copy()
+    if not ordered.empty:
+        start_col = (
+            "Inicio_h"
+            if "Inicio_h" in ordered.columns
+            else "Início (h)"
+        )
+        finish_col = (
+            "Fim_h"
+            if "Fim_h" in ordered.columns
+            else "Fim (h)"
+        )
+        if order_column and order_column in ordered.columns:
+            ordered = ordered.sort_values([order_column], kind="stable")
+        else:
+            ordered = ordered.sort_values(
+                [start_col, finish_col],
+                kind="stable",
+            )
+
+    bounds = _schedule_time_bounds(
+        ordered,
+        deadline=deadline,
+        current_time=current_time,
+    )
+
+    if ordered.empty:
+        chunks = [ordered]
+    else:
+        chunks = [
+            ordered.iloc[start:start + max_rows].copy()
+            for start in range(0, len(ordered), max_rows)
+        ]
+
+    return [
+        _GanttFlowable(
+            chunk,
+            critical_ids=critical_ids,
+            deadline=deadline,
+            current_time=current_time,
+            max_rows=None,
+            frozen_column=frozen_column,
+            order_column=order_column,
+            time_bounds=bounds,
+        )
+        for chunk in chunks
+    ]
+
+
 def _gantt_chart(
     schedule_df: pd.DataFrame,
     *,
@@ -535,14 +632,18 @@ def _gantt_chart(
     current_time: float | None = None,
     frozen_column: str | None = None,
     order_column: str | None = None,
+    max_rows: int | None = 18,
+    time_bounds: tuple[float, float] | None = None,
 ) -> Flowable:
     return _GanttFlowable(
         schedule_df,
         critical_ids=critical_ids,
         deadline=deadline,
         current_time=current_time,
+        max_rows=max_rows,
         frozen_column=frozen_column,
         order_column=order_column,
+        time_bounds=time_bounds,
     )
 
 
@@ -834,6 +935,16 @@ def build_conditional_management_pdf(
     if not activation_df.empty and "Estado" in activation_df.columns:
         active_counts = activation_df["Estado"].value_counts().to_dict()
 
+    gantt_pages = _gantt_chart_pages(
+        schedule_df,
+        critical_ids=critical_ids,
+        deadline=deadline,
+        current_time=current_time,
+        frozen_column="Congelada",
+        order_column="_Ordem",
+        max_rows=18,
+    )
+
     story: list = [
         _p("RELATÓRIO GERENCIAL - SCOPE DISCOVERY", s["kicker"]),
         _p(project_name or "Turnaround", s["title"]),
@@ -886,46 +997,62 @@ def build_conditional_management_pdf(
             s["muted"],
         ),
         Spacer(1, 3 * mm),
-        _gantt_chart(
-            schedule_df,
-            critical_ids=critical_ids,
-            deadline=deadline,
-            current_time=current_time,
-            frozen_column="Congelada",
-            order_column="_Ordem",
-        ),
-        Spacer(1, 5 * mm),
-        _p("Detalhamento do cronograma", s["h2"]),
-        _dataframe_table(
-            schedule_df,
-            [
-                "ID",
-                "Atividade",
-                "Modo",
-                "Início (h)",
-                "Fim (h)",
-                "Duração (h)",
-                "Crítica atual",
-                "Controla por",
-            ],
-            max_rows=60,
-            widths=[
-                10 * mm,
-                48 * mm,
-                20 * mm,
-                16 * mm,
-                16 * mm,
-                18 * mm,
-                20 * mm,
-                26 * mm,
-            ],
-        ),
-        Spacer(1, 4 * mm),
-        _p(
-            "Nota metodológica: o MRCPSP atual combina enumeração de modos em espaços pequenos "
-            "e busca heurística em espaços maiores, sempre com SSGS. O resultado é um plano factível, "
-            "não uma prova de ótimo global para instâncias grandes.",
-            s["muted"],
-        ),
+        gantt_pages[0],
     ]
+
+    for page_number, gantt_page in enumerate(gantt_pages[1:], start=2):
+        story.extend(
+            [
+                PageBreak(),
+                _p("CRONOGRAMA REPROGRAMADO", s["kicker"]),
+                _p(
+                    f"Plano após scope discovery · continuação {page_number}",
+                    s["title"],
+                ),
+                _p(
+                    "Continuação do Gantt na mesma escala temporal e na ordem original do Project.",
+                    s["muted"],
+                ),
+                Spacer(1, 3 * mm),
+                gantt_page,
+            ]
+        )
+
+    story.extend(
+        [
+            Spacer(1, 5 * mm),
+            _p("Detalhamento do cronograma", s["h2"]),
+            _dataframe_table(
+                schedule_df,
+                [
+                    "ID",
+                    "Atividade",
+                    "Modo",
+                    "Início (h)",
+                    "Fim (h)",
+                    "Duração (h)",
+                    "Crítica atual",
+                    "Controla por",
+                ],
+                max_rows=60,
+                widths=[
+                    10 * mm,
+                    48 * mm,
+                    20 * mm,
+                    16 * mm,
+                    16 * mm,
+                    18 * mm,
+                    20 * mm,
+                    26 * mm,
+                ],
+            ),
+            Spacer(1, 4 * mm),
+            _p(
+                "Nota metodológica: o MRCPSP atual combina enumeração de modos em espaços pequenos "
+                "e busca heurística em espaços maiores, sempre com SSGS. O resultado é um plano factível, "
+                "não uma prova de ótimo global para instâncias grandes.",
+                s["muted"],
+            ),
+        ]
+    )
     return _build_pdf(story)
