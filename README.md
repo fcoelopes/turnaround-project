@@ -33,11 +33,48 @@ A página **Escopo Condicional MRCPSP** acrescenta a dinâmica típica de turnar
 - múltiplos achados simultâneos;
 - grupos lógicos AND, OR e XOR;
 - rescheduling com atividades concluídas/em andamento congeladas;
+- stability-aware rescheduling, penalizando mudanças excessivas nos horários de início;
 - sidecar JSON para regras que não pertencem ao arquivo do Microsoft Project.
 
 O parser de XML é o mesmo do MVP base. Não existe um segundo modelo de importação:
 o cronograma é lido uma vez e convertido para o domínio avançado somente quando
 essa página é usada.
+
+### Stability-aware rescheduling
+
+Quando o plano precisa ser refeito durante a execução, o solver pode considerar
+não apenas o makespan, mas também quanto o novo cronograma se afasta dos inícios
+previamente planejados.
+
+Para cada atividade futura já existente no plano anterior:
+
+```text
+desvio_j = |novo_inicio_j - inicio_planejado_j|
+```
+
+O objetivo stability-aware usado na seleção de cronogramas é:
+
+```text
+atraso à deadline
+    ↓
+makespan + λ × soma(desvio_j)
+    ↓
+maior desvio individual
+    ↓
+custo
+```
+
+`λ=0` reproduz o comportamento anterior. Com `λ>0`, duas soluções de
+desempenho temporal semelhante passam a favorecer a que exige menos mudanças no
+plano comunicado às equipes.
+
+Atividades descobertas durante a parada não recebem penalidade de estabilidade,
+pois não possuíam horário de início no plano anterior. Atividades concluídas ou
+em andamento continuam congeladas pelo rescheduling.
+
+A página avançada mostra a soma dos deslocamentos, o maior deslocamento,
+quantas atividades foram comparadas e o peso `λ`; essas métricas também entram
+no relatório gerencial PDF e nos cenários salvos da sessão.
 
 ### Identidade estável das regras de escopo
 

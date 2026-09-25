@@ -38,6 +38,10 @@ class AdvancedScheduleResult:
     strategy: str
     mode_combinations: int
     evaluated_combinations: int
+    total_start_deviation: float = 0.0
+    max_start_deviation: float = 0.0
+    stability_compared_tasks: int = 0
+    stability_weight: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -262,14 +266,53 @@ def _schedule_assignment(
     return list(scheduled.values())
 
 
+def _stability_metrics(
+    items: list[AdvancedScheduledTask],
+    reference_start_times: dict[str, float] | None,
+) -> tuple[float, float, int]:
+    if not reference_start_times:
+        return 0.0, 0.0, 0
+
+    deviations = [
+        abs(item.start - reference_start_times[item.task_id])
+        for item in items
+        if item.task_id in reference_start_times
+    ]
+    if not deviations:
+        return 0.0, 0.0, 0
+    return sum(deviations), max(deviations), len(deviations)
+
+
 def _score(
     items: list[AdvancedScheduledTask],
     deadline: float | None,
-) -> tuple[float, float, float]:
+    reference_start_times: dict[str, float] | None = None,
+    stability_weight: float = 0.0,
+) -> tuple[float, float, float, float, float]:
     makespan = max((t.finish for t in items), default=0.0)
     cost = sum(t.cost for t in items)
     tardiness = max(0.0, makespan - deadline) if deadline is not None else 0.0
-    return tardiness, makespan, cost
+    total_deviation, max_deviation, _ = _stability_metrics(
+        items,
+        reference_start_times,
+    )
+
+    if stability_weight <= 0:
+        # Preserva exatamente a ordenação histórica quando estabilidade está
+        # desligada: atraso -> makespan -> custo.
+        return tardiness, makespan, cost, 0.0, 0.0
+
+    # Formulação stability-aware inspirada na literatura de rescheduling:
+    # minimiza makespan + lambda * soma dos deslocamentos de início.
+    # A deadline continua tendo precedência lexicográfica.
+    stability_objective = makespan + stability_weight * total_deviation
+    return (
+        tardiness,
+        stability_objective,
+        max_deviation,
+        cost,
+        makespan,
+    )
 
 
 def solve_mrcpsp(
@@ -280,6 +323,8 @@ def solve_mrcpsp(
     earliest_start: float = 0.0,
     fixed_intervals: list[FixedInterval] | None = None,
     fixed_task_times: dict[str, tuple[float, float]] | None = None,
+    reference_start_times: dict[str, float] | None = None,
+    stability_weight: float = 0.0,
 ) -> AdvancedScheduleResult:
     if not tasks:
         return AdvancedScheduleResult([], earliest_start, 0.0, 0.0, "empty", 0, 0)
@@ -295,7 +340,7 @@ def solve_mrcpsp(
 
     combination_count = prod(len(feasible_modes[t.id]) for t in tasks)
     best_items: list[AdvancedScheduledTask] | None = None
-    best_score: tuple[float, float, float] | None = None
+    best_score: tuple[float, float, float, float, float] | None = None
     evaluated = 0
 
     def evaluate(assignment: dict[str, ExecutionMode]):
@@ -311,7 +356,12 @@ def solve_mrcpsp(
                 fixed_task_times=fixed_task_times,
             )
             evaluated += 1
-            score = _score(items, deadline)
+            score = _score(
+                items,
+                deadline,
+                reference_start_times=reference_start_times,
+                stability_weight=stability_weight,
+            )
             if best_score is None or score < best_score:
                 best_score = score
                 best_items = items
@@ -387,7 +437,21 @@ def solve_mrcpsp(
         strategy = "multistart-local+ssgs"
 
     assert best_items is not None and best_score is not None
-    tardiness, makespan, cost = best_score
+
+    makespan = max((item.finish for item in best_items), default=earliest_start)
+    cost = sum(item.cost for item in best_items)
+    tardiness = (
+        max(0.0, makespan - deadline)
+        if deadline is not None
+        else 0.0
+    )
+    total_deviation, max_deviation, compared_tasks = _stability_metrics(
+        best_items,
+        reference_start_times,
+    )
+    if stability_weight > 0 and reference_start_times:
+        strategy = f"{strategy}+stability"
+
     return AdvancedScheduleResult(
         tasks=sorted(best_items, key=lambda x: (x.start, x.finish, _natural_id_key(x.task_id))),
         makespan=makespan,
@@ -396,4 +460,8 @@ def solve_mrcpsp(
         strategy=strategy,
         mode_combinations=combination_count,
         evaluated_combinations=evaluated,
+        total_start_deviation=total_deviation,
+        max_start_deviation=max_deviation,
+        stability_compared_tasks=compared_tasks,
+        stability_weight=float(stability_weight),
     )

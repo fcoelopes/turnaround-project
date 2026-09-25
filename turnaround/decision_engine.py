@@ -16,6 +16,8 @@ class DecisionImpact:
     makespan: float | None = None
     tardiness: float | None = None
     total_cost: float | None = None
+    total_start_deviation: float | None = None
+    max_start_deviation: float | None = None
     resource_gaps: dict[str, float] = field(default_factory=dict)
     error: str | None = None
 
@@ -146,6 +148,8 @@ def _evaluate_selection(
     selection: tuple[str, ...],
     *,
     max_mode_combinations: int,
+    reference_start_times: dict[str, float] | None,
+    stability_weight: float,
 ) -> DecisionImpact:
     selections = {
         key: list(value)
@@ -161,6 +165,8 @@ def _evaluate_selection(
             project,
             candidate_state,
             max_mode_combinations=max_mode_combinations,
+            reference_start_times=reference_start_times,
+            stability_weight=stability_weight,
         )
     except ValueError as exc:
         return DecisionImpact(
@@ -184,6 +190,8 @@ def _evaluate_selection(
         makespan=float(result.schedule.makespan),
         tardiness=float(result.schedule.tardiness),
         total_cost=float(result.schedule.total_cost),
+        total_start_deviation=float(result.schedule.total_start_deviation),
+        max_start_deviation=float(result.schedule.max_start_deviation),
         resource_gaps=resource_gaps,
     )
 
@@ -221,6 +229,8 @@ def evaluate_scope_decisions(
     *,
     max_or_candidates: int = 32,
     max_mode_combinations: int = 2000,
+    reference_start_times: dict[str, float] | None = None,
+    stability_weight: float = 0.0,
 ) -> DecisionEngineResult:
     """Avalia decisões de escopo sob demanda sem decidir a ação técnica.
 
@@ -269,6 +279,8 @@ def evaluate_scope_decisions(
                 group,
                 selection,
                 max_mode_combinations=max_mode_combinations,
+                reference_start_times=reference_start_times,
+                stability_weight=stability_weight,
             )
             selections = {
                 key: list(value)
@@ -327,6 +339,8 @@ def evaluate_scope_decisions(
                 group,
                 selection,
                 max_mode_combinations=max_mode_combinations,
+                reference_start_times=reference_start_times,
+                stability_weight=stability_weight,
             )
             for selection in candidates
         ]

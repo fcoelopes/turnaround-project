@@ -110,9 +110,12 @@ def _propagate_late_predecessors_across_frozen_tasks(
     return repaired
 
 
-def reschedule_from_state(    project: TurnaroundProject,
+def reschedule_from_state(
+    project: TurnaroundProject,
     state: ExecutionState,
     max_mode_combinations: int = 2000,
+    reference_start_times: dict[str, float] | None = None,
+    stability_weight: float = 0.0,
 ) -> RescheduleResult:
     activation = resolve_activation(project, state)
     task_by_id = {t.id: t for t in project.tasks}
@@ -179,6 +182,8 @@ def reschedule_from_state(    project: TurnaroundProject,
         earliest_start=state.current_time,
         fixed_intervals=fixed_intervals,
         fixed_task_times=fixed_task_times,
+        reference_start_times=reference_start_times,
+        stability_weight=stability_weight,
     )
 
     combined_finish = max(
