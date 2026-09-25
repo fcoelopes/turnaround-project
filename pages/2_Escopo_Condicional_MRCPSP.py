@@ -631,7 +631,7 @@ if decision_engine.auto_resolved:
                 ),
             }
         )
-    with st.expander("Decisões resolvidas automaticamente", expanded=False):
+    with st.expander("Regras determinísticas aplicadas", expanded=False):
         st.dataframe(
             pd.DataFrame(auto_rows),
             use_container_width=True,
