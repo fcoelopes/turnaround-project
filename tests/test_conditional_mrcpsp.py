@@ -467,3 +467,29 @@ def test_late_scope_blocks_successor_of_frozen_activity():
     assert startup_item.start >= repair_item.finish
     assert startup_item.start == pytest.approx(5)
     assert result.schedule.makespan == pytest.approx(6)
+
+
+def test_numeric_task_ids_use_natural_order_for_solver_ties():
+    ten = task(
+        "10",
+        "Task 10",
+        1,
+        resources={"Mec": 1},
+    )
+    two = task(
+        "2",
+        "Task 2",
+        1,
+        resources={"Mec": 1},
+    )
+    project = TurnaroundProject(
+        tasks=[ten, two],
+        capacities={"Mec": 1},
+    )
+
+    result = solve_mrcpsp(project.tasks, project.capacities)
+
+    by_start = sorted(result.tasks, key=lambda item: item.start)
+    assert [item.task_id for item in by_start] == ["2", "10"]
+    assert by_start[0].start == pytest.approx(0)
+    assert by_start[1].start == pytest.approx(1)
