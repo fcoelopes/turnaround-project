@@ -27,6 +27,9 @@ fi
 
 "$UV" sync --frozen
 
+mkdir -p "$APP_DIR/data"
+"$UV" run alembic upgrade head
+
 if ! systemctl cat turnaround.service >/dev/null 2>&1; then
   echo "turnaround.service não está instalado. Consulte docs/deploy-automatico-vps.md." >&2
   exit 1
