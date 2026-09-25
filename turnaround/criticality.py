@@ -7,7 +7,7 @@ from typing import Literal
 from .advanced_models import Precedence, TurnaroundProject, TurnaroundTask
 from .mrcpsp import AdvancedScheduledTask
 
-DriverKind = Literal["precedence", "scope_gate", "resource"]
+DriverKind = Literal["precedence", "scope_gate", "resource", "person"]
 
 
 @dataclass(frozen=True)
@@ -179,6 +179,42 @@ def analyze_effective_criticality(
                         resource,
                     )
 
+    # Releases de pessoas multi-skill também podem controlar o início mesmo
+    # quando as capacidades agregadas por habilidade parecem suficientes.
+    for successor_id in live_ids:
+        successor = item_by_id[successor_id]
+        if successor.fixed or not successor.skill_assignments:
+            continue
+        if successor.start <= current_time + tolerance:
+            continue
+
+        successor_people = {
+            person_id
+            for values in successor.skill_assignments.values()
+            for person_id in values
+        }
+        for blocker in items:
+            blocker_id = str(blocker.task_id)
+            if blocker_id == successor_id:
+                continue
+            blocker_people = {
+                person_id
+                for values in blocker.skill_assignments.values()
+                for person_id in values
+            }
+            shared = successor_people & blocker_people
+            if not shared:
+                continue
+            if abs(blocker.finish - successor.start) > probe_epsilon * 2:
+                continue
+            for person_id in sorted(shared):
+                add_driver(
+                    blocker_id,
+                    successor_id,
+                    "person",
+                    person_id,
+                )
+
     terminal_ids = {
         task_id
         for task_id in live_ids
@@ -254,6 +290,8 @@ def analyze_effective_criticality(
                 continue
             if driver.kind == "resource":
                 label = f"recurso {driver.detail}"
+            elif driver.kind == "person":
+                label = f"pessoa {driver.detail}"
             elif driver.kind == "scope_gate":
                 label = "gate de escopo"
             else:
