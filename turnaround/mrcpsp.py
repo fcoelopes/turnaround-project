@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import product
 from math import prod
 import re
 
 from .advanced_models import ExecutionMode, Precedence, TurnaroundProject, TurnaroundTask
+from .workforce import (
+    WorkforceProfile,
+    assign_people_to_skills,
+    assigned_people,
+    effective_capacities,
+    skill_requirements,
+)
 
 
 @dataclass(frozen=True)
@@ -14,6 +21,7 @@ class FixedInterval:
     start: float
     finish: float
     resources: dict[str, float]
+    skill_assignments: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass
@@ -27,6 +35,7 @@ class AdvancedScheduledTask:
     resources: dict[str, float]
     cost: float
     fixed: bool = False
+    skill_assignments: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass
@@ -103,7 +112,15 @@ def _natural_id_key(value: str) -> tuple[tuple[int, int | str], ...]:
     )
 
 
-def _mode_feasible(mode: ExecutionMode, capacities: dict[str, float]) -> bool:
+def _mode_feasible(
+    mode: ExecutionMode,
+    capacities: dict[str, float],
+    workforce: WorkforceProfile | None = None,
+) -> bool:
+    human_requirements = skill_requirements(mode.resources, workforce)
+    for skill, count in human_requirements.items():
+        if count > capacities.get(skill, 0.0) + 1e-9:
+            return False
     return all(
         req <= capacities.get(resource, 0.0) + 1e-9
         for resource, req in mode.resources.items()
@@ -173,21 +190,78 @@ def _resource_ok(
     return True
 
 
+def _busy_people(
+    start: float,
+    finish: float,
+    intervals: list[FixedInterval | AdvancedScheduledTask],
+) -> set[str]:
+    busy: set[str] = set()
+    for interval in intervals:
+        if (
+            start < interval.finish - 1e-9
+            and finish > interval.start + 1e-9
+        ):
+            busy.update(assigned_people(interval.skill_assignments))
+    return busy
+
+
+def _people_assignment(
+    start: float,
+    finish: float,
+    demand: dict[str, float],
+    workforce: WorkforceProfile | None,
+    intervals: list[FixedInterval | AdvancedScheduledTask],
+) -> dict[str, tuple[str, ...]] | None:
+    requirements = skill_requirements(demand, workforce)
+    if not requirements:
+        return {}
+    return assign_people_to_skills(
+        requirements,
+        workforce,
+        busy_person_ids=_busy_people(start, finish, intervals),
+    )
+
+
 def _earliest_resource_start(
     earliest: float,
     duration: float,
     demand: dict[str, float],
     capacities: dict[str, float],
     intervals: list[FixedInterval | AdvancedScheduledTask],
-) -> float:
+    workforce: WorkforceProfile | None = None,
+) -> tuple[float, dict[str, tuple[str, ...]]]:
     candidates = {max(0.0, earliest)}
     for iv in intervals:
         if iv.finish >= earliest - 1e-9:
             candidates.add(max(earliest, iv.finish))
     for start in sorted(candidates):
-        if _resource_ok(start, start + duration, demand, capacities, intervals):
-            return start
-    return max([earliest] + [iv.finish for iv in intervals])
+        finish = start + duration
+        if not _resource_ok(start, finish, demand, capacities, intervals):
+            continue
+        assignments = _people_assignment(
+            start,
+            finish,
+            demand,
+            workforce,
+            intervals,
+        )
+        if assignments is not None:
+            return start, assignments
+
+    fallback = max([earliest] + [iv.finish for iv in intervals])
+    assignments = _people_assignment(
+        fallback,
+        fallback + duration,
+        demand,
+        workforce,
+        intervals,
+    )
+    if assignments is None:
+        raise ValueError(
+            "Não existe alocação multi-skill factível para a atividade "
+            "nas capacidades/pessoas atuais"
+        )
+    return fallback, assignments
 
 
 def _schedule_assignment(
@@ -198,6 +272,7 @@ def _schedule_assignment(
     earliest_start: float = 0.0,
     fixed_intervals: list[FixedInterval] | None = None,
     fixed_task_times: dict[str, tuple[float, float]] | None = None,
+    workforce: WorkforceProfile | None = None,
 ) -> list[AdvancedScheduledTask]:
     fixed_intervals = list(fixed_intervals or [])
     fixed_task_times = dict(fixed_task_times or {})
@@ -245,8 +320,13 @@ def _schedule_assignment(
                 earliest,
                 _precedence_earliest(p, mode.duration, starts, finishes),
             )
-        start = _earliest_resource_start(
-            earliest, mode.duration, mode.resources, capacities, intervals
+        start, skill_assignments = _earliest_resource_start(
+            earliest,
+            mode.duration,
+            mode.resources,
+            capacities,
+            intervals,
+            workforce=workforce,
         )
         item = AdvancedScheduledTask(
             task_id=task.id,
@@ -257,6 +337,7 @@ def _schedule_assignment(
             duration=mode.duration,
             resources=dict(mode.resources),
             cost=mode.cost,
+            skill_assignments=skill_assignments,
         )
         scheduled[task.id] = item
         starts[task.id] = item.start
@@ -325,13 +406,20 @@ def solve_mrcpsp(
     fixed_task_times: dict[str, tuple[float, float]] | None = None,
     reference_start_times: dict[str, float] | None = None,
     stability_weight: float = 0.0,
+    workforce: WorkforceProfile | None = None,
 ) -> AdvancedScheduleResult:
     if not tasks:
         return AdvancedScheduleResult([], earliest_start, 0.0, 0.0, "empty", 0, 0)
 
+    capacities = effective_capacities(capacities, workforce)
+
     feasible_modes: dict[str, list[ExecutionMode]] = {}
     for task in tasks:
-        feasible = [m for m in task.modes if _mode_feasible(m, capacities)]
+        feasible = [
+            m
+            for m in task.modes
+            if _mode_feasible(m, capacities, workforce)
+        ]
         if not feasible:
             raise ValueError(
                 f"Atividade {task.id} não possui modo factível para as capacidades atuais"
@@ -354,6 +442,7 @@ def solve_mrcpsp(
                 earliest_start=earliest_start,
                 fixed_intervals=fixed_intervals,
                 fixed_task_times=fixed_task_times,
+                workforce=workforce,
             )
             evaluated += 1
             score = _score(
