@@ -47,6 +47,7 @@ jobs:
           bash -n scripts/deploy_vps.sh
           test -f deploy/systemd/turnaround.service
           grep -q '^ExecStart=.*/streamlit run app.py' deploy/systemd/turnaround.service
-          grep -q 'alembic upgrade head' scripts/deploy_vps.sh
+          grep -q 'from turnaround.persistence import upgrade_database; upgrade_database()' scripts/deploy_vps.sh
+          grep -q 'systemctl stop turnaround.service' scripts/deploy_vps.sh
           docker compose config -q
           docker build -t turnaround-project:test .

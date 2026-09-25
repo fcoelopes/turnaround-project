@@ -43,6 +43,10 @@ def run_migrations_online() -> None:
         if connection.dialect.name == "sqlite":
             connection.exec_driver_sql("PRAGMA foreign_keys=ON")
             connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+            # SQLAlchemy 2.x inicia autobegin ao executar os PRAGMAs.
+            # Sem este commit, o revision marker do Alembic pode ser
+            # revertido ao fechar a conexão embora o DDL SQLite permaneça.
+            connection.commit()
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from sqlalchemy import inspect, text
+
+from turnaround.persistence import Base, create_sqlite_engine
 
 from turnaround import (
     DiscoveredTask,
@@ -206,3 +210,76 @@ def test_start_new_session_archives_previous_execution(tmp_path):
     assert first.id != second.id
     assert active.id == second.id
     assert active.current_time == 1.0
+
+
+
+def test_upgrade_repairs_unversioned_initial_schema_without_deleting_data(tmp_path):
+    url = _database_url(tmp_path)
+    engine = create_sqlite_engine(url)
+
+    # Reproduz o estado visto em produção: a primeira tabela foi materializada,
+    # mas a migration ainda não conseguiu registrar seu revision marker.
+    Base.metadata.tables["execution_sessions"].create(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO execution_sessions (
+                    id, project_key, project_name, status, current_time,
+                    observed_events_json, human_selections_json,
+                    selected_optional_ids_json, scenario_capacities_json,
+                    stability_weight, created_at, updated_at
+                ) VALUES (
+                    'recover-me', 'key', 'Parada interrompida', 'active', 3,
+                    '{}', '{}', '[]', '{}', 1.0,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+    engine.dispose()
+
+    upgrade_database(url)
+
+    repaired = create_sqlite_engine(url)
+    inspector = inspect(repaired)
+    assert {
+        "execution_sessions",
+        "discovered_tasks",
+        "discovered_task_resources",
+        "discovered_task_predecessors",
+        "discovered_task_successors",
+        "execution_events",
+        "alembic_version",
+    }.issubset(set(inspector.get_table_names()))
+
+    with repaired.connect() as connection:
+        revision = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+        preserved = connection.execute(
+            text("SELECT project_name FROM execution_sessions WHERE id='recover-me'")
+        ).scalar_one()
+
+    assert revision == "0001_execution_persistence"
+    assert preserved == "Parada interrompida"
+
+
+def test_concurrent_upgrade_database_calls_are_serialized(tmp_path):
+    url = _database_url(tmp_path)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [
+            pool.submit(upgrade_database, url)
+            for _ in range(4)
+        ]
+        for future in futures:
+            future.result()
+
+    engine = create_sqlite_engine(url)
+    with engine.connect() as connection:
+        revisions = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalars().all()
+
+    assert revisions == ["0001_execution_persistence"]
