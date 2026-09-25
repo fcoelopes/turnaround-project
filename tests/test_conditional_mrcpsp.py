@@ -680,3 +680,86 @@ def test_project_uid_survives_visual_id_change_and_scope_rules_follow_uid():
     after_by_uid = {task.project_uid: task for task in after.tasks}
     assert after_by_uid["9009"].activation.kind == "optional"
     assert after_by_uid["9010"].activation.kind == "optional"
+
+
+def test_kinder_ovo_motor_test_can_discover_motor_replacement():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    tasks, capacities = project_xml_to_tasks(
+        (root / "sample_data" / "turnaround_conditional_model.xml").read_bytes()
+    )
+    project = project_from_tasks(tasks, capacities)
+    project = apply_scope_config(
+        project,
+        root / "sample_data" / "turnaround_conditional_scope.json",
+    )
+
+    by_uid = {task.project_uid: task for task in project.tasks}
+    motor_test = by_uid["13"]
+    motor_replace = by_uid["14"]
+
+    assert motor_test.name == "Ensaiar motor elétrico P-101"
+    assert motor_test.modes[0].duration == pytest.approx(2)
+    assert motor_test.modes[0].resources == {"Elétrica": 2.0}
+
+    assert motor_replace.activation.kind == "conditional"
+    assert motor_replace.modes[0].duration == pytest.approx(6)
+    assert motor_replace.modes[0].resources == {
+        "Elétrica": 2.0,
+        "Mecânica": 2.0,
+        "Guindaste": 1.0,
+    }
+
+    baseline_activation = resolve_activation(project, ExecutionState())
+    assert motor_test.id in baseline_activation.active_ids
+    assert motor_replace.id in baseline_activation.inactive_ids
+
+    baseline_tasks = [
+        task for task in project.tasks if task.id in baseline_activation.active_ids
+    ]
+    baseline = solve_mrcpsp(
+        baseline_tasks,
+        project.capacities,
+        deadline=project.deadline,
+    )
+
+    executions = {}
+    for item in baseline.tasks:
+        if item.finish <= 7 + 1e-9:
+            executions[item.task_id] = TaskExecution(
+                status="completed",
+                start=item.start,
+                finish=item.finish,
+                mode_name=item.mode_name,
+            )
+
+    assert motor_test.id in executions
+
+    state = ExecutionState(
+        current_time=7,
+        events={motor_test.id: ["motor_replacement_required"]},
+        executions=executions,
+    )
+    discovered = reschedule_from_state(project, state)
+
+    assert motor_replace.id in discovered.activation.active_ids
+
+    replacement_item = next(
+        item
+        for item in discovered.schedule.tasks
+        if item.task_id == motor_replace.id
+    )
+    closing_item = next(
+        item
+        for item in discovered.schedule.tasks
+        if item.task_id == by_uid["11"].id
+    )
+
+    assert replacement_item.duration == pytest.approx(6)
+    assert replacement_item.resources == {
+        "Elétrica": 2.0,
+        "Mecânica": 2.0,
+        "Guindaste": 1.0,
+    }
+    assert closing_item.start >= replacement_item.finish
