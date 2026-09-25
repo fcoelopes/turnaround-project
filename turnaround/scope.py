@@ -177,6 +177,26 @@ def _normalize_group(
             "ou member_task_ids"
         )
 
+    route_uids = data.pop("event_route_uids", None)
+    route_ids = data.get("event_routes")
+    if route_uids is not None:
+        resolved_routes = {
+            str(event_name): [
+                _resolve_project_uid(
+                    str(uid),
+                    uid_to_id,
+                    context=f"{context}.event_route_uids[{event_name}]",
+                )
+                for uid in uids
+            ]
+            for event_name, uids in route_uids.items()
+        }
+        if route_ids is not None and route_ids != resolved_routes:
+            raise ValueError(
+                f"{context}: event_routes conflita com event_route_uids"
+            )
+        data["event_routes"] = resolved_routes
+
     if data.get("when") is not None:
         data["when"] = _normalize_trigger(
             data["when"],
