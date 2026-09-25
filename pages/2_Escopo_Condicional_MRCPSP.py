@@ -155,6 +155,96 @@ def _parse_resource_demands(raw: str) -> dict[str, float]:
     return demands
 
 
+def render_manual() -> None:
+    st.markdown("### Manual de uso")
+    st.caption(
+        "Use esta página como um fluxo de execução da parada: configure uma vez, "
+        "registre apenas o que mudou e leia o impacto antes de tomar decisões."
+    )
+
+    st.markdown("#### Fluxo recomendado")
+    st.markdown(
+        """
+1. **Carregue o planejamento** — envie o XML do Microsoft Project ou use o Kinder Ovo.
+2. **Configure o modelo** — na aba Configuração, revise recursos, λ e regras de escopo.
+3. **Informe onde a parada está** — avance a hora corrente.
+4. **Registre achados** — marque eventos de inspeção ou crie uma atividade DS-* se o trabalho não existia no plano.
+5. **Resolva decisões técnicas** — quando houver XOR/OR humano, escolha a alternativa após comparar impactos.
+6. **Leia o efeito** — confira makespan, janela, novo escopo e cadeia controladora.
+7. **Comunique** — gere o PDF do snapshot atual quando o cenário estiver consistente.
+        """
+    )
+
+    st.markdown("#### O que fica em cada aba")
+    st.markdown(
+        """
+- **Operação:** carregar o plano, avançar a execução, registrar achados, resolver decisões e acompanhar impacto.
+- **Configuração:** regras de escopo, capacidades dos recursos, estabilidade do replanejamento e sessão persistida.
+- **Manual:** este guia e o glossário rápido.
+        """
+    )
+
+    with st.expander("Glossário rápido", expanded=True):
+        st.markdown(
+            """
+- **Baseline:** plano de referência antes dos achados da execução.
+- **Scope discovery:** escopo conhecido ou criado após inspeções/achados.
+- **Conditional:** atividade prevista, mas só ativada quando uma condição ocorre.
+- **Dynamic scope / DS-***: trabalho que não existia no planejamento e nasceu durante a execução.
+- **XOR:** exatamente uma alternativa; **OR:** uma ou mais; **AND:** todas.
+- **Makespan:** tempo total até o término do cronograma.
+- **Hora corrente:** ponto da execução; o que já terminou ou começou fica congelado.
+- **λ de estabilidade:** peso dado a evitar mudanças desnecessárias nos horários já planejados.
+- **Cadeia controladora:** atividades que, no estado atual, controlam o término por precedência, gates ou recursos.
+        """
+        )
+
+    with st.expander("O que a ferramenta decide — e o que ela não decide", expanded=False):
+        st.markdown(
+            """
+O scheduler **programa** o escopo escolhido e calcula consequências de prazo, custo,
+recursos e estabilidade. Ele **não escolhe uma ação técnica** como reparar ou substituir
+porque uma delas termina mais cedo. Quando a decisão é técnica, a ferramenta mostra os
+cenários sombra e a escolha continua humana.
+
+Uma regra event só é automática quando o próprio evento já determina a ação por uma
+regra previamente cadastrada.
+        """
+        )
+
+    with st.expander("Plano real: caminho mínimo", expanded=False):
+        st.markdown(
+            """
+1. Envie somente o **XML**.
+2. Vá para **Configuração** e cadastre regras na planilha; o JSON é opcional.
+3. Confira as capacidades dos recursos. Recurso demandado sem capacidade começa em 0.
+4. Volte para **Operação**, informe a hora corrente e registre os achados.
+5. Resolva apenas as decisões que realmente forem disparadas.
+6. Gere o PDF quando a visão executiva representar o cenário que você quer comunicar.
+        """
+        )
+
+    with st.expander("Quando usar cada tipo de regra", expanded=False):
+        st.markdown(
+            """
+- conditional: uma atividade específica entra quando um evento ocorre.
+- xor + human: há alternativas técnicas e uma pessoa deve escolher uma.
+- or + human: uma ou mais alternativas podem ser necessárias.
+- and: o gatilho ativa todo o conjunto.
+- event: use apenas quando o evento já determina de forma objetiva qual ramo entra.
+        """
+        )
+
+    with st.expander("Leitura do relatório gerencial", expanded=False):
+        st.markdown(
+            """
+Leia o PDF nesta ordem: **situação da janela → impacto vs baseline → o que mudou →
+cadeia controladora → Gantt**. Detalhes de recursos, estabilidade e auditoria ficam
+depois da leitura executiva; não precisam orientar a primeira decisão.
+        """
+        )
+
+
 def load_project():
     section(
         "1",
@@ -215,11 +305,14 @@ def load_project():
     return project, project_name, source_kind
 
 
-planning_tab, config_tab = st.tabs(
-    ["📋 Planejamento", "⚙️ Configuração"]
+operation_tab, config_tab, manual_tab = st.tabs(
+    ["▶️ Operação", "⚙️ Configuração", "📘 Manual"]
 )
 
-with planning_tab:
+with manual_tab:
+    render_manual()
+
+with operation_tab:
     project, project_name, project_source_kind = load_project()
 
 if project is None:
@@ -618,35 +711,70 @@ discovered_tasks = execution_store.load_discovered_tasks(
     execution_session.id
 )
 
-st.caption(
-    f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
-    f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s)"
-)
+with config_tab:
+    st.markdown("#### Sessão e persistência")
+    st.caption(
+        f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
+        f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s)"
+    )
 
-with st.expander("Sessão de execução persistida", expanded=False):
-    st.write(
-        f"**Sessão:** `{execution_session.id}`  \\n"
-        f"**Baseline:** `{project_key[:12]}`  \\n"
-        "Uma nova sessão arquiva esta execução e começa sem achados, DS-* ou decisões."
-    )
-    confirm_new_session = st.checkbox(
-        "Confirmo que quero iniciar uma nova sessão limpa para este baseline",
-        key=f"confirm_new_execution_{execution_session.id[:8]}",
-    )
-    if st.button(
-        "Iniciar nova sessão",
-        disabled=not confirm_new_session,
-        key=f"new_execution_{execution_session.id[:8]}",
-    ):
-        execution_store.start_new_session(
-            project_key=project_key,
-            project_name=project_name,
-            initial_current_time=0.0,
+    with st.expander("Sessão de execução persistida", expanded=False):
+        st.write(
+            f"**Sessão:** `{execution_session.id}`  \\n"
+            f"**Baseline:** `{project_key[:12]}`  \\n"
+            "Uma nova sessão arquiva esta execução e começa sem achados, DS-* ou decisões."
         )
-        for key in list(st.session_state):
-            if key.startswith("scope_decision_"):
-                del st.session_state[key]
-        st.rerun()
+        confirm_new_session = st.checkbox(
+            "Confirmo que quero iniciar uma nova sessão limpa para este baseline",
+            key=f"confirm_new_execution_{execution_session.id[:8]}",
+        )
+        if st.button(
+            "Iniciar nova sessão",
+            disabled=not confirm_new_session,
+            key=f"new_execution_{execution_session.id[:8]}",
+        ):
+            execution_store.start_new_session(
+                project_key=project_key,
+                project_name=project_name,
+                initial_current_time=0.0,
+            )
+            for key in list(st.session_state):
+                if key.startswith("scope_decision_"):
+                    del st.session_state[key]
+            st.rerun()
+
+with config_tab:
+    st.markdown("#### Auditoria da execução")
+    with st.expander("Histórico persistido da execução", expanded=False):
+        persisted_events = execution_store.list_events(
+            execution_session.id,
+            limit=100,
+        )
+        if persisted_events:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "ID": item.id,
+                            "Quando": item.occurred_at,
+                            "Evento": item.event_type,
+                            "Atividade": item.task_id or "—",
+                            "Detalhes": json.dumps(
+                                item.payload,
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            ),
+                        }
+                        for item in persisted_events
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.caption("Ainda não há eventos persistidos nesta sessão.")
+
+
 dynamic_materialization = materialize_dynamic_scope(
     planned_project,
     discovered_tasks,
@@ -662,160 +790,184 @@ unknown_resources = [
     if not entry.capacity_defined
 ]
 
-section(
-    "2",
-    "Cenário MRCPSP de recursos",
-    (
-        "Os controles são gerados automaticamente pela união entre Resource Sheet, "
-        "recursos das tarefas e recursos de todos os modos MRCPSP."
-    ),
-)
-
-scenario_name = st.text_input(
-    "Nome do cenário",
-    value="Cenário de recursos A",
-    key="mrcpsp_scenario_name",
-)
-
-if project_name == "Turnaround Kinder Ovo":
-    st.info(
-        "Teste guiado: avance até 7 h. Você terá dois discoveries independentes: "
-        "na inspeção mecânica, marque bearing_damage; no ensaio do motor, marque "
-        "motor_replacement_required. O primeiro testa mudança de modo com Mecânica=4→5; "
-        "o segundo adiciona a substituição do motor (6 h, Elétrica:2, Mecânica:2, Guindaste:1)."
+with config_tab:
+    st.markdown("#### Recursos e modos de execução")
+    st.caption(
+        "Ajuste capacidades somente quando quiser testar outro cenário. "
+        "Os controles são gerados a partir dos recursos usados pelo plano e pelos modos MRCPSP."
     )
 
-if unknown_resources:
-    status(
-        (
-            "Foram encontrados recursos usados por tarefas/modos sem capacidade-base "
-            "declarada no Project/sidecar: "
-            + ", ".join(entry.name for entry in unknown_resources)
-            + ". Eles aparecem abaixo com base não informada e cenário inicial 0."
-        ),
-        tone="warn",
-        title="Capacidades de recursos precisam ser informadas.",
+    scenario_name = st.text_input(
+        "Nome do cenário",
+        value="Cenário de recursos A",
+        key="mrcpsp_scenario_name",
     )
 
-cols = st.columns(min(4, max(1, len(resource_catalog))))
-scenario_capacities: dict[str, float] = {}
-for i, (resource, entry) in enumerate(resource_catalog.items()):
-    base_capacity = entry.base_capacity
-    persisted_capacity = execution_session.scenario_capacities.get(resource)
-    default_value = (
-        float(persisted_capacity)
-        if persisted_capacity is not None
-        else (float(base_capacity) if base_capacity is not None else 0.0)
-    )
-    upper = max(
-        2.0,
-        default_value * 2.5,
-        float(entry.max_demand) * 2.0,
-        float(entry.max_demand) + 2.0,
-    )
-    values_for_step = [float(entry.max_demand), default_value]
-    if base_capacity is not None:
-        values_for_step.append(float(base_capacity))
-    step = (
-        1.0
-        if all(float(value).is_integer() for value in values_for_step)
-        else 0.5
-    )
-    help_text = (
-        f"Capacidade-base: {base_capacity:g}. "
-        if base_capacity is not None
-        else "Capacidade-base não informada. "
-    )
-    help_text += (
-        f"Maior demanda individual observada: {entry.max_demand:g}. "
-        f"Usado em {len(entry.task_ids)} atividade(s)."
-    )
-    with cols[i % len(cols)]:
-        scenario_capacities[resource] = st.slider(
-            resource,
-            min_value=0.0,
-            max_value=float(upper),
-            value=default_value,
-            step=step,
-            key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
-            help=help_text,
+    if project_name == "Turnaround Kinder Ovo":
+        st.info(
+            "Teste guiado: avance até 7 h. Você terá dois discoveries independentes: "
+            "na inspeção mecânica, marque bearing_damage; no ensaio do motor, marque "
+            "motor_replacement_required. O primeiro testa mudança de modo com Mecânica=4→5; "
+            "o segundo adiciona a substituição do motor (6 h, Elétrica:2, Mecânica:2, Guindaste:1)."
         )
 
-resource_scenario_df = pd.DataFrame(
-    [
-        {
-            "Recurso": resource,
-            "Base": (
-                float(entry.base_capacity)
-                if entry.base_capacity is not None
-                else "não informada"
+    if unknown_resources:
+        status(
+            (
+                "Foram encontrados recursos usados por tarefas/modos sem capacidade-base "
+                "declarada no Project/sidecar: "
+                + ", ".join(entry.name for entry in unknown_resources)
+                + ". Eles aparecem abaixo com base não informada e cenário inicial 0."
             ),
-            "Maior demanda": float(entry.max_demand),
-            "Cenário": float(scenario_capacities[resource]),
-            "Δ vs base": (
-                float(scenario_capacities[resource]) - float(entry.base_capacity)
-                if entry.base_capacity is not None
-                else "—"
-            ),
-            "Atividades que usam": len(entry.task_ids),
-        }
-        for resource, entry in resource_catalog.items()
-    ]
-)
-st.dataframe(
-    resource_scenario_df,
-    use_container_width=True,
-    hide_index=True,
-)
+            tone="warn",
+            title="Capacidades de recursos precisam ser informadas.",
+        )
 
-project = base_project.model_copy(
-    update={"capacities": scenario_capacities}
-)
+    cols = st.columns(min(4, max(1, len(resource_catalog))))
+    scenario_capacities: dict[str, float] = {}
+    for i, (resource, entry) in enumerate(resource_catalog.items()):
+        base_capacity = entry.base_capacity
+        persisted_capacity = execution_session.scenario_capacities.get(resource)
+        default_value = (
+            float(persisted_capacity)
+            if persisted_capacity is not None
+            else (float(base_capacity) if base_capacity is not None else 0.0)
+        )
+        upper = max(
+            2.0,
+            default_value * 2.5,
+            float(entry.max_demand) * 2.0,
+            float(entry.max_demand) + 2.0,
+        )
+        values_for_step = [float(entry.max_demand), default_value]
+        if base_capacity is not None:
+            values_for_step.append(float(base_capacity))
+        step = (
+            1.0
+            if all(float(value).is_integer() for value in values_for_step)
+            else 0.5
+        )
+        help_text = (
+            f"Capacidade-base: {base_capacity:g}. "
+            if base_capacity is not None
+            else "Capacidade-base não informada. "
+        )
+        help_text += (
+            f"Maior demanda individual observada: {entry.max_demand:g}. "
+            f"Usado em {len(entry.task_ids)} atividade(s)."
+        )
+        with cols[i % len(cols)]:
+            scenario_capacities[resource] = st.slider(
+                resource,
+                min_value=0.0,
+                max_value=float(upper),
+                value=default_value,
+                step=step,
+                key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
+                help=help_text,
+            )
 
-with st.expander("Modos disponíveis por atividade", expanded=bool(unknown_resources)):
-    mode_rows = []
-    for task in base_project.tasks:
-        for mode in task.modes:
-            feasible_base = all(
-                demand <= base_capacities.get(resource, 0.0) + 1e-9
-                for resource, demand in mode.resources.items()
-            )
-            feasible_scenario = all(
-                demand <= scenario_capacities.get(resource, 0.0) + 1e-9
-                for resource, demand in mode.resources.items()
-            )
-            missing_base = [
-                resource
-                for resource in mode.resources
-                if resource not in base_capacities
-            ]
-            mode_rows.append(
-                {
-                    "ID": task.id,
-                    "UID Project": task.project_uid or "—",
-                    "Atividade": task.name,
-                    "Tipo": task.activation.kind,
-                    "Modo": mode.name,
-                    "Duração (h)": mode.duration,
-                    "Recursos": ", ".join(
-                        f"{key}:{value:g}"
-                        for key, value in mode.resources.items()
-                    ),
-                    "Custo": mode.cost,
-                    "Capacidade ausente": ", ".join(missing_base) or "—",
-                    "Factível na base": "sim" if feasible_base else "não",
-                    "Factível no cenário": "sim" if feasible_scenario else "não",
-                    "Novo modo liberado": (
-                        "SIM"
-                        if (not feasible_base and feasible_scenario)
-                        else "não"
-                    ),
-                }
-            )
+    resource_scenario_df = pd.DataFrame(
+        [
+            {
+                "Recurso": resource,
+                "Base": (
+                    float(entry.base_capacity)
+                    if entry.base_capacity is not None
+                    else "não informada"
+                ),
+                "Maior demanda": float(entry.max_demand),
+                "Cenário": float(scenario_capacities[resource]),
+                "Δ vs base": (
+                    float(scenario_capacities[resource]) - float(entry.base_capacity)
+                    if entry.base_capacity is not None
+                    else "—"
+                ),
+                "Atividades que usam": len(entry.task_ids),
+            }
+            for resource, entry in resource_catalog.items()
+        ]
+    )
     st.dataframe(
-        pd.DataFrame(mode_rows),
+        resource_scenario_df,
         use_container_width=True,
         hide_index=True,
+    )
+
+    project = base_project.model_copy(
+        update={"capacities": scenario_capacities}
+    )
+
+    with st.expander("Modos disponíveis por atividade", expanded=bool(unknown_resources)):
+        mode_rows = []
+        for task in base_project.tasks:
+            for mode in task.modes:
+                feasible_base = all(
+                    demand <= base_capacities.get(resource, 0.0) + 1e-9
+                    for resource, demand in mode.resources.items()
+                )
+                feasible_scenario = all(
+                    demand <= scenario_capacities.get(resource, 0.0) + 1e-9
+                    for resource, demand in mode.resources.items()
+                )
+                missing_base = [
+                    resource
+                    for resource in mode.resources
+                    if resource not in base_capacities
+                ]
+                mode_rows.append(
+                    {
+                        "ID": task.id,
+                        "UID Project": task.project_uid or "—",
+                        "Atividade": task.name,
+                        "Tipo": task.activation.kind,
+                        "Modo": mode.name,
+                        "Duração (h)": mode.duration,
+                        "Recursos": ", ".join(
+                            f"{key}:{value:g}"
+                            for key, value in mode.resources.items()
+                        ),
+                        "Custo": mode.cost,
+                        "Capacidade ausente": ", ".join(missing_base) or "—",
+                        "Factível na base": "sim" if feasible_base else "não",
+                        "Factível no cenário": "sim" if feasible_scenario else "não",
+                        "Novo modo liberado": (
+                            "SIM"
+                            if (not feasible_base and feasible_scenario)
+                            else "não"
+                        ),
+                    }
+                )
+        st.dataframe(
+            pd.DataFrame(mode_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+with config_tab:
+    st.markdown("#### Preferências do replanejamento")
+    stability_weight = st.slider(
+        "Peso de estabilidade do replanejamento (λ)",
+        min_value=0.0,
+        max_value=2.0,
+        value=min(2.0, max(0.0, float(execution_session.stability_weight))),
+        step=0.1,
+        key=f"stability_weight_{execution_session.id[:8]}",
+        help=(
+            "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos de início. "
+            "Atraso à deadline continua sendo prioridade. λ=0 reproduz o comportamento anterior; "
+            "λ=1 trata 1 h acumulada de mudança de início como 1 h no objetivo."
+        ),
+    )
+    st.caption(
+        "A estabilidade compara apenas atividades futuras que já existiam no plano anterior. "
+        "Novo escopo descoberto não recebe penalidade por não possuir início de referência."
+    )
+
+
+    st.caption(
+        "Deixe λ em 1.0 se não houver motivo para privilegiar mais prazo ou mais estabilidade."
     )
 
 empty_state = ExecutionState(current_time=0)
@@ -859,1427 +1011,1417 @@ if scenario_baseline is None:
 # capacidade-base esteja incompleta, usa o cenário informado como referência.
 baseline = base_baseline or scenario_baseline
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric(
-    "Makespan planejado",
-    "—" if base_baseline is None else f"{base_baseline.makespan:.1f} h",
-)
-m2.metric(
-    "Makespan · cenário-base",
-    f"{scenario_baseline.makespan:.1f} h",
-)
-m3.metric(
-    "Tarefas ativas na base",
-    len(scenario_baseline.tasks),
-)
-m4.metric(
-    "Escopo potencial",
-    len(planned_project.tasks) - len(scenario_baseline.tasks),
-)
-
-if base_baseline is None:
-    status(
-        (
-            "O planejamento não pode ser resolvido apenas com as capacidades-base "
-            "declaradas. O estado da parada abaixo usa as capacidades do cenário. "
-            f"Diagnóstico base: {base_baseline_error}"
-        ),
-        tone="warn",
-        title="Baseline de recursos incompleto.",
-    )
-
-section(
-    "3",
-    "Estado da parada e achados",
-    "Avance a hora corrente, registre achados e resolva decisões lógicas de escopo.",
-)
-
-reference_start_times = {
-    item.task_id: float(item.start)
-    for item in baseline.tasks
-}
-stability_weight = st.slider(
-    "Peso de estabilidade do replanejamento (λ)",
-    min_value=0.0,
-    max_value=2.0,
-    value=min(2.0, max(0.0, float(execution_session.stability_weight))),
-    step=0.1,
-    key=f"stability_weight_{execution_session.id[:8]}",
-    help=(
-        "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos de início. "
-        "Atraso à deadline continua sendo prioridade. λ=0 reproduz o comportamento anterior; "
-        "λ=1 trata 1 h acumulada de mudança de início como 1 h no objetivo."
-    ),
-)
-st.caption(
-    "A estabilidade compara apenas atividades futuras que já existiam no plano anterior. "
-    "Novo escopo descoberto não recebe penalidade por não possuir início de referência."
-)
-
-persisted_current_time = float(execution_session.current_time)
-default_current_time = (
-    persisted_current_time
-    if persisted_current_time > 0
-    else min(7.0, float(baseline.makespan))
-)
-current_time = st.number_input(
-    "Hora corrente desde o início da parada",
-    min_value=0.0,
-    value=float(default_current_time),
-    step=0.5,
-    key=f"current_time_{execution_session.id[:8]}",
-)
-
-executions: dict[str, TaskExecution] = {}
-for item in baseline.tasks:
-    if item.finish <= current_time + 1e-9:
-        executions[item.task_id] = TaskExecution(
-            status="completed",
-            start=item.start,
-            finish=item.finish,
-            mode_name=item.mode_name,
-        )
-    elif item.start < current_time < item.finish:
-        executions[item.task_id] = TaskExecution(
-            status="in_progress",
-            start=item.start,
-            finish=item.finish,
-            mode_name=item.mode_name,
-        )
-
-st.markdown("#### Dynamic scope discovery")
-
-completed_ids = [
-    task_id
-    for task_id, execution in executions.items()
-    if execution.status == "completed"
-]
-task_labels = {
-    task.id: f"{task.id} · {task.name}"
-    for task in project.tasks
-}
-future_task_ids = [
-    task.id
-    for task in project.tasks
-    if task.id not in completed_ids
-]
-
-with st.expander(
-    "Registrar atividade não prevista no cronograma",
-    expanded=False,
-):
+with operation_tab:
+    st.markdown("### Acompanhar a execução")
     st.caption(
-        "Use isto quando o trabalho descoberto não existia no XML nem no sidecar. "
-        "A atividade entra como escopo obrigatório e pode bloquear atividades futuras."
+        "Avance a parada, registre apenas o que mudou e acompanhe o efeito sobre a janela."
     )
 
-    next_dynamic_id = next_discovered_task_id(
-        planned_project,
-        discovered_tasks,
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric(
+        "Makespan planejado",
+        "—" if base_baseline is None else f"{base_baseline.makespan:.1f} h",
     )
-    d1, d2, d3 = st.columns([2, 1, 1])
-    with d1:
-        dynamic_name = st.text_input(
-            "Nova atividade",
-            key="dynamic_scope_name",
-            placeholder="Ex.: Reparar trinca encontrada na carcaça",
-        )
-    with d2:
-        dynamic_duration = st.number_input(
-            "Duração (h)",
-            min_value=0.5,
-            value=4.0,
-            step=0.5,
-            key="dynamic_scope_duration",
-        )
-    with d3:
-        dynamic_cost = st.number_input(
-            "Custo do modo",
-            min_value=0.0,
-            value=0.0,
-            step=100.0,
-            key="dynamic_scope_cost",
-        )
-
-    dynamic_resources = st.text_input(
-        "Recursos demandados",
-        key="dynamic_scope_resources",
-        placeholder="Soldador=1; Mecânica=2; Guindaste=1",
-        help=(
-            "Recursos novos são aceitos. Após salvar, a página recarrega e cria "
-            "automaticamente o slider de capacidade correspondente."
-        ),
+    m2.metric(
+        "Makespan · cenário-base",
+        f"{scenario_baseline.makespan:.1f} h",
+    )
+    m3.metric(
+        "Tarefas ativas na base",
+        len(scenario_baseline.tasks),
+    )
+    m4.metric(
+        "Escopo potencial",
+        len(planned_project.tasks) - len(scenario_baseline.tasks),
     )
 
-    source_options = [None] + completed_ids
-    dynamic_source_task = st.selectbox(
-        "Atividade onde o achado foi identificado",
-        options=source_options,
-        format_func=lambda task_id: (
-            "— origem não informada —"
-            if task_id is None
-            else task_labels.get(task_id, task_id)
-        ),
-        key="dynamic_scope_source",
-    )
-    dynamic_source_event = st.text_input(
-        "Achado / evento de origem",
-        key="dynamic_scope_source_event",
-        placeholder="Ex.: crack_detected",
-        disabled=dynamic_source_task is None,
-    )
-
-    dynamic_predecessors = st.multiselect(
-        "Predecessoras adicionais",
-        options=list(task_labels),
-        format_func=lambda task_id: task_labels[task_id],
-        key="dynamic_scope_predecessors",
-        help=(
-            "A atividade de origem, quando informada, é incluída automaticamente "
-            "como predecessora FS."
-        ),
-    )
-    dynamic_successors = st.multiselect(
-        "Atividades futuras que esta descoberta deve bloquear",
-        options=future_task_ids,
-        format_func=lambda task_id: task_labels[task_id],
-        key="dynamic_scope_successors",
-        help=(
-            "Será injetada uma precedência FS da nova atividade para cada sucessora. "
-            "Ex.: o fechamento só começa após o reparo descoberto."
-        ),
-    )
-    dynamic_notes = st.text_area(
-        "Observação",
-        key="dynamic_scope_notes",
-        placeholder="Contexto técnico do achado, evidência ou decisão que criou o novo trabalho.",
-    )
-
-    if st.button(
-        f"Adicionar {next_dynamic_id} ao escopo",
-        type="primary",
-        key="dynamic_scope_add",
-    ):
-        try:
-            if not dynamic_name.strip():
-                raise ValueError("Informe o nome da nova atividade")
-
-            resources = _parse_resource_demands(dynamic_resources)
-            predecessor_ids = list(dynamic_predecessors)
-            if (
-                dynamic_source_task is not None
-                and dynamic_source_task not in predecessor_ids
-            ):
-                predecessor_ids.append(dynamic_source_task)
-
-            discovered = DiscoveredTask(
-                id=next_dynamic_id,
-                name=dynamic_name.strip(),
-                discovered_at=float(current_time),
-                source_task_id=dynamic_source_task,
-                source_event=(
-                    dynamic_source_event.strip()
-                    if dynamic_source_task is not None
-                    and dynamic_source_event.strip()
-                    else None
-                ),
-                wbs=f"DS.{len(discovered_tasks) + 1}",
-                modes=[
-                    ExecutionMode(
-                        name="campo",
-                        duration=float(dynamic_duration),
-                        resources=resources,
-                        cost=float(dynamic_cost),
-                    )
-                ],
-                precedences=[
-                    Precedence(
-                        predecessor_id=task_id,
-                        relation="FS",
-                        lag=0.0,
-                    )
-                    for task_id in predecessor_ids
-                ],
-                successor_task_ids=list(dynamic_successors),
-                notes=dynamic_notes.strip() or None,
-            )
-
-            candidate = [*discovered_tasks, discovered]
-            # Valida colisões, referências e gates antes de persistir.
-            materialize_dynamic_scope(planned_project, candidate)
-            execution_store.add_discovered_task(
-                execution_session.id,
-                discovered,
-            )
-            st.rerun()
-        except ValueError as exc:
-            st.error(str(exc))
-
-if discovered_tasks:
-    st.markdown("##### Escopo descoberto em execução")
-    discovered_rows = []
-    for item in discovered_tasks:
-        discovered_rows.append(
-            {
-                "ID": item.id,
-                "Atividade": item.name,
-                "Descoberta em (h)": item.discovered_at,
-                "Origem": (
-                    task_labels.get(item.source_task_id, item.source_task_id)
-                    if item.source_task_id
-                    else "—"
-                ),
-                "Achado": item.source_event or "—",
-                "Duração (h)": item.modes[0].duration,
-                "Recursos": ", ".join(
-                    f"{resource}:{value:g}"
-                    for resource, value in item.modes[0].resources.items()
-                ) or "—",
-                "Bloqueia": ", ".join(
-                    task_labels.get(task_id, task_id)
-                    for task_id in item.successor_task_ids
-                ) or "—",
-            }
-        )
-    st.dataframe(
-        pd.DataFrame(discovered_rows),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    remove_id = st.selectbox(
-        "Reverter descoberta ainda não iniciada",
-        options=[None] + [item.id for item in discovered_tasks],
-        format_func=lambda task_id: (
-            "— selecionar —"
-            if task_id is None
-            else task_labels.get(task_id, task_id)
-        ),
-        key="dynamic_scope_remove_id",
-    )
-    if remove_id and st.button(
-        "Remover do escopo dinâmico",
-        key="dynamic_scope_remove",
-    ):
-        candidate = [
-            item
-            for item in discovered_tasks
-            if item.id != remove_id
-        ]
-        try:
-            materialize_dynamic_scope(planned_project, candidate)
-            execution_store.remove_discovered_task(
-                execution_session.id,
-                remove_id,
-            )
-            st.rerun()
-        except ValueError as exc:
-            st.error(
-                "Não é possível remover esta descoberta porque outra atividade "
-                f"dinâmica ainda depende dela: {exc}"
-            )
-
-with st.expander("Histórico persistido da execução", expanded=False):
-    persisted_events = execution_store.list_events(
-        execution_session.id,
-        limit=100,
-    )
-    if persisted_events:
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "ID": item.id,
-                        "Quando": item.occurred_at,
-                        "Evento": item.event_type,
-                        "Atividade": item.task_id or "—",
-                        "Detalhes": json.dumps(
-                            item.payload,
-                            ensure_ascii=False,
-                            sort_keys=True,
-                        ),
-                    }
-                    for item in persisted_events
-                ]
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.caption("Ainda não há eventos persistidos nesta sessão.")
-
-event_catalog: dict[str, set[str]] = {}
-for task in project.tasks:
-    for condition in task.activation.conditions:
-        event_catalog.setdefault(
-            condition.source_task_id,
-            set(),
-        ).update(condition.events)
-
-for group in project.logical_groups:
-    if group.when:
-        group_events = set(group.when.events)
-        group_events.update(group.event_routes)
-        event_catalog.setdefault(
-            group.when.source_task_id,
-            set(),
-        ).update(group_events)
-
-name_by_id = {task.id: task.name for task in project.tasks}
-project_order = {task.id: index for index, task in enumerate(project.tasks)}
-wbs_by_id = {task.id: task.wbs for task in project.tasks}
-events: dict[str, list[str]] = {}
-
-if event_catalog:
-    st.markdown("#### Resultados observados nas atividades gatilho")
-    for source_id, options in sorted(event_catalog.items()):
-        execution = executions.get(source_id)
-        completed = (
-            execution is not None
-            and execution.status == "completed"
-        )
-        label = (
-            f"{name_by_id.get(source_id, source_id)} · "
-            f"{'concluída' if completed else 'ainda não concluída'}"
-        )
-        selected = st.multiselect(
-            label,
-            options=sorted(options),
-            default=[
-                event_name
-                for event_name in execution_session.observed_events.get(source_id, [])
-                if event_name in options
-            ],
-            disabled=not completed,
-            key=f"events_{execution_session.id[:8]}_{source_id}",
-        )
-        if selected:
-            events[source_id] = selected
-
-group_members = {
-    task_id
-    for group in project.logical_groups
-    for task_id in group.member_task_ids
-}
-independent_optional = [
-    task
-    for task in project.tasks
-    if task.activation.kind == "optional"
-    and task.id not in group_members
-]
-
-selected_optional_ids: list[str] = []
-if independent_optional:
-    labels = {
-        task.id: f"{task.id} · {task.name}"
-        for task in independent_optional
-    }
-    selected_optional_ids = st.multiselect(
-        "Atividades opcionais selecionadas",
-        options=list(labels),
-        default=[
-            task_id
-            for task_id in execution_session.selected_optional_ids
-            if task_id in labels
-        ],
-        format_func=lambda task_id: labels[task_id],
-        key=f"optional_{execution_session.id[:8]}",
-    )
-
-known_groups = {group.id: group for group in project.logical_groups}
-stored_human_selections = {
-    group_id: [
-        task_id
-        for task_id in selection
-        if (
-            group_id in known_groups
-            and task_id in known_groups[group_id].member_task_ids
-        )
-    ]
-    for group_id, selection in execution_session.human_selections.items()
-    if group_id in known_groups
-}
-stored_human_selections = {
-    group_id: selection
-    for group_id, selection in stored_human_selections.items()
-    if selection
-}
-state = ExecutionState(
-    current_time=current_time,
-    events=events,
-    selected_optional_ids=selected_optional_ids,
-    group_selections=stored_human_selections,
-    executions=executions,
-)
-
-decision_engine = evaluate_scope_decisions(
-    project,
-    state,
-    reference_start_times=reference_start_times,
-    stability_weight=stability_weight,
-)
-
-st.markdown("#### Decisões de escopo ativas")
-if not decision_engine.pending_human:
-    st.caption(
-        "Nenhuma decisão humana pendente. Regras sem gatilho permanecem dormentes "
-        "e não geram controles."
-    )
-
-human_choices: dict[str, list[str]] = {}
-pending_human = decision_engine.pending_human
-focused_decision = None
-
-if pending_human:
-    pending_ids = [decision.group_id for decision in pending_human]
-    if len(pending_human) > 1:
-        st.caption(
-            f"{len(pending_human)} decisões humanas estão ativas. "
-            "Apenas uma é detalhada por vez."
-        )
-        focused_group_id = st.selectbox(
-            "Decisão em foco",
-            options=pending_ids,
-            key="scope_decision_focus",
-        )
-        focused_decision = next(
-            decision
-            for decision in pending_human
-            if decision.group_id == focused_group_id
-        )
-    else:
-        focused_decision = pending_human[0]
-
-if focused_decision is not None:
-    decision = focused_decision
-    group = known_groups[decision.group_id]
-    st.markdown(f"**{decision.group_id} · {group.operator.upper()}**")
-
-    impact_rows = []
-    feasible_impacts = []
-    for index, impact in enumerate(decision.impacts):
-        if impact.feasible:
-            feasible_impacts.append((index, impact))
-        impact_rows.append(
-            {
-                "Alternativa": " + ".join(impact.task_names),
-                "Factível": "sim" if impact.feasible else "não",
-                "Makespan (h)": impact.makespan if impact.feasible else None,
-                "Atraso (h)": impact.tardiness if impact.feasible else None,
-                "Custo": impact.total_cost if impact.feasible else None,
-                "Δ início total (h)": (
-                    impact.total_start_deviation if impact.feasible else None
-                ),
-                "Maior Δ início (h)": (
-                    impact.max_start_deviation if impact.feasible else None
-                ),
-                "Gargalo de recursos": (
-                    ", ".join(
-                        f"{resource}: faltam {shortage:g}"
-                        for resource, shortage in sorted(impact.resource_gaps.items())
-                    )
-                    or "—"
-                ),
-                "Diagnóstico": impact.error or "",
-            }
-        )
-    st.dataframe(
-        pd.DataFrame(impact_rows),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    option_indices = [index for index, impact in feasible_impacts]
-    chosen_index = st.selectbox(
-        "Resolver decisão",
-        options=[None] + option_indices,
-        key=f"scope_decision_{decision.group_id}",
-        format_func=lambda index: (
-            "— manter pendente —"
-            if index is None
-            else (
-                " + ".join(decision.impacts[index].task_names)
-            )
-        ),
-    )
-    if chosen_index is not None:
-        human_choices[decision.group_id] = list(
-            decision.impacts[chosen_index].selection
-        )
-
-    if not decision.exhaustive:
-        st.caption(
-            "Grupo OR grande: a avaliação usa um conjunto limitado de candidatos "
-            "para evitar explosão combinatória."
-        )
-
-if human_choices:
-    stored_human_selections.update(human_choices)
-
-if stored_human_selections:
-    if st.button("Reabrir decisões humanas desta sessão"):
-        execution_store.update_execution_state(
-            execution_session.id,
-            current_time=float(current_time),
-            observed_events=events,
-            human_selections={},
-            selected_optional_ids=selected_optional_ids,
-            scenario_capacities=scenario_capacities,
-            stability_weight=float(stability_weight),
-        )
-        for key in list(st.session_state):
-            if key.startswith("scope_decision_"):
-                del st.session_state[key]
-        st.rerun()
-
-# Persiste o estado operacional da sessão antes do replanejamento.
-execution_session = execution_store.update_execution_state(
-    execution_session.id,
-    current_time=float(current_time),
-    observed_events=events,
-    human_selections=stored_human_selections,
-    selected_optional_ids=selected_optional_ids,
-    scenario_capacities=scenario_capacities,
-    stability_weight=float(stability_weight),
-)
-
-# Reexecuta o motor após eventuais escolhas humanas. Ele pode aplicar regras
-# event-driven determinísticas que tenham sido liberadas pela decisão recém tomada.
-state = ExecutionState(
-    current_time=current_time,
-    events=events,
-    selected_optional_ids=selected_optional_ids,
-    group_selections=stored_human_selections,
-    executions=executions,
-)
-decision_engine = evaluate_scope_decisions(
-    project,
-    state,
-    reference_start_times=reference_start_times,
-    stability_weight=stability_weight,
-)
-state = decision_engine.state
-
-if decision_engine.auto_resolved:
-    auto_rows = []
-    for group_id, selection in decision_engine.auto_resolved.items():
-        group = known_groups[group_id]
-        decision = next(
+    if base_baseline is None:
+        status(
             (
-                item
-                for item in decision_engine.decisions
-                if item.group_id == group_id
-                and item.applied_selection is not None
+                "O planejamento não pode ser resolvido apenas com as capacidades-base "
+                "declaradas. O estado da parada abaixo usa as capacidades do cenário. "
+                f"Diagnóstico base: {base_baseline_error}"
             ),
-            None,
+            tone="warn",
+            title="Baseline de recursos incompleto.",
         )
-        applied_impact = None
-        if decision is not None:
-            applied_impact = next(
-                (
-                    impact
-                    for impact in decision.impacts
-                    if impact.selection == decision.applied_selection
-                ),
-                None,
+
+    section(
+        "2",
+        "Onde estamos na parada",
+        "Informe a hora corrente; atividades concluídas ou em andamento ficam congeladas no replanejamento.",
+    )
+
+    reference_start_times = {
+        item.task_id: float(item.start)
+        for item in baseline.tasks
+    }
+    persisted_current_time = float(execution_session.current_time)
+    default_current_time = (
+        persisted_current_time
+        if persisted_current_time > 0
+        else min(7.0, float(baseline.makespan))
+    )
+    current_time = st.number_input(
+        "Hora corrente desde o início da parada",
+        min_value=0.0,
+        value=float(default_current_time),
+        step=0.5,
+        key=f"current_time_{execution_session.id[:8]}",
+    )
+
+    executions: dict[str, TaskExecution] = {}
+    for item in baseline.tasks:
+        if item.finish <= current_time + 1e-9:
+            executions[item.task_id] = TaskExecution(
+                status="completed",
+                start=item.start,
+                finish=item.finish,
+                mode_name=item.mode_name,
             )
-        auto_rows.append(
-            {
-                "Regra": group_id,
-                "Modo": group.resolution_mode,
-                "Ramo aplicado": " + ".join(
-                    name_by_id.get(task_id, task_id)
-                    for task_id in selection
-                ),
-                "Factível": (
-                    "sim"
-                    if applied_impact is not None and applied_impact.feasible
-                    else "não"
-                ),
-                "Makespan (h)": (
-                    applied_impact.makespan
-                    if applied_impact is not None and applied_impact.feasible
-                    else None
-                ),
-                "Atraso (h)": (
-                    applied_impact.tardiness
-                    if applied_impact is not None and applied_impact.feasible
-                    else None
-                ),
-                "Custo": (
-                    applied_impact.total_cost
-                    if applied_impact is not None and applied_impact.feasible
-                    else None
-                ),
-                "Δ início total (h)": (
-                    applied_impact.total_start_deviation
-                    if applied_impact is not None and applied_impact.feasible
-                    else None
-                ),
-                "Maior Δ início (h)": (
-                    applied_impact.max_start_deviation
-                    if applied_impact is not None and applied_impact.feasible
-                    else None
-                ),
-                "Gargalo de recursos": (
-                    ", ".join(
-                        f"{resource}: faltam {shortage:g}"
-                        for resource, shortage in sorted(
-                            (applied_impact.resource_gaps if applied_impact is not None else {}).items()
-                        )
-                    )
-                    or "—"
-                ),
-                "Diagnóstico": (
-                    applied_impact.error
-                    if applied_impact is not None and not applied_impact.feasible
-                    else ""
-                ),
-            }
+        elif item.start < current_time < item.finish:
+            executions[item.task_id] = TaskExecution(
+                status="in_progress",
+                start=item.start,
+                finish=item.finish,
+                mode_name=item.mode_name,
+            )
+
+    st.markdown("#### Dynamic scope discovery")
+
+    completed_ids = [
+        task_id
+        for task_id, execution in executions.items()
+        if execution.status == "completed"
+    ]
+    task_labels = {
+        task.id: f"{task.id} · {task.name}"
+        for task in project.tasks
+    }
+    future_task_ids = [
+        task.id
+        for task in project.tasks
+        if task.id not in completed_ids
+    ]
+
+    with st.expander(
+        "Registrar atividade não prevista no cronograma",
+        expanded=False,
+    ):
+        st.caption(
+            "Use isto quando o trabalho descoberto não existia no XML nem no sidecar. "
+            "A atividade entra como escopo obrigatório e pode bloquear atividades futuras."
         )
-    with st.expander("Regras determinísticas aplicadas", expanded=False):
+
+        next_dynamic_id = next_discovered_task_id(
+            planned_project,
+            discovered_tasks,
+        )
+        d1, d2, d3 = st.columns([2, 1, 1])
+        with d1:
+            dynamic_name = st.text_input(
+                "Nova atividade",
+                key="dynamic_scope_name",
+                placeholder="Ex.: Reparar trinca encontrada na carcaça",
+            )
+        with d2:
+            dynamic_duration = st.number_input(
+                "Duração (h)",
+                min_value=0.5,
+                value=4.0,
+                step=0.5,
+                key="dynamic_scope_duration",
+            )
+        with d3:
+            dynamic_cost = st.number_input(
+                "Custo do modo",
+                min_value=0.0,
+                value=0.0,
+                step=100.0,
+                key="dynamic_scope_cost",
+            )
+
+        dynamic_resources = st.text_input(
+            "Recursos demandados",
+            key="dynamic_scope_resources",
+            placeholder="Soldador=1; Mecânica=2; Guindaste=1",
+            help=(
+                "Recursos novos são aceitos. Após salvar, a página recarrega e cria "
+                "automaticamente o slider de capacidade correspondente."
+            ),
+        )
+
+        source_options = [None] + completed_ids
+        dynamic_source_task = st.selectbox(
+            "Atividade onde o achado foi identificado",
+            options=source_options,
+            format_func=lambda task_id: (
+                "— origem não informada —"
+                if task_id is None
+                else task_labels.get(task_id, task_id)
+            ),
+            key="dynamic_scope_source",
+        )
+        dynamic_source_event = st.text_input(
+            "Achado / evento de origem",
+            key="dynamic_scope_source_event",
+            placeholder="Ex.: crack_detected",
+            disabled=dynamic_source_task is None,
+        )
+
+        dynamic_predecessors = st.multiselect(
+            "Predecessoras adicionais",
+            options=list(task_labels),
+            format_func=lambda task_id: task_labels[task_id],
+            key="dynamic_scope_predecessors",
+            help=(
+                "A atividade de origem, quando informada, é incluída automaticamente "
+                "como predecessora FS."
+            ),
+        )
+        dynamic_successors = st.multiselect(
+            "Atividades futuras que esta descoberta deve bloquear",
+            options=future_task_ids,
+            format_func=lambda task_id: task_labels[task_id],
+            key="dynamic_scope_successors",
+            help=(
+                "Será injetada uma precedência FS da nova atividade para cada sucessora. "
+                "Ex.: o fechamento só começa após o reparo descoberto."
+            ),
+        )
+        dynamic_notes = st.text_area(
+            "Observação",
+            key="dynamic_scope_notes",
+            placeholder="Contexto técnico do achado, evidência ou decisão que criou o novo trabalho.",
+        )
+
+        if st.button(
+            f"Adicionar {next_dynamic_id} ao escopo",
+            type="primary",
+            key="dynamic_scope_add",
+        ):
+            try:
+                if not dynamic_name.strip():
+                    raise ValueError("Informe o nome da nova atividade")
+
+                resources = _parse_resource_demands(dynamic_resources)
+                predecessor_ids = list(dynamic_predecessors)
+                if (
+                    dynamic_source_task is not None
+                    and dynamic_source_task not in predecessor_ids
+                ):
+                    predecessor_ids.append(dynamic_source_task)
+
+                discovered = DiscoveredTask(
+                    id=next_dynamic_id,
+                    name=dynamic_name.strip(),
+                    discovered_at=float(current_time),
+                    source_task_id=dynamic_source_task,
+                    source_event=(
+                        dynamic_source_event.strip()
+                        if dynamic_source_task is not None
+                        and dynamic_source_event.strip()
+                        else None
+                    ),
+                    wbs=f"DS.{len(discovered_tasks) + 1}",
+                    modes=[
+                        ExecutionMode(
+                            name="campo",
+                            duration=float(dynamic_duration),
+                            resources=resources,
+                            cost=float(dynamic_cost),
+                        )
+                    ],
+                    precedences=[
+                        Precedence(
+                            predecessor_id=task_id,
+                            relation="FS",
+                            lag=0.0,
+                        )
+                        for task_id in predecessor_ids
+                    ],
+                    successor_task_ids=list(dynamic_successors),
+                    notes=dynamic_notes.strip() or None,
+                )
+
+                candidate = [*discovered_tasks, discovered]
+                # Valida colisões, referências e gates antes de persistir.
+                materialize_dynamic_scope(planned_project, candidate)
+                execution_store.add_discovered_task(
+                    execution_session.id,
+                    discovered,
+                )
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+    if discovered_tasks:
+        st.markdown("##### Escopo descoberto em execução")
+        discovered_rows = []
+        for item in discovered_tasks:
+            discovered_rows.append(
+                {
+                    "ID": item.id,
+                    "Atividade": item.name,
+                    "Descoberta em (h)": item.discovered_at,
+                    "Origem": (
+                        task_labels.get(item.source_task_id, item.source_task_id)
+                        if item.source_task_id
+                        else "—"
+                    ),
+                    "Achado": item.source_event or "—",
+                    "Duração (h)": item.modes[0].duration,
+                    "Recursos": ", ".join(
+                        f"{resource}:{value:g}"
+                        for resource, value in item.modes[0].resources.items()
+                    ) or "—",
+                    "Bloqueia": ", ".join(
+                        task_labels.get(task_id, task_id)
+                        for task_id in item.successor_task_ids
+                    ) or "—",
+                }
+            )
         st.dataframe(
-            pd.DataFrame(auto_rows),
+            pd.DataFrame(discovered_rows),
             use_container_width=True,
             hide_index=True,
         )
-        for decision in decision_engine.decisions:
-            if (
-                decision.applied_selection is None
-                or len(decision.impacts) <= 1
-            ):
-                continue
-            st.markdown(f"**Cenários sombra · {decision.group_id}**")
-            shadow_rows = []
-            for impact in decision.impacts:
-                shadow_rows.append(
-                    {
-                        "Alternativa": " + ".join(impact.task_names),
-                        "Aplicada": (
-                            "SIM"
-                            if impact.selection == decision.applied_selection
-                            else "não"
-                        ),
-                        "Factível": "sim" if impact.feasible else "não",
-                        "Makespan (h)": (
-                            impact.makespan if impact.feasible else None
-                        ),
-                        "Atraso (h)": (
-                            impact.tardiness if impact.feasible else None
-                        ),
-                        "Custo": (
-                            impact.total_cost if impact.feasible else None
-                        ),
-                        "Δ início total (h)": (
-                            impact.total_start_deviation if impact.feasible else None
-                        ),
-                        "Maior Δ início (h)": (
-                            impact.max_start_deviation if impact.feasible else None
-                        ),
-                        "Gargalo de recursos": (
-                            ", ".join(
-                                f"{resource}: faltam {shortage:g}"
-                                for resource, shortage in sorted(impact.resource_gaps.items())
-                            )
-                            or "—"
-                        ),
-                        "Diagnóstico": impact.error or "",
-                    }
+
+        remove_id = st.selectbox(
+            "Reverter descoberta ainda não iniciada",
+            options=[None] + [item.id for item in discovered_tasks],
+            format_func=lambda task_id: (
+                "— selecionar —"
+                if task_id is None
+                else task_labels.get(task_id, task_id)
+            ),
+            key="dynamic_scope_remove_id",
+        )
+        if remove_id and st.button(
+            "Remover do escopo dinâmico",
+            key="dynamic_scope_remove",
+        ):
+            candidate = [
+                item
+                for item in discovered_tasks
+                if item.id != remove_id
+            ]
+            try:
+                materialize_dynamic_scope(planned_project, candidate)
+                execution_store.remove_discovered_task(
+                    execution_session.id,
+                    remove_id,
                 )
-            st.dataframe(
-                pd.DataFrame(shadow_rows),
-                use_container_width=True,
-                hide_index=True,
+                st.rerun()
+            except ValueError as exc:
+                st.error(
+                    "Não é possível remover esta descoberta porque outra atividade "
+                    f"dinâmica ainda depende dela: {exc}"
+                )
+
+    event_catalog: dict[str, set[str]] = {}
+    for task in project.tasks:
+        for condition in task.activation.conditions:
+            event_catalog.setdefault(
+                condition.source_task_id,
+                set(),
+            ).update(condition.events)
+
+    for group in project.logical_groups:
+        if group.when:
+            group_events = set(group.when.events)
+            group_events.update(group.event_routes)
+            event_catalog.setdefault(
+                group.when.source_task_id,
+                set(),
+            ).update(group_events)
+
+    name_by_id = {task.id: task.name for task in project.tasks}
+    project_order = {task.id: index for index, task in enumerate(project.tasks)}
+    wbs_by_id = {task.id: task.wbs for task in project.tasks}
+    events: dict[str, list[str]] = {}
+
+    if event_catalog:
+        with st.expander("Registrar achados nas atividades gatilho", expanded=True):
+            for source_id, options in sorted(event_catalog.items()):
+                execution = executions.get(source_id)
+                completed = (
+                    execution is not None
+                    and execution.status == "completed"
+                )
+                label = (
+                    f"{name_by_id.get(source_id, source_id)} · "
+                    f"{'concluída' if completed else 'ainda não concluída'}"
+                )
+                selected = st.multiselect(
+                    label,
+                    options=sorted(options),
+                    default=[
+                        event_name
+                        for event_name in execution_session.observed_events.get(source_id, [])
+                        if event_name in options
+                    ],
+                    disabled=not completed,
+                    key=f"events_{execution_session.id[:8]}_{source_id}",
+                )
+                if selected:
+                    events[source_id] = selected
+
+    group_members = {
+        task_id
+        for group in project.logical_groups
+        for task_id in group.member_task_ids
+    }
+    independent_optional = [
+        task
+        for task in project.tasks
+        if task.activation.kind == "optional"
+        and task.id not in group_members
+    ]
+
+    selected_optional_ids: list[str] = []
+    if independent_optional:
+        labels = {
+            task.id: f"{task.id} · {task.name}"
+            for task in independent_optional
+        }
+        with st.expander("Escopo opcional manual", expanded=False):
+            selected_optional_ids = st.multiselect(
+                "Atividades opcionais selecionadas",
+                options=list(labels),
+                default=[
+                    task_id
+                    for task_id in execution_session.selected_optional_ids
+                    if task_id in labels
+                ],
+                format_func=lambda task_id: labels[task_id],
+                key=f"optional_{execution_session.id[:8]}",
             )
 
-if decision_engine.unresolved_event_groups:
-    status(
-        (
-            "Há regra(s) event-driven com gatilho ativo, mas nenhum event_route "
-            "corresponde aos eventos observados: "
-            + ", ".join(decision_engine.unresolved_event_groups)
-        ),
-        tone="warn",
-        title="Rota automática ainda não determinada.",
+    known_groups = {group.id: group for group in project.logical_groups}
+    stored_human_selections = {
+        group_id: [
+            task_id
+            for task_id in selection
+            if (
+                group_id in known_groups
+                and task_id in known_groups[group_id].member_task_ids
+            )
+        ]
+        for group_id, selection in execution_session.human_selections.items()
+        if group_id in known_groups
+    }
+    stored_human_selections = {
+        group_id: selection
+        for group_id, selection in stored_human_selections.items()
+        if selection
+    }
+    state = ExecutionState(
+        current_time=current_time,
+        events=events,
+        selected_optional_ids=selected_optional_ids,
+        group_selections=stored_human_selections,
+        executions=executions,
     )
 
-activation = resolve_activation(project, state)
-pending_groups = [
-    group_id
-    for group_id, group_status in activation.group_states.items()
-    if group_status == "pending_selection"
-]
-if pending_groups:
-    status(
-        (
-            f"{len(pending_groups)} decisão(ões) de escopo continuam pendentes. "
-            "Somente grupos cujo gatilho ocorreu entram nesta fila."
-        ),
-        tone="warn",
-        title="Rolling horizon de decisões.",
-    )
-
-base_result = None
-base_result_error = None
-try:
-    base_result = reschedule_from_state(
-        base_project,
-        state,
-        reference_start_times=reference_start_times,
-        stability_weight=stability_weight,
-    )
-except ValueError as exc:
-    base_result_error = str(exc)
-
-try:
-    result = reschedule_from_state(
+    decision_engine = evaluate_scope_decisions(
         project,
         state,
         reference_start_times=reference_start_times,
         stability_weight=stability_weight,
     )
-except ValueError as exc:
-    st.error(f"Cenário de recursos inviável: {exc}")
-    if base_result_error:
-        st.caption(f"Com os recursos-base também é inviável: {base_result_error}")
-    st.stop()
 
-active_now = result.activation.active_ids
-new_scope = active_now - baseline_activation.active_ids
-
-activation_df = pd.DataFrame(
-    [
-        {
-            "ID": task.id,
-            "UID Project": task.project_uid or "—",
-            "Atividade": task.name,
-            "Origem": (
-                "dynamic discovery"
-                if task.id in dynamic_scope_ids
-                else "planejamento / regra"
-            ),
-            "Tipo": task.activation.kind,
-            "Estado": result.activation.states[task.id].value,
-            "Motivo": result.activation.reasons[task.id],
-        }
-        for task in project.tasks
-    ]
-)
-
-all_items = result.frozen_tasks + result.schedule.tasks
-criticality = analyze_effective_criticality(
-    project=project,
-    effective_tasks=result.effective_tasks,
-    items=all_items,
-    capacities=project.capacities,
-    current_time=float(current_time),
-    makespan=float(result.schedule.makespan),
-)
-critical_path_label = (
-    " → ".join(criticality.path_ids)
-    if criticality.path_ids
-    else "—"
-)
-
-schedule_df = pd.DataFrame(
-    [
-        {
-            "_Ordem": project_order.get(str(item.task_id), len(project.tasks)),
-            "ID": item.task_id,
-            "WBS": wbs_by_id.get(str(item.task_id), ""),
-            "Atividade": item.task_name,
-            "Origem": (
-                "dynamic discovery"
-                if str(item.task_id) in dynamic_scope_ids
-                else "planejamento / regra"
-            ),
-            "Modo": item.mode_name,
-            "Início (h)": item.start,
-            "Fim (h)": item.finish,
-            "Duração (h)": item.duration,
-            "Δ início vs plano (h)": (
-                item.start - reference_start_times[item.task_id]
-                if item.task_id in reference_start_times
-                else None
-            ),
-            "Congelada": item.fixed,
-            "Crítica atual": str(item.task_id) in criticality.critical_ids,
-            "Controla por": criticality.reasons.get(str(item.task_id), ""),
-            "Recursos": ", ".join(
-                f"{key}:{value:g}"
-                for key, value in item.resources.items()
-            ),
-        }
-        for item in sorted(
-            all_items,
-            key=lambda scheduled: project_order.get(
-                str(scheduled.task_id),
-                len(project.tasks),
-            ),
-        )
-    ]
-)
-
-# Snapshot único usado pela tela e pelo relatório gerencial.
-# Se este invariante falhar, o PDF não é gerado: ele nunca deve representar
-# um estado diferente do cronograma que o usuário está vendo.
-snapshot_schedule_finish = max(
-    [float(item.finish) for item in all_items],
-    default=float(current_time),
-)
-if abs(snapshot_schedule_finish - float(result.schedule.makespan)) > 1e-6:
-    st.error(
-        "Inconsistência interna: o makespan exibido não coincide com o maior "
-        "fim do cronograma atual. O relatório foi bloqueado para evitar um "
-        "snapshot incorreto."
-    )
-    st.stop()
-
-dynamic_scope_report_df = pd.DataFrame(
-    [
-        {
-            "ID": item.id,
-            "Atividade": item.name,
-            "Descoberta em (h)": float(item.discovered_at),
-            "Recursos": "; ".join(
-                f"{resource}={demand:g}"
-                for mode in item.modes
-                for resource, demand in sorted(mode.resources.items())
-            ) or "—",
-            "Bloqueia": ", ".join(item.successor_task_ids) or "—",
-        }
-        for item in discovered_tasks
-    ]
-)
-
-observed_events_label = "; ".join(
-    f"{task_id}: {', '.join(values)}"
-    for task_id, values in sorted(events.items())
-    if values
-) or "—"
-human_decisions_label = "; ".join(
-    f"{group_id}: {', '.join(selection)}"
-    for group_id, selection in sorted(stored_human_selections.items())
-    if selection
-) or "—"
-auto_rules_label = "; ".join(
-    f"{group_id}: {', '.join(selection)}"
-    for group_id, selection in sorted(decision_engine.auto_resolved.items())
-    if selection
-) or "—"
-optional_label = ", ".join(sorted(selected_optional_ids)) or "—"
-
-snapshot_payload = {
-    "session_id": execution_session.id,
-    "project_key": project_key,
-    "current_time": float(current_time),
-    "scenario_capacities": {
-        key: float(value)
-        for key, value in sorted(scenario_capacities.items())
-    },
-    "stability_weight": float(stability_weight),
-    "events": {
-        key: sorted(value)
-        for key, value in sorted(events.items())
-        if value
-    },
-    "selected_optional_ids": sorted(selected_optional_ids),
-    "human_selections": {
-        key: sorted(value)
-        for key, value in sorted(stored_human_selections.items())
-        if value
-    },
-    "auto_resolved": {
-        key: sorted(value)
-        for key, value in sorted(decision_engine.auto_resolved.items())
-        if value
-    },
-    "dynamic_scope": [
-        item.model_dump(mode="json")
-        for item in discovered_tasks
-    ],
-    "spreadsheet_scope_rules": [
-        row.model_dump(mode="json")
-        for row in stored_scope_rules
-    ],
-    "result": {
-        "makespan": float(result.schedule.makespan),
-        "tardiness": float(result.schedule.tardiness),
-        "total_cost": float(result.schedule.total_cost),
-        "strategy": result.schedule.strategy,
-        "tasks": [
-            {
-                "id": str(item.task_id),
-                "mode": item.mode_name,
-                "start": float(item.start),
-                "finish": float(item.finish),
-                "fixed": bool(item.fixed),
-            }
-            for item in all_items
-        ],
-    },
-}
-report_snapshot_id = hashlib.sha256(
-    json.dumps(
-        snapshot_payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-).hexdigest()[:12]
-
-execution_state_report_df = pd.DataFrame(
-    [
-        {"Parâmetro": "Snapshot", "Valor": report_snapshot_id},
-        {"Parâmetro": "Sessão", "Valor": execution_session.id},
-        {"Parâmetro": "Hora corrente", "Valor": f"{current_time:.1f} h"},
-        {"Parâmetro": "Makespan baseline", "Valor": f"{baseline.makespan:.1f} h"},
-        {
-            "Parâmetro": "Makespan reprogramado",
-            "Valor": f"{result.schedule.makespan:.1f} h",
-        },
-        {"Parâmetro": "Atraso", "Valor": f"{result.schedule.tardiness:.1f} h"},
-        {"Parâmetro": "Peso estabilidade λ", "Valor": f"{stability_weight:.1f}"},
-        {"Parâmetro": "Achados observados", "Valor": observed_events_label},
-        {"Parâmetro": "Opcionais selecionadas", "Valor": optional_label},
-        {"Parâmetro": "Decisões humanas", "Valor": human_decisions_label},
-        {"Parâmetro": "Regras determinísticas", "Valor": auto_rules_label},
-        {
-            "Parâmetro": "Dynamic scope",
-            "Valor": f"{len(dynamic_scope_ids)} atividade(s)",
-        },
-        {
-            "Parâmetro": "Regras da planilha",
-            "Valor": (
-                ", ".join(row.id for row in stored_scope_rules if row.enabled)
-                or "—"
-            ),
-        },
-        {"Parâmetro": "Estratégia solver", "Valor": result.schedule.strategy},
-    ]
-)
-
-section(
-    "4",
-    "Comparação do cenário MRCPSP",
-    "Isole o efeito dos recursos: o escopo descoberto e o estado da parada são os mesmos; muda apenas a capacidade.",
-)
-
-if base_result is None:
-    status(
-        (
-            "O escopo descoberto é inviável com os recursos-base. "
-            f"Diagnóstico: {base_result_error}"
-        ),
-        tone="danger",
-        title="Recursos-base insuficientes.",
-    )
-else:
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(
-        "Makespan · recursos-base",
-        f"{base_result.schedule.makespan:.1f} h",
-    )
-    c2.metric(
-        "Makespan · cenário",
-        f"{result.schedule.makespan:.1f} h",
-        delta=f"{result.schedule.makespan - base_result.schedule.makespan:+.1f} h",
-    )
-    c3.metric(
-        "Horas recuperadas",
-        f"{max(0.0, base_result.schedule.makespan - result.schedule.makespan):.1f} h",
-    )
-    c4.metric(
-        "Δ custo de modos",
-        f"{result.schedule.total_cost - base_result.schedule.total_cost:+,.0f}",
-    )
-
-    s1, s2, s3, s4 = st.columns(4)
-    s1.metric(
-        "Δ início acumulado · base",
-        f"{base_result.schedule.total_start_deviation:.1f} h",
-    )
-    s2.metric(
-        "Δ início acumulado · cenário",
-        f"{result.schedule.total_start_deviation:.1f} h",
-        delta=(
-            f"{result.schedule.total_start_deviation - base_result.schedule.total_start_deviation:+.1f} h"
-        ),
-    )
-    s3.metric(
-        "Maior deslocamento de início",
-        f"{result.schedule.max_start_deviation:.1f} h",
-    )
-    s4.metric(
-        "Atividades comparadas",
-        result.schedule.stability_compared_tasks,
-    )
-
-    base_future = {item.task_id: item for item in base_result.schedule.tasks}
-    scenario_future = {item.task_id: item for item in result.schedule.tasks}
-    mode_comparison_rows = []
-    for task_id in sorted(set(base_future) & set(scenario_future)):
-        before = base_future[task_id]
-        after = scenario_future[task_id]
-        mode_comparison_rows.append(
-            {
-                "ID": task_id,
-                "Atividade": after.task_name,
-                "Modo · base": before.mode_name,
-                "Modo · cenário": after.mode_name,
-                "Mudou modo?": "SIM" if before.mode_name != after.mode_name else "não",
-                "Duração base (h)": before.duration,
-                "Duração cenário (h)": after.duration,
-                "Fim base (h)": before.finish,
-                "Fim cenário (h)": after.finish,
-                "Δ fim (h)": after.finish - before.finish,
-            }
+    if decision_engine.pending_human:
+        st.markdown("#### Decisão de escopo necessária")
+        st.caption(
+            "Compare as consequências abaixo. A ferramenta informa impacto e factibilidade; a escolha técnica continua humana."
         )
 
-    mode_comparison_df = pd.DataFrame(mode_comparison_rows)
-    changed_modes_df = (
-        mode_comparison_df[mode_comparison_df["Mudou modo?"] == "SIM"]
-        if not mode_comparison_df.empty
-        else mode_comparison_df
-    )
+    human_choices: dict[str, list[str]] = {}
+    pending_human = decision_engine.pending_human
+    focused_decision = None
 
-    if not changed_modes_df.empty:
-        status(
-            f"O MRCPSP trocou o modo de {len(changed_modes_df)} atividade(s) neste cenário.",
-            tone="ok",
-            title="Mudança de estratégia de execução detectada.",
-        )
-        st.dataframe(
-            changed_modes_df,
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.info(
-            "Nenhuma atividade trocou de modo. O cenário ainda pode alterar o makespan "
-            "por permitir ou restringir paralelismo."
-        )
+    if pending_human:
+        pending_ids = [decision.group_id for decision in pending_human]
+        if len(pending_human) > 1:
+            st.caption(
+                f"{len(pending_human)} decisões humanas estão ativas. "
+                "Apenas uma é detalhada por vez."
+            )
+            focused_group_id = st.selectbox(
+                "Decisão em foco",
+                options=pending_ids,
+                key="scope_decision_focus",
+            )
+            focused_decision = next(
+                decision
+                for decision in pending_human
+                if decision.group_id == focused_group_id
+            )
+        else:
+            focused_decision = pending_human[0]
 
-    with st.expander("Comparação completa das atividades futuras", expanded=True):
-        st.dataframe(
-            mode_comparison_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+    if focused_decision is not None:
+        decision = focused_decision
+        group = known_groups[decision.group_id]
+        st.markdown(f"**{decision.group_id} · {group.operator.upper()}**")
 
-    st.session_state.setdefault("mrcpsp_saved_scenarios", [])
-    save_col, clear_col = st.columns(2)
-    with save_col:
-        if st.button("Salvar cenário na comparação", type="primary"):
-            st.session_state.mrcpsp_saved_scenarios.append(
+        impact_rows = []
+        feasible_impacts = []
+        for index, impact in enumerate(decision.impacts):
+            if impact.feasible:
+                feasible_impacts.append((index, impact))
+            impact_rows.append(
                 {
-                    "Cenário": scenario_name,
-                    "Makespan (h)": result.schedule.makespan,
-                    "Atraso (h)": result.schedule.tardiness,
-                    "Custo modos": result.schedule.total_cost,
-                    "Horas recuperadas": base_result.schedule.makespan - result.schedule.makespan,
-                    "Δ início acumulado (h)": result.schedule.total_start_deviation,
-                    "Maior Δ início (h)": result.schedule.max_start_deviation,
-                    "λ estabilidade": stability_weight,
-                    "Dynamic scope": len(dynamic_scope_ids),
-                    "Modos alterados": int(
-                        sum(
-                            row["Mudou modo?"] == "SIM"
-                            for row in mode_comparison_rows
-                        )
+                    "Alternativa": " + ".join(impact.task_names),
+                    "Factível": "sim" if impact.feasible else "não",
+                    "Makespan (h)": impact.makespan if impact.feasible else None,
+                    "Atraso (h)": impact.tardiness if impact.feasible else None,
+                    "Custo": impact.total_cost if impact.feasible else None,
+                    "Δ início total (h)": (
+                        impact.total_start_deviation if impact.feasible else None
                     ),
-                    "Recursos": "; ".join(
-                        f"{resource}={scenario_capacities[resource]:g}"
-                        for resource in sorted(scenario_capacities)
+                    "Maior Δ início (h)": (
+                        impact.max_start_deviation if impact.feasible else None
+                    ),
+                    "Gargalo de recursos": (
+                        ", ".join(
+                            f"{resource}: faltam {shortage:g}"
+                            for resource, shortage in sorted(impact.resource_gaps.items())
+                        )
+                        or "—"
+                    ),
+                    "Diagnóstico": impact.error or "",
+                }
+            )
+        st.dataframe(
+            pd.DataFrame(impact_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        option_indices = [index for index, impact in feasible_impacts]
+        chosen_index = st.selectbox(
+            "Resolver decisão",
+            options=[None] + option_indices,
+            key=f"scope_decision_{decision.group_id}",
+            format_func=lambda index: (
+                "— manter pendente —"
+                if index is None
+                else (
+                    " + ".join(decision.impacts[index].task_names)
+                )
+            ),
+        )
+        if chosen_index is not None:
+            human_choices[decision.group_id] = list(
+                decision.impacts[chosen_index].selection
+            )
+
+        if not decision.exhaustive:
+            st.caption(
+                "Grupo OR grande: a avaliação usa um conjunto limitado de candidatos "
+                "para evitar explosão combinatória."
+            )
+
+    if human_choices:
+        stored_human_selections.update(human_choices)
+
+    if stored_human_selections:
+        if st.button("Reabrir decisões humanas desta sessão"):
+            execution_store.update_execution_state(
+                execution_session.id,
+                current_time=float(current_time),
+                observed_events=events,
+                human_selections={},
+                selected_optional_ids=selected_optional_ids,
+                scenario_capacities=scenario_capacities,
+                stability_weight=float(stability_weight),
+            )
+            for key in list(st.session_state):
+                if key.startswith("scope_decision_"):
+                    del st.session_state[key]
+            st.rerun()
+
+    # Persiste o estado operacional da sessão antes do replanejamento.
+    execution_session = execution_store.update_execution_state(
+        execution_session.id,
+        current_time=float(current_time),
+        observed_events=events,
+        human_selections=stored_human_selections,
+        selected_optional_ids=selected_optional_ids,
+        scenario_capacities=scenario_capacities,
+        stability_weight=float(stability_weight),
+    )
+
+    # Reexecuta o motor após eventuais escolhas humanas. Ele pode aplicar regras
+    # event-driven determinísticas que tenham sido liberadas pela decisão recém tomada.
+    state = ExecutionState(
+        current_time=current_time,
+        events=events,
+        selected_optional_ids=selected_optional_ids,
+        group_selections=stored_human_selections,
+        executions=executions,
+    )
+    decision_engine = evaluate_scope_decisions(
+        project,
+        state,
+        reference_start_times=reference_start_times,
+        stability_weight=stability_weight,
+    )
+    state = decision_engine.state
+
+    if decision_engine.auto_resolved:
+        auto_rows = []
+        for group_id, selection in decision_engine.auto_resolved.items():
+            group = known_groups[group_id]
+            decision = next(
+                (
+                    item
+                    for item in decision_engine.decisions
+                    if item.group_id == group_id
+                    and item.applied_selection is not None
+                ),
+                None,
+            )
+            applied_impact = None
+            if decision is not None:
+                applied_impact = next(
+                    (
+                        impact
+                        for impact in decision.impacts
+                        if impact.selection == decision.applied_selection
+                    ),
+                    None,
+                )
+            auto_rows.append(
+                {
+                    "Regra": group_id,
+                    "Modo": group.resolution_mode,
+                    "Ramo aplicado": " + ".join(
+                        name_by_id.get(task_id, task_id)
+                        for task_id in selection
+                    ),
+                    "Factível": (
+                        "sim"
+                        if applied_impact is not None and applied_impact.feasible
+                        else "não"
+                    ),
+                    "Makespan (h)": (
+                        applied_impact.makespan
+                        if applied_impact is not None and applied_impact.feasible
+                        else None
+                    ),
+                    "Atraso (h)": (
+                        applied_impact.tardiness
+                        if applied_impact is not None and applied_impact.feasible
+                        else None
+                    ),
+                    "Custo": (
+                        applied_impact.total_cost
+                        if applied_impact is not None and applied_impact.feasible
+                        else None
+                    ),
+                    "Δ início total (h)": (
+                        applied_impact.total_start_deviation
+                        if applied_impact is not None and applied_impact.feasible
+                        else None
+                    ),
+                    "Maior Δ início (h)": (
+                        applied_impact.max_start_deviation
+                        if applied_impact is not None and applied_impact.feasible
+                        else None
+                    ),
+                    "Gargalo de recursos": (
+                        ", ".join(
+                            f"{resource}: faltam {shortage:g}"
+                            for resource, shortage in sorted(
+                                (applied_impact.resource_gaps if applied_impact is not None else {}).items()
+                            )
+                        )
+                        or "—"
+                    ),
+                    "Diagnóstico": (
+                        applied_impact.error
+                        if applied_impact is not None and not applied_impact.feasible
+                        else ""
                     ),
                 }
             )
-            st.success(f"{scenario_name} salvo.")
-    with clear_col:
-        if st.button("Limpar cenários salvos"):
-            st.session_state.mrcpsp_saved_scenarios = []
+        with st.expander("Regras determinísticas aplicadas", expanded=False):
+            st.dataframe(
+                pd.DataFrame(auto_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+            for decision in decision_engine.decisions:
+                if (
+                    decision.applied_selection is None
+                    or len(decision.impacts) <= 1
+                ):
+                    continue
+                st.markdown(f"**Cenários sombra · {decision.group_id}**")
+                shadow_rows = []
+                for impact in decision.impacts:
+                    shadow_rows.append(
+                        {
+                            "Alternativa": " + ".join(impact.task_names),
+                            "Aplicada": (
+                                "SIM"
+                                if impact.selection == decision.applied_selection
+                                else "não"
+                            ),
+                            "Factível": "sim" if impact.feasible else "não",
+                            "Makespan (h)": (
+                                impact.makespan if impact.feasible else None
+                            ),
+                            "Atraso (h)": (
+                                impact.tardiness if impact.feasible else None
+                            ),
+                            "Custo": (
+                                impact.total_cost if impact.feasible else None
+                            ),
+                            "Δ início total (h)": (
+                                impact.total_start_deviation if impact.feasible else None
+                            ),
+                            "Maior Δ início (h)": (
+                                impact.max_start_deviation if impact.feasible else None
+                            ),
+                            "Gargalo de recursos": (
+                                ", ".join(
+                                    f"{resource}: faltam {shortage:g}"
+                                    for resource, shortage in sorted(impact.resource_gaps.items())
+                                )
+                                or "—"
+                            ),
+                            "Diagnóstico": impact.error or "",
+                        }
+                    )
+                st.dataframe(
+                    pd.DataFrame(shadow_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
-    if st.session_state.mrcpsp_saved_scenarios:
-        st.markdown("#### Cenários salvos nesta sessão")
+    if decision_engine.unresolved_event_groups:
+        status(
+            (
+                "Há regra(s) event-driven com gatilho ativo, mas nenhum event_route "
+                "corresponde aos eventos observados: "
+                + ", ".join(decision_engine.unresolved_event_groups)
+            ),
+            tone="warn",
+            title="Rota automática ainda não determinada.",
+        )
+
+    activation = resolve_activation(project, state)
+    pending_groups = [
+        group_id
+        for group_id, group_status in activation.group_states.items()
+        if group_status == "pending_selection"
+    ]
+    if pending_groups:
+        status(
+            (
+                f"{len(pending_groups)} decisão(ões) de escopo continuam pendentes. "
+                "Somente grupos cujo gatilho ocorreu entram nesta fila."
+            ),
+            tone="warn",
+            title="Rolling horizon de decisões.",
+        )
+
+    base_result = None
+    base_result_error = None
+    try:
+        base_result = reschedule_from_state(
+            base_project,
+            state,
+            reference_start_times=reference_start_times,
+            stability_weight=stability_weight,
+        )
+    except ValueError as exc:
+        base_result_error = str(exc)
+
+    try:
+        result = reschedule_from_state(
+            project,
+            state,
+            reference_start_times=reference_start_times,
+            stability_weight=stability_weight,
+        )
+    except ValueError as exc:
+        st.error(f"Cenário de recursos inviável: {exc}")
+        if base_result_error:
+            st.caption(f"Com os recursos-base também é inviável: {base_result_error}")
+        st.stop()
+
+    active_now = result.activation.active_ids
+    new_scope = active_now - baseline_activation.active_ids
+
+    activation_df = pd.DataFrame(
+        [
+            {
+                "ID": task.id,
+                "UID Project": task.project_uid or "—",
+                "Atividade": task.name,
+                "Origem": (
+                    "dynamic discovery"
+                    if task.id in dynamic_scope_ids
+                    else "planejamento / regra"
+                ),
+                "Tipo": task.activation.kind,
+                "Estado": result.activation.states[task.id].value,
+                "Motivo": result.activation.reasons[task.id],
+            }
+            for task in project.tasks
+        ]
+    )
+
+    all_items = result.frozen_tasks + result.schedule.tasks
+    criticality = analyze_effective_criticality(
+        project=project,
+        effective_tasks=result.effective_tasks,
+        items=all_items,
+        capacities=project.capacities,
+        current_time=float(current_time),
+        makespan=float(result.schedule.makespan),
+    )
+    critical_path_label = (
+        " → ".join(criticality.path_ids)
+        if criticality.path_ids
+        else "—"
+    )
+
+    schedule_df = pd.DataFrame(
+        [
+            {
+                "_Ordem": project_order.get(str(item.task_id), len(project.tasks)),
+                "ID": item.task_id,
+                "WBS": wbs_by_id.get(str(item.task_id), ""),
+                "Atividade": item.task_name,
+                "Origem": (
+                    "dynamic discovery"
+                    if str(item.task_id) in dynamic_scope_ids
+                    else "planejamento / regra"
+                ),
+                "Modo": item.mode_name,
+                "Início (h)": item.start,
+                "Fim (h)": item.finish,
+                "Duração (h)": item.duration,
+                "Δ início vs plano (h)": (
+                    item.start - reference_start_times[item.task_id]
+                    if item.task_id in reference_start_times
+                    else None
+                ),
+                "Congelada": item.fixed,
+                "Crítica atual": str(item.task_id) in criticality.critical_ids,
+                "Controla por": criticality.reasons.get(str(item.task_id), ""),
+                "Recursos": ", ".join(
+                    f"{key}:{value:g}"
+                    for key, value in item.resources.items()
+                ),
+            }
+            for item in sorted(
+                all_items,
+                key=lambda scheduled: project_order.get(
+                    str(scheduled.task_id),
+                    len(project.tasks),
+                ),
+            )
+        ]
+    )
+
+    # Snapshot único usado pela tela e pelo relatório gerencial.
+    # Se este invariante falhar, o PDF não é gerado: ele nunca deve representar
+    # um estado diferente do cronograma que o usuário está vendo.
+    snapshot_schedule_finish = max(
+        [float(item.finish) for item in all_items],
+        default=float(current_time),
+    )
+    if abs(snapshot_schedule_finish - float(result.schedule.makespan)) > 1e-6:
+        st.error(
+            "Inconsistência interna: o makespan exibido não coincide com o maior "
+            "fim do cronograma atual. O relatório foi bloqueado para evitar um "
+            "snapshot incorreto."
+        )
+        st.stop()
+
+    dynamic_scope_report_df = pd.DataFrame(
+        [
+            {
+                "ID": item.id,
+                "Atividade": item.name,
+                "Descoberta em (h)": float(item.discovered_at),
+                "Recursos": "; ".join(
+                    f"{resource}={demand:g}"
+                    for mode in item.modes
+                    for resource, demand in sorted(mode.resources.items())
+                ) or "—",
+                "Bloqueia": ", ".join(item.successor_task_ids) or "—",
+            }
+            for item in discovered_tasks
+        ]
+    )
+
+    observed_events_label = "; ".join(
+        f"{task_id}: {', '.join(values)}"
+        for task_id, values in sorted(events.items())
+        if values
+    ) or "—"
+    human_decisions_label = "; ".join(
+        f"{group_id}: {', '.join(selection)}"
+        for group_id, selection in sorted(stored_human_selections.items())
+        if selection
+    ) or "—"
+    auto_rules_label = "; ".join(
+        f"{group_id}: {', '.join(selection)}"
+        for group_id, selection in sorted(decision_engine.auto_resolved.items())
+        if selection
+    ) or "—"
+    optional_label = ", ".join(sorted(selected_optional_ids)) or "—"
+
+    snapshot_payload = {
+        "session_id": execution_session.id,
+        "project_key": project_key,
+        "current_time": float(current_time),
+        "scenario_capacities": {
+            key: float(value)
+            for key, value in sorted(scenario_capacities.items())
+        },
+        "stability_weight": float(stability_weight),
+        "events": {
+            key: sorted(value)
+            for key, value in sorted(events.items())
+            if value
+        },
+        "selected_optional_ids": sorted(selected_optional_ids),
+        "human_selections": {
+            key: sorted(value)
+            for key, value in sorted(stored_human_selections.items())
+            if value
+        },
+        "auto_resolved": {
+            key: sorted(value)
+            for key, value in sorted(decision_engine.auto_resolved.items())
+            if value
+        },
+        "dynamic_scope": [
+            item.model_dump(mode="json")
+            for item in discovered_tasks
+        ],
+        "spreadsheet_scope_rules": [
+            row.model_dump(mode="json")
+            for row in stored_scope_rules
+        ],
+        "result": {
+            "makespan": float(result.schedule.makespan),
+            "tardiness": float(result.schedule.tardiness),
+            "total_cost": float(result.schedule.total_cost),
+            "strategy": result.schedule.strategy,
+            "tasks": [
+                {
+                    "id": str(item.task_id),
+                    "mode": item.mode_name,
+                    "start": float(item.start),
+                    "finish": float(item.finish),
+                    "fixed": bool(item.fixed),
+                }
+                for item in all_items
+            ],
+        },
+    }
+    report_snapshot_id = hashlib.sha256(
+        json.dumps(
+            snapshot_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+
+    execution_state_report_df = pd.DataFrame(
+        [
+            {"Parâmetro": "Snapshot", "Valor": report_snapshot_id},
+            {"Parâmetro": "Sessão", "Valor": execution_session.id},
+            {"Parâmetro": "Hora corrente", "Valor": f"{current_time:.1f} h"},
+            {"Parâmetro": "Makespan baseline", "Valor": f"{baseline.makespan:.1f} h"},
+            {
+                "Parâmetro": "Makespan reprogramado",
+                "Valor": f"{result.schedule.makespan:.1f} h",
+            },
+            {"Parâmetro": "Atraso", "Valor": f"{result.schedule.tardiness:.1f} h"},
+            {"Parâmetro": "Peso estabilidade λ", "Valor": f"{stability_weight:.1f}"},
+            {"Parâmetro": "Achados observados", "Valor": observed_events_label},
+            {"Parâmetro": "Opcionais selecionadas", "Valor": optional_label},
+            {"Parâmetro": "Decisões humanas", "Valor": human_decisions_label},
+            {"Parâmetro": "Regras determinísticas", "Valor": auto_rules_label},
+            {
+                "Parâmetro": "Dynamic scope",
+                "Valor": f"{len(dynamic_scope_ids)} atividade(s)",
+            },
+            {
+                "Parâmetro": "Regras da planilha",
+                "Valor": (
+                    ", ".join(row.id for row in stored_scope_rules if row.enabled)
+                    or "—"
+                ),
+            },
+            {"Parâmetro": "Estratégia solver", "Valor": result.schedule.strategy},
+        ]
+    )
+
+    st.markdown("#### Análise avançada do cenário")
+    st.caption(
+        "Abra os detalhes abaixo apenas quando quiser separar o efeito dos recursos do efeito do novo escopo."
+    )
+
+    if base_result is None:
+        status(
+            (
+                "O escopo descoberto é inviável com os recursos-base. "
+                f"Diagnóstico: {base_result_error}"
+            ),
+            tone="danger",
+            title="Recursos-base insuficientes.",
+        )
+    else:
+        with st.expander(
+            "Comparar recursos-base x cenário",
+            expanded=False,
+        ):
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric(
+                "Makespan · recursos-base",
+                f"{base_result.schedule.makespan:.1f} h",
+            )
+            c2.metric(
+                "Makespan · cenário",
+                f"{result.schedule.makespan:.1f} h",
+                delta=f"{result.schedule.makespan - base_result.schedule.makespan:+.1f} h",
+            )
+            c3.metric(
+                "Horas recuperadas",
+                f"{max(0.0, base_result.schedule.makespan - result.schedule.makespan):.1f} h",
+            )
+            c4.metric(
+                "Δ custo de modos",
+                f"{result.schedule.total_cost - base_result.schedule.total_cost:+,.0f}",
+            )
+
+            s1, s2, s3, s4 = st.columns(4)
+            s1.metric(
+                "Δ início acumulado · base",
+                f"{base_result.schedule.total_start_deviation:.1f} h",
+            )
+            s2.metric(
+                "Δ início acumulado · cenário",
+                f"{result.schedule.total_start_deviation:.1f} h",
+                delta=(
+                    f"{result.schedule.total_start_deviation - base_result.schedule.total_start_deviation:+.1f} h"
+                ),
+            )
+            s3.metric(
+                "Maior deslocamento de início",
+                f"{result.schedule.max_start_deviation:.1f} h",
+            )
+            s4.metric(
+                "Atividades comparadas",
+                result.schedule.stability_compared_tasks,
+            )
+
+            base_future = {item.task_id: item for item in base_result.schedule.tasks}
+            scenario_future = {item.task_id: item for item in result.schedule.tasks}
+            mode_comparison_rows = []
+            for task_id in sorted(set(base_future) & set(scenario_future)):
+                before = base_future[task_id]
+                after = scenario_future[task_id]
+                mode_comparison_rows.append(
+                    {
+                        "ID": task_id,
+                        "Atividade": after.task_name,
+                        "Modo · base": before.mode_name,
+                        "Modo · cenário": after.mode_name,
+                        "Mudou modo?": "SIM" if before.mode_name != after.mode_name else "não",
+                        "Duração base (h)": before.duration,
+                        "Duração cenário (h)": after.duration,
+                        "Fim base (h)": before.finish,
+                        "Fim cenário (h)": after.finish,
+                        "Δ fim (h)": after.finish - before.finish,
+                    }
+                )
+
+            mode_comparison_df = pd.DataFrame(mode_comparison_rows)
+            changed_modes_df = (
+                mode_comparison_df[mode_comparison_df["Mudou modo?"] == "SIM"]
+                if not mode_comparison_df.empty
+                else mode_comparison_df
+            )
+
+            if not changed_modes_df.empty:
+                status(
+                    f"O MRCPSP trocou o modo de {len(changed_modes_df)} atividade(s) neste cenário.",
+                    tone="ok",
+                    title="Mudança de estratégia de execução detectada.",
+                )
+                st.dataframe(
+                    changed_modes_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info(
+                    "Nenhuma atividade trocou de modo. O cenário ainda pode alterar o makespan "
+                    "por permitir ou restringir paralelismo."
+                )
+
+            with st.expander("Comparação completa das atividades futuras", expanded=True):
+                st.dataframe(
+                    mode_comparison_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            st.session_state.setdefault("mrcpsp_saved_scenarios", [])
+            save_col, clear_col = st.columns(2)
+            with save_col:
+                if st.button("Salvar cenário na comparação", type="primary"):
+                    st.session_state.mrcpsp_saved_scenarios.append(
+                        {
+                            "Cenário": scenario_name,
+                            "Makespan (h)": result.schedule.makespan,
+                            "Atraso (h)": result.schedule.tardiness,
+                            "Custo modos": result.schedule.total_cost,
+                            "Horas recuperadas": base_result.schedule.makespan - result.schedule.makespan,
+                            "Δ início acumulado (h)": result.schedule.total_start_deviation,
+                            "Maior Δ início (h)": result.schedule.max_start_deviation,
+                            "λ estabilidade": stability_weight,
+                            "Dynamic scope": len(dynamic_scope_ids),
+                            "Modos alterados": int(
+                                sum(
+                                    row["Mudou modo?"] == "SIM"
+                                    for row in mode_comparison_rows
+                                )
+                            ),
+                            "Recursos": "; ".join(
+                                f"{resource}={scenario_capacities[resource]:g}"
+                                for resource in sorted(scenario_capacities)
+                            ),
+                        }
+                    )
+                    st.success(f"{scenario_name} salvo.")
+            with clear_col:
+                if st.button("Limpar cenários salvos"):
+                    st.session_state.mrcpsp_saved_scenarios = []
+
+            if st.session_state.mrcpsp_saved_scenarios:
+                st.markdown("#### Cenários salvos nesta sessão")
+                st.dataframe(
+                    pd.DataFrame(st.session_state.mrcpsp_saved_scenarios),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+    section(
+        "3",
+        "Impacto atual e comunicação",
+        "Leia primeiro a situação da janela e o que mudou; use os detalhes técnicos somente quando precisar investigar.",
+    )
+
+    tab_exec, tab_activation, tab_schedule, tab_export = st.tabs(
+        [
+            "Visão executiva",
+            "Mapa de ativação",
+            "Cronograma",
+            "Exportação",
+        ]
+    )
+
+    with tab_exec:
+        impact_hours = result.schedule.makespan - baseline.makespan
+        if project.deadline is None:
+            window_title = "Janela"
+            window_value = "sem deadline"
+        elif result.schedule.makespan <= project.deadline:
+            window_title = "Folga da janela"
+            window_value = f"{project.deadline - result.schedule.makespan:.1f} h"
+        else:
+            window_title = "Excesso da janela"
+            window_value = f"{result.schedule.makespan - project.deadline:.1f} h"
+
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Makespan atual", f"{result.schedule.makespan:.1f} h")
+        r2.metric("Impacto vs baseline", f"{impact_hours:+.1f} h")
+        r3.metric(window_title, window_value)
+        r4.metric(
+            "Novo escopo ativo",
+            len(new_scope),
+            delta=(
+                f"{len(dynamic_scope_ids)} dinâmico(s)"
+                if dynamic_scope_ids
+                else None
+            ),
+        )
+
+        with st.expander("Estabilidade, custo e diagnóstico do solver", expanded=False):
+            sr1, sr2, sr3, sr4 = st.columns(4)
+            sr1.metric(
+                "Δ início acumulado",
+                f"{result.schedule.total_start_deviation:.1f} h",
+            )
+            sr2.metric(
+                "Maior Δ início",
+                f"{result.schedule.max_start_deviation:.1f} h",
+            )
+            sr3.metric("Custo dos modos", f"{result.schedule.total_cost:,.0f}")
+            sr4.metric(
+                "Peso λ",
+                f"{stability_weight:.1f}",
+            )
+            st.caption(
+                f"{result.schedule.stability_compared_tasks} atividade(s) comparadas · "
+                f"solver {result.schedule.strategy}."
+            )
+
+        if project.deadline is None:
+            status(
+                "O projeto não possui deadline configurado para avaliar atraso.",
+                tone="warn",
+                title="Janela sem limite formal.",
+            )
+        elif result.schedule.makespan <= project.deadline:
+            status(
+                (
+                    f"O cronograma reprogramado permanece dentro da janela: "
+                    f"{result.schedule.makespan:.1f} h para "
+                    f"{project.deadline:.1f} h disponíveis."
+                ),
+                tone="ok",
+                title="Scope discovery absorvido.",
+            )
+        else:
+            status(
+                (
+                    f"O novo escopo excede a janela em "
+                    f"{result.schedule.makespan - project.deadline:.1f} h."
+                ),
+                tone="danger",
+                title="Intervenção gerencial necessária.",
+            )
+
+        active_change_names = [
+            name_by_id.get(task_id, task_id)
+            for task_id in sorted(new_scope)
+        ]
+        if active_change_names:
+            st.markdown("**O que mudou neste snapshot**")
+            st.write(
+                f"{len(active_change_names)} atividade(s) entraram no escopo ativo: "
+                + ", ".join(active_change_names[:6])
+                + ("…" if len(active_change_names) > 6 else "")
+            )
+        elif not decision_engine.pending_human:
+            st.caption(
+                "Nenhuma nova atividade foi ativada neste snapshot; o impacto atual vem do estado, recursos e modos de execução."
+            )
+
+        if criticality.path_ids:
+            path_names = " → ".join(
+                f"{task_id} · {name_by_id.get(task_id, task_id)}"
+                for task_id in criticality.path_ids
+            )
+            st.markdown(f"**Cadeia controladora atual:** {path_names}")
+            branch_count = len(criticality.critical_ids - set(criticality.path_ids))
+            if branch_count:
+                st.caption(
+                    f"Há mais {branch_count} atividade(s) crítica(s) em ramificações "
+                    "que também alimentam o término atual."
+                )
+            st.caption(
+                "Criticidade efetiva: considera precedências ativas, gates criados "
+                "pelo scope discovery e liberações de recursos que controlam o cronograma."
+            )
+
+        if all_items:
+            fig = go.Figure()
+            ordered = sorted(
+                all_items,
+                key=lambda item: project_order.get(
+                    str(item.task_id),
+                    len(project.tasks),
+                ),
+            )
+            gantt_labels = [
+                f"{item.task_id} · {item.task_name}"
+                for item in ordered
+            ]
+            bar_colors = []
+            bar_text = []
+            hover_reasons = []
+            for item in ordered:
+                task_id = str(item.task_id)
+                is_critical = task_id in criticality.critical_ids
+                if item.fixed:
+                    bar_colors.append("#94A3B8")
+                elif is_critical:
+                    bar_colors.append("#D92D20")
+                else:
+                    bar_colors.append("#0F766E")
+
+                label = item.mode_name + (" · congelada" if item.fixed else "")
+                if is_critical:
+                    label += " · crítica"
+                bar_text.append(label)
+                hover_reasons.append(
+                    criticality.reasons.get(task_id, "fora da cadeia controladora")
+                )
+
+            fig.add_trace(
+                go.Bar(
+                    y=gantt_labels,
+                    x=[item.duration for item in ordered],
+                    base=[item.start for item in ordered],
+                    orientation="h",
+                    text=bar_text,
+                    marker_color=bar_colors,
+                    customdata=hover_reasons,
+                    hovertemplate=(
+                        "%{y}<br>Início=%{base:.1f}h"
+                        "<br>Duração=%{x:.1f}h"
+                        "<br>Driver=%{customdata}<extra></extra>"
+                    ),
+                )
+            )
+            fig.add_vline(
+                x=current_time,
+                line_dash="dash",
+                annotation_text="agora",
+            )
+            if project.deadline is not None:
+                fig.add_vline(
+                    x=project.deadline,
+                    line_dash="dot",
+                    annotation_text="deadline",
+                )
+            fig.update_yaxes(
+                categoryorder="array",
+                categoryarray=gantt_labels,
+                autorange="reversed",
+            )
+            fig.update_layout(
+                title="Cronograma reprogramado",
+                xaxis_title="Horas desde o início da parada",
+                yaxis_title="",
+                barmode="overlay",
+                height=max(450, 32 * len(ordered)),
+                margin=dict(l=15, r=15, t=55, b=15),
+                paper_bgcolor="white",
+                plot_bgcolor="white",
+                showlegend=False,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    with tab_activation:
         st.dataframe(
-            pd.DataFrame(st.session_state.mrcpsp_saved_scenarios),
+            activation_df,
             use_container_width=True,
             hide_index=True,
         )
 
-section(
-    "5",
-    "Impacto do scope discovery",
-    "Compare planejamento original, novo escopo, atraso e custo de modos em uma leitura gerencial.",
-)
+        state_counts = activation_df["Estado"].value_counts()
+        state_chart = pd.DataFrame(
+            {
+                "Estado": state_counts.index,
+                "Quantidade": state_counts.values,
+            }
+        )
+        st.bar_chart(
+            state_chart,
+            x="Estado",
+            y="Quantidade",
+            use_container_width=True,
+        )
 
-tab_exec, tab_activation, tab_schedule, tab_export = st.tabs(
-    [
-        "Visão executiva",
-        "Mapa de ativação",
-        "Cronograma",
-        "Exportação",
-    ]
-)
-
-with tab_exec:
-    r1, r2, r3, r4 = st.columns(4)
-    r1.metric(
-        "Novo makespan",
-        f"{result.schedule.makespan:.1f} h",
-        delta=f"{result.schedule.makespan - baseline.makespan:+.1f} h",
-    )
-    r2.metric("Atraso", f"{result.schedule.tardiness:.1f} h")
-    r3.metric("Novas tarefas ativas", len(new_scope))
-    r4.metric("Custo dos modos", f"{result.schedule.total_cost:,.0f}")
-    if dynamic_scope_ids:
+    with tab_schedule:
+        st.dataframe(
+            schedule_df.drop(columns=["_Ordem"], errors="ignore"),
+            use_container_width=True,
+            hide_index=True,
+        )
         st.caption(
-            f"{len(dynamic_scope_ids)} atividade(s) foram criadas em execução por "
-            "dynamic scope discovery; elas não pertenciam ao planejamento-base."
+            f"Solver: {result.schedule.strategy} · "
+            f"combinações de modos={result.schedule.mode_combinations} · "
+            f"avaliações SSGS={result.schedule.evaluated_combinations}."
         )
-
-    sr1, sr2, sr3, sr4 = st.columns(4)
-    sr1.metric(
-        "Δ início acumulado",
-        f"{result.schedule.total_start_deviation:.1f} h",
-    )
-    sr2.metric(
-        "Maior Δ início",
-        f"{result.schedule.max_start_deviation:.1f} h",
-    )
-    sr3.metric(
-        "Atividades comparadas",
-        result.schedule.stability_compared_tasks,
-    )
-    sr4.metric(
-        "Peso de estabilidade λ",
-        f"{stability_weight:.1f}",
-    )
-
-    if project.deadline is None:
-        status(
-            "O projeto não possui deadline configurado para avaliar atraso.",
-            tone="warn",
-            title="Janela sem limite formal.",
-        )
-    elif result.schedule.makespan <= project.deadline:
-        status(
-            (
-                f"O cronograma reprogramado permanece dentro da janela: "
-                f"{result.schedule.makespan:.1f} h para "
-                f"{project.deadline:.1f} h disponíveis."
-            ),
-            tone="ok",
-            title="Scope discovery absorvido.",
-        )
-    else:
-        status(
-            (
-                f"O novo escopo excede a janela em "
-                f"{result.schedule.makespan - project.deadline:.1f} h."
-            ),
-            tone="danger",
-            title="Intervenção gerencial necessária.",
-        )
-
-    if criticality.path_ids:
-        path_names = " → ".join(
-            f"{task_id} · {name_by_id.get(task_id, task_id)}"
-            for task_id in criticality.path_ids
-        )
-        st.markdown(f"**Cadeia controladora atual:** {path_names}")
-        branch_count = len(criticality.critical_ids - set(criticality.path_ids))
-        if branch_count:
+        if criticality.critical_ids:
             st.caption(
-                f"Há mais {branch_count} atividade(s) crítica(s) em ramificações "
-                "que também alimentam o término atual."
+                "Crítica atual = atividade pertencente à cadeia efetiva que controla "
+                "o término do cronograma reprogramado; não equivale ao CPM clássico."
             )
+
+    with tab_export:
+        st.markdown("#### Relatório gerencial do replanejamento")
         st.caption(
-            "Criticidade efetiva: considera precedências ativas, gates criados "
-            "pelo scope discovery e liberações de recursos que controlam o cronograma."
+            "PDF executivo com baseline, impacto do novo escopo, mapa de ativação "
+            "e cronograma reprogramado."
         )
 
-    if all_items:
-        fig = go.Figure()
-        ordered = sorted(
-            all_items,
-            key=lambda item: project_order.get(
-                str(item.task_id),
-                len(project.tasks),
+        pdf_bytes = build_conditional_management_pdf(
+            project_name=project_name,
+            baseline_makespan=float(baseline.makespan),
+            current_makespan=float(result.schedule.makespan),
+            deadline=(
+                None
+                if project.deadline is None
+                else float(project.deadline)
             ),
-        )
-        gantt_labels = [
-            f"{item.task_id} · {item.task_name}"
-            for item in ordered
-        ]
-        bar_colors = []
-        bar_text = []
-        hover_reasons = []
-        for item in ordered:
-            task_id = str(item.task_id)
-            is_critical = task_id in criticality.critical_ids
-            if item.fixed:
-                bar_colors.append("#94A3B8")
-            elif is_critical:
-                bar_colors.append("#D92D20")
-            else:
-                bar_colors.append("#0F766E")
-
-            label = item.mode_name + (" · congelada" if item.fixed else "")
-            if is_critical:
-                label += " · crítica"
-            bar_text.append(label)
-            hover_reasons.append(
-                criticality.reasons.get(task_id, "fora da cadeia controladora")
-            )
-
-        fig.add_trace(
-            go.Bar(
-                y=gantt_labels,
-                x=[item.duration for item in ordered],
-                base=[item.start for item in ordered],
-                orientation="h",
-                text=bar_text,
-                marker_color=bar_colors,
-                customdata=hover_reasons,
-                hovertemplate=(
-                    "%{y}<br>Início=%{base:.1f}h"
-                    "<br>Duração=%{x:.1f}h"
-                    "<br>Driver=%{customdata}<extra></extra>"
-                ),
-            )
-        )
-        fig.add_vline(
-            x=current_time,
-            line_dash="dash",
-            annotation_text="agora",
-        )
-        if project.deadline is not None:
-            fig.add_vline(
-                x=project.deadline,
-                line_dash="dot",
-                annotation_text="deadline",
-            )
-        fig.update_yaxes(
-            categoryorder="array",
-            categoryarray=gantt_labels,
-            autorange="reversed",
-        )
-        fig.update_layout(
-            title="Cronograma reprogramado",
-            xaxis_title="Horas desde o início da parada",
-            yaxis_title="",
-            barmode="overlay",
-            height=max(450, 32 * len(ordered)),
-            margin=dict(l=15, r=15, t=55, b=15),
-            paper_bgcolor="white",
-            plot_bgcolor="white",
-            showlegend=False,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-with tab_activation:
-    st.dataframe(
-        activation_df,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    state_counts = activation_df["Estado"].value_counts()
-    state_chart = pd.DataFrame(
-        {
-            "Estado": state_counts.index,
-            "Quantidade": state_counts.values,
-        }
-    )
-    st.bar_chart(
-        state_chart,
-        x="Estado",
-        y="Quantidade",
-        use_container_width=True,
-    )
-
-with tab_schedule:
-    st.dataframe(
-        schedule_df.drop(columns=["_Ordem"], errors="ignore"),
-        use_container_width=True,
-        hide_index=True,
-    )
-    st.caption(
-        f"Solver: {result.schedule.strategy} · "
-        f"combinações de modos={result.schedule.mode_combinations} · "
-        f"avaliações SSGS={result.schedule.evaluated_combinations}."
-    )
-    if criticality.critical_ids:
-        st.caption(
-            "Crítica atual = atividade pertencente à cadeia efetiva que controla "
-            "o término do cronograma reprogramado; não equivale ao CPM clássico."
+            current_time=float(current_time),
+            total_cost=float(result.schedule.total_cost),
+            new_scope_count=len(new_scope),
+            dynamic_scope_count=len(dynamic_scope_ids),
+            strategy=result.schedule.strategy,
+            activation_df=activation_df,
+            schedule_df=schedule_df,
+            total_start_deviation=float(result.schedule.total_start_deviation),
+            max_start_deviation=float(result.schedule.max_start_deviation),
+            stability_compared_tasks=int(result.schedule.stability_compared_tasks),
+            stability_weight=float(stability_weight),
+            critical_ids=criticality.critical_ids,
+            critical_path_label=critical_path_label,
+            snapshot_id=report_snapshot_id,
+            session_id=execution_session.id,
+            resource_scenario_df=resource_scenario_df,
+            execution_state_df=execution_state_report_df,
+            dynamic_scope_df=dynamic_scope_report_df,
         )
 
-with tab_export:
-    st.markdown("#### Relatório gerencial do replanejamento")
-    st.caption(
-        "PDF executivo com baseline, impacto do novo escopo, mapa de ativação "
-        "e cronograma reprogramado."
-    )
+        st.info(
+            f"PDF preparado com o snapshot **{report_snapshot_id}** · "
+            f"makespan **{result.schedule.makespan:.1f} h**."
+        )
 
-    pdf_bytes = build_conditional_management_pdf(
-        project_name=project_name,
-        baseline_makespan=float(baseline.makespan),
-        current_makespan=float(result.schedule.makespan),
-        deadline=(
-            None
-            if project.deadline is None
-            else float(project.deadline)
-        ),
-        current_time=float(current_time),
-        total_cost=float(result.schedule.total_cost),
-        new_scope_count=len(new_scope),
-        dynamic_scope_count=len(dynamic_scope_ids),
-        strategy=result.schedule.strategy,
-        activation_df=activation_df,
-        schedule_df=schedule_df,
-        total_start_deviation=float(result.schedule.total_start_deviation),
-        max_start_deviation=float(result.schedule.max_start_deviation),
-        stability_compared_tasks=int(result.schedule.stability_compared_tasks),
-        stability_weight=float(stability_weight),
-        critical_ids=criticality.critical_ids,
-        critical_path_label=critical_path_label,
-        snapshot_id=report_snapshot_id,
-        session_id=execution_session.id,
-        resource_scenario_df=resource_scenario_df,
-        execution_state_df=execution_state_report_df,
-        dynamic_scope_df=dynamic_scope_report_df,
-    )
+        st.download_button(
+            "⬇ Baixar relatório gerencial em PDF",
+            data=pdf_bytes,
+            file_name=(
+                f"{project_name.lower().replace(' ', '_')}"
+                f"_ms{result.schedule.makespan:.1f}".replace(".", "_")
+                + f"_{report_snapshot_id}_scope_discovery.pdf"
+            ),
+            mime="application/pdf",
+            type="primary",
+            use_container_width=True,
+            key=f"download_management_report_{report_snapshot_id}",
+            on_click="ignore",
+        )
 
-    st.info(
-        f"PDF preparado com o snapshot **{report_snapshot_id}** · "
-        f"makespan **{result.schedule.makespan:.1f} h**."
-    )
-
-    st.download_button(
-        "⬇ Baixar relatório gerencial em PDF",
-        data=pdf_bytes,
-        file_name=(
-            f"{project_name.lower().replace(' ', '_')}"
-            f"_ms{result.schedule.makespan:.1f}".replace(".", "_")
-            + f"_{report_snapshot_id}_scope_discovery.pdf"
-        ),
-        mime="application/pdf",
-        type="primary",
-        use_container_width=True,
-        key=f"download_management_report_{report_snapshot_id}",
-        on_click="ignore",
-    )
-
-    st.markdown(
-        """
-        <div class="ta-note">
-        O relatório registra a fotografia atual do replanejamento e inclui
-        o identificador do snapshot, capacidades de recursos, achados e decisões
-        que produziram o makespan exibido. Atividades já iniciadas ou concluídas
-        permanecem congeladas; apenas o trabalho futuro é reprogramado.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            """
+            <div class="ta-note">
+            O relatório registra a fotografia atual do replanejamento e inclui
+            o identificador do snapshot, capacidades de recursos, achados e decisões
+            que produziram o makespan exibido. Atividades já iniciadas ou concluídas
+            permanecem congeladas; apenas o trabalho futuro é reprogramado.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )

@@ -955,22 +955,76 @@ def build_conditional_management_pdf(
         max_rows=18,
     )
 
+    if deadline is None:
+        window_metric = ("Janela", "sem deadline")
+    elif current_makespan <= deadline:
+        window_metric = (
+            "Folga da janela",
+            f"{deadline - current_makespan:.1f} h",
+        )
+    else:
+        window_metric = (
+            "Excesso da janela",
+            f"{current_makespan - deadline:.1f} h",
+        )
+
+    scope_changes_df = activation_df.copy()
+    if not scope_changes_df.empty:
+        state_series = scope_changes_df.get(
+            "Estado",
+            pd.Series(index=scope_changes_df.index, dtype=str),
+        ).astype(str)
+        type_series = scope_changes_df.get(
+            "Tipo",
+            pd.Series(index=scope_changes_df.index, dtype=str),
+        ).astype(str)
+        origin_series = scope_changes_df.get(
+            "Origem",
+            pd.Series(index=scope_changes_df.index, dtype=str),
+        ).astype(str)
+        scope_changes_df = scope_changes_df[
+            (
+                origin_series.eq("dynamic discovery")
+                | (
+                    type_series.ne("mandatory")
+                    & state_series.isin(["active", "pending_selection"])
+                )
+            )
+        ]
+
+    changed_resources_df = pd.DataFrame()
+    if resource_scenario_df is not None and not resource_scenario_df.empty:
+        changed_mask = []
+        for _, row in resource_scenario_df.iterrows():
+            delta_value = row.get("Δ vs base")
+            base_value = row.get("Base")
+            scenario_value = row.get("Cenário")
+            changed = False
+            try:
+                changed = abs(float(delta_value)) > 1e-9
+            except (TypeError, ValueError):
+                try:
+                    changed = (
+                        str(base_value).strip().lower() == "não informada"
+                        and float(scenario_value) > 0
+                    )
+                except (TypeError, ValueError):
+                    changed = False
+            changed_mask.append(changed)
+        changed_resources_df = resource_scenario_df.loc[changed_mask].copy()
+
     story: list = [
         _p("RELATÓRIO GERENCIAL - SCOPE DISCOVERY", s["kicker"]),
         _p(project_name or "Turnaround", s["title"]),
         _p(
-            "Impacto de achados de inspeção, decisões de escopo e modos de execução sobre o plano da parada.",
+            "Leitura executiva do impacto do escopo descoberto sobre a janela da parada.",
             s["muted"],
         ),
         _p(
             (
                 "Snapshot: "
                 + (snapshot_id or "não informado")
-                + (
-                    f" · sessão {session_id}"
-                    if session_id
-                    else ""
-                )
+                + f" · hora corrente {current_time:.1f} h"
             ),
             s["muted"],
         ),
@@ -982,45 +1036,30 @@ def build_conditional_management_pdf(
                 ("Baseline", f"{baseline_makespan:.1f} h"),
                 ("Reprogramado", f"{current_makespan:.1f} h"),
                 ("Impacto", f"{delta:+.1f} h"),
-                ("Hora corrente", f"{current_time:.1f} h"),
-                ("Novo escopo", str(new_scope_count)),
-                ("Dynamic scope", str(dynamic_scope_count)),
-                ("Custo modos", f"{total_cost:,.0f}"),
-                ("Δ início acum.", f"{total_start_deviation:.1f} h"),
-                ("Maior Δ início", f"{max_start_deviation:.1f} h"),
-                ("Ativ. comparadas", str(stability_compared_tasks)),
-                ("Peso estabilidade", f"{stability_weight:.1f}"),
-                ("Ativas", str(active_counts.get("active", 0))),
-                ("Pendentes", str(active_counts.get("pending", 0))),
+                window_metric,
             ]
         ),
-        _p("Dynamic scope discovery", s["h2"]),
+        _p("Leitura executiva", s["h2"]),
         _p(
             (
-                f"{dynamic_scope_count} atividade(s) do plano atual foram criadas "
-                "durante a execução e não existiam no cronograma-base. Essas "
-                "atividades entram como escopo obrigatório a partir do achado e "
-                "podem inserir novos gates de precedência no trabalho futuro."
+                f"O estado atual ativou {new_scope_count} atividade(s) além do baseline. "
+                f"Dessas, {dynamic_scope_count} foram criadas durante a execução. "
+                f"O replanejamento deslocou {stability_compared_tasks} atividade(s) já planejadas, "
+                f"somando {total_start_deviation:.1f} h de mudança de início."
             ),
             s["body"],
         ),
-        _p("Estabilidade do replanejamento", s["h2"]),
-        _p(
-            (
-                f"Foram comparadas {stability_compared_tasks} atividades futuras "
-                f"que já existiam no plano anterior. A soma dos deslocamentos de "
-                f"início é {total_start_deviation:.1f} h e o maior deslocamento "
-                f"individual é {max_start_deviation:.1f} h. "
-                f"O peso de estabilidade λ é {stability_weight:.1f}."
-            ),
-            s["body"],
+        *(
+            [
+                _p(
+                    f"Há {active_counts.get('pending', 0)} decisão(ões) de escopo ainda pendentes.",
+                    s["body"],
+                )
+            ]
+            if active_counts.get("pending", 0)
+            else []
         ),
-        _p(
-            "Atividades de novo escopo não recebem penalidade de estabilidade, "
-            "pois não possuíam início planejado antes do scope discovery.",
-            s["muted"],
-        ),
-        _p("Cadeia controladora atual", s["h2"]),
+        _p("O que controla o término", s["h2"]),
         _p(
             (
                 critical_path_label
@@ -1030,69 +1069,73 @@ def build_conditional_management_pdf(
             s["body"],
         ),
         _p(
-            "A criticidade efetiva considera precedências ativas, gates criados pelo "
-            "scope discovery e liberações de recursos que controlam o término. "
-            "Não equivale ao CPM clássico do planejamento-base.",
+            "A cadeia considera precedências ativas, gates do scope discovery e contenção de recursos.",
             s["muted"],
         ),
-        _p("Snapshot operacional capturado", s["h2"]),
+        PageBreak(),
+        _p("O QUE MUDOU", s["kicker"]),
+        _p("Escopo e recursos que explicam o cenário", s["title"]),
         _p(
-            "Os parâmetros abaixo são os mesmos usados para calcular o makespan reprogramado deste relatório.",
+            "Mostramos somente alterações relevantes para a leitura gerencial; o restante permanece disponível na aplicação.",
             s["muted"],
         ),
+        Spacer(1, 3 * mm),
+        _p("Escopo ativado ou pendente", s["h2"]),
         *(
             [
                 _dataframe_table(
-                    execution_state_df,
-                    ["Parâmetro", "Valor"],
-                    max_rows=30,
-                    widths=[55 * mm, 120 * mm],
-                ),
-                Spacer(1, 3 * mm),
+                    scope_changes_df,
+                    ["ID", "Atividade", "Tipo", "Estado", "Motivo"],
+                    max_rows=20,
+                    widths=[12 * mm, 64 * mm, 24 * mm, 24 * mm, 50 * mm],
+                )
             ]
-            if execution_state_df is not None and not execution_state_df.empty
-            else []
+            if not scope_changes_df.empty
+            else [_p("Nenhuma alteração de escopo relevante neste snapshot.", s["muted"])]
         ),
+        Spacer(1, 4 * mm),
+        _p("Recursos alterados", s["h2"]),
         *(
             [
-                _p("Capacidades do cenário", s["h2"]),
                 _dataframe_table(
-                    resource_scenario_df,
+                    changed_resources_df,
                     ["Recurso", "Base", "Cenário", "Δ vs base"],
-                    max_rows=40,
-                    widths=[55 * mm, 35 * mm, 35 * mm, 35 * mm],
-                ),
-                Spacer(1, 3 * mm),
+                    max_rows=20,
+                    widths=[62 * mm, 35 * mm, 35 * mm, 35 * mm],
+                )
             ]
-            if resource_scenario_df is not None and not resource_scenario_df.empty
-            else []
+            if not changed_resources_df.empty
+            else [_p("As capacidades do cenário coincidem com a referência informada.", s["muted"])]
         ),
         *(
             [
-                _p("Atividades descobertas em execução", s["h2"]),
+                Spacer(1, 4 * mm),
+                _p("Trabalho criado durante a execução", s["h2"]),
                 _dataframe_table(
                     dynamic_scope_df,
                     ["ID", "Atividade", "Descoberta em (h)", "Recursos", "Bloqueia"],
-                    max_rows=30,
+                    max_rows=20,
                     widths=[18 * mm, 65 * mm, 25 * mm, 36 * mm, 36 * mm],
                 ),
-                Spacer(1, 3 * mm),
             ]
             if dynamic_scope_df is not None and not dynamic_scope_df.empty
             else []
         ),
-        _p("Mapa de ativação", s["h2"]),
-        _dataframe_table(
-            activation_df,
-            ["ID", "Atividade", "Tipo", "Estado", "Motivo"],
-            max_rows=25,
-            widths=[12 * mm, 58 * mm, 24 * mm, 24 * mm, 56 * mm],
+        Spacer(1, 4 * mm),
+        _p("Rastreabilidade", s["h2"]),
+        _p(
+            (
+                f"Snapshot {snapshot_id or 'não informado'} · solver {strategy} · "
+                f"λ={stability_weight:.1f} · maior deslocamento individual "
+                f"{max_start_deviation:.1f} h."
+            ),
+            s["muted"],
         ),
         PageBreak(),
         _p("CRONOGRAMA REPROGRAMADO", s["kicker"]),
         _p("Plano após scope discovery", s["title"]),
         _p(
-            f"Estratégia do solver: {strategy}. Atividades concluídas ou em andamento permanecem congeladas.",
+            "O Gantt é a principal leitura operacional: concluídas/em andamento ficam congeladas e o trabalho futuro é reprogramado.",
             s["muted"],
         ),
         Spacer(1, 3 * mm),
