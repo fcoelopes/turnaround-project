@@ -189,6 +189,7 @@ with st.expander("Modos disponíveis por atividade"):
             mode_rows.append(
                 {
                     "ID": task.id,
+                    "UID Project": task.project_uid or "—",
                     "Atividade": task.name,
                     "Tipo": task.activation.kind,
                     "Modo": mode.name,
@@ -380,6 +381,7 @@ activation_df = pd.DataFrame(
     [
         {
             "ID": task.id,
+            "UID Project": task.project_uid or "—",
             "Atividade": task.name,
             "Tipo": task.activation.kind,
             "Estado": result.activation.states[task.id].value,
