@@ -207,6 +207,8 @@ for group in project.logical_groups:
         ).update(group.when.events)
 
 name_by_id = {task.id: task.name for task in project.tasks}
+project_order = {task.id: index for index, task in enumerate(project.tasks)}
+wbs_by_id = {task.id: task.wbs for task in project.tasks}
 events: dict[str, list[str]] = {}
 
 if event_catalog:
@@ -349,7 +351,9 @@ critical_path_label = (
 schedule_df = pd.DataFrame(
     [
         {
+            "_Ordem": project_order.get(str(item.task_id), len(project.tasks)),
             "ID": item.task_id,
+            "WBS": wbs_by_id.get(str(item.task_id), ""),
             "Atividade": item.task_name,
             "Modo": item.mode_name,
             "Início (h)": item.start,
@@ -365,9 +369,9 @@ schedule_df = pd.DataFrame(
         }
         for item in sorted(
             all_items,
-            key=lambda scheduled: (
-                scheduled.start,
-                scheduled.finish,
+            key=lambda scheduled: project_order.get(
+                str(scheduled.task_id),
+                len(project.tasks),
             ),
         )
     ]
@@ -446,9 +450,15 @@ with tab_exec:
         fig = go.Figure()
         ordered = sorted(
             all_items,
-            key=lambda item: (item.start, item.finish),
-            reverse=True,
+            key=lambda item: project_order.get(
+                str(item.task_id),
+                len(project.tasks),
+            ),
         )
+        gantt_labels = [
+            f"{item.task_id} · {item.task_name}"
+            for item in ordered
+        ]
         bar_colors = []
         bar_text = []
         hover_reasons = []
@@ -472,10 +482,7 @@ with tab_exec:
 
         fig.add_trace(
             go.Bar(
-                y=[
-                    f"{item.task_id} · {item.task_name}"
-                    for item in ordered
-                ],
+                y=gantt_labels,
                 x=[item.duration for item in ordered],
                 base=[item.start for item in ordered],
                 orientation="h",
@@ -500,6 +507,11 @@ with tab_exec:
                 line_dash="dot",
                 annotation_text="deadline",
             )
+        fig.update_yaxes(
+            categoryorder="array",
+            categoryarray=gantt_labels,
+            autorange="reversed",
+        )
         fig.update_layout(
             title="Cronograma reprogramado",
             xaxis_title="Horas desde o início da parada",
@@ -536,7 +548,7 @@ with tab_activation:
 
 with tab_schedule:
     st.dataframe(
-        schedule_df,
+        schedule_df.drop(columns=["_Ordem"], errors="ignore"),
         use_container_width=True,
         hide_index=True,
     )

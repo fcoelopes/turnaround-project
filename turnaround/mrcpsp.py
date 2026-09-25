@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import product
 from math import prod
+import re
 
 from .advanced_models import ExecutionMode, Precedence, TurnaroundTask
 
@@ -40,6 +41,16 @@ class AdvancedScheduleResult:
 
 
 PRIORITIES = ("most_successors", "shortest_duration", "longest_duration", "id")
+
+
+def _natural_id_key(value: str) -> tuple[tuple[int, int | str], ...]:
+    """Natural ordering for task IDs: 2 comes before 10, while mixed IDs stay stable."""
+    parts = re.split(r"(\d+)", str(value))
+    return tuple(
+        (0, int(part)) if part.isdigit() else (1, part.casefold())
+        for part in parts
+        if part
+    )
 
 
 def _mode_feasible(mode: ExecutionMode, capacities: dict[str, float]) -> bool:
@@ -167,12 +178,12 @@ def _schedule_assignment(
         def key(task: TurnaroundTask):
             mode = modes[task.id]
             if priority == "most_successors":
-                return (-successor_counts.get(task.id, 0), mode.duration, task.id)
+                return (-successor_counts.get(task.id, 0), mode.duration, _natural_id_key(task.id))
             if priority == "shortest_duration":
-                return (mode.duration, task.id)
+                return (mode.duration, _natural_id_key(task.id))
             if priority == "longest_duration":
-                return (-mode.duration, task.id)
-            return (task.id,)
+                return (-mode.duration, _natural_id_key(task.id))
+            return (_natural_id_key(task.id),)
 
         task = sorted(ready, key=key)[0]
         mode = modes[task.id]
@@ -293,7 +304,7 @@ def solve_mrcpsp(
         )
         seen = set()
         for seed in seeds:
-            key = tuple((tid, seed[tid].name) for tid in sorted(seed))
+            key = tuple((tid, seed[tid].name) for tid in sorted(seed, key=_natural_id_key))
             if key not in seen:
                 seen.add(key)
                 evaluate(seed)
@@ -332,7 +343,7 @@ def solve_mrcpsp(
     assert best_items is not None and best_score is not None
     tardiness, makespan, cost = best_score
     return AdvancedScheduleResult(
-        tasks=sorted(best_items, key=lambda x: (x.start, x.finish, x.task_id)),
+        tasks=sorted(best_items, key=lambda x: (x.start, x.finish, _natural_id_key(x.task_id))),
         makespan=makespan,
         total_cost=cost,
         tardiness=tardiness,

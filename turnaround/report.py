@@ -261,6 +261,7 @@ class _GanttFlowable(Flowable):
         current_time: float | None = None,
         max_rows: int = 18,
         frozen_column: str | None = None,
+        order_column: str | None = None,
     ):
         super().__init__()
         self.schedule_df = schedule_df.copy()
@@ -269,6 +270,7 @@ class _GanttFlowable(Flowable):
         self.current_time = current_time
         self.max_rows = max_rows
         self.frozen_column = frozen_column
+        self.order_column = order_column
         self.row_height = 6.4 * mm
         self.axis_height = 12 * mm
         self.legend_height = 7 * mm
@@ -287,9 +289,19 @@ class _GanttFlowable(Flowable):
         self.id_col = "ID"
 
         if not self.schedule_df.empty:
-            self.schedule_df = self.schedule_df.sort_values(
-                [self.start_col, self.finish_col]
-            ).head(self.max_rows)
+            if (
+                self.order_column
+                and self.order_column in self.schedule_df.columns
+            ):
+                self.schedule_df = self.schedule_df.sort_values(
+                    [self.order_column],
+                    kind="stable",
+                ).head(self.max_rows)
+            else:
+                self.schedule_df = self.schedule_df.sort_values(
+                    [self.start_col, self.finish_col],
+                    kind="stable",
+                ).head(self.max_rows)
 
         self.rows = len(self.schedule_df)
         self.height = (
@@ -522,6 +534,7 @@ def _gantt_chart(
     deadline: float | None = None,
     current_time: float | None = None,
     frozen_column: str | None = None,
+    order_column: str | None = None,
 ) -> Flowable:
     return _GanttFlowable(
         schedule_df,
@@ -529,6 +542,7 @@ def _gantt_chart(
         deadline=deadline,
         current_time=current_time,
         frozen_column=frozen_column,
+        order_column=order_column,
     )
 
 
@@ -878,6 +892,7 @@ def build_conditional_management_pdf(
             deadline=deadline,
             current_time=current_time,
             frozen_column="Congelada",
+            order_column="_Ordem",
         ),
         Spacer(1, 5 * mm),
         _p("Detalhamento do cronograma", s["h2"]),
