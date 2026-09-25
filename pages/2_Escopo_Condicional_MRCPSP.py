@@ -441,7 +441,8 @@ def render_manual() -> None:
     st.markdown(
         """
 - **Operação:** carregar o plano, avançar a execução, registrar achados, resolver decisões e acompanhar impacto.
-- **Configuração:** regras de escopo, capacidades dos recursos, estabilidade do replanejamento e sessão persistida.
+- **Configuração:** regras de escopo, capacidades de equipamentos/recursos, estabilidade e sessão persistida.
+- **Pessoas:** roster da parada, habilidades humanas e cobertura multi-skill.
 - **Manual:** este guia e o glossário rápido.
         """
     )
@@ -479,8 +480,9 @@ regra previamente cadastrada.
             """
 1. Envie somente o **XML**.
 2. Vá para **Configuração** e cadastre regras na planilha; o JSON é opcional.
-3. Confira as capacidades dos recursos. Recurso demandado sem capacidade começa em 0.
-4. Volte para **Operação**, informe a hora corrente e registre os achados.
+3. Na aba **Pessoas**, cadastre o roster e classifique quais recursos do plano são habilidades humanas.
+4. Confira as capacidades dos recursos não humanos em **Configuração**.
+5. Volte para **Operação**, informe a hora corrente e registre os achados.
 5. Resolva apenas as decisões que realmente forem disparadas.
 6. Gere o PDF quando a visão executiva representar o cenário que você quer comunicar.
         """
@@ -1052,7 +1054,13 @@ base_capacities = dict(base_project.capacities)
 unknown_resources = [
     entry
     for entry in resource_catalog.values()
-    if not entry.capacity_defined
+    if (
+        not entry.capacity_defined
+        and not (
+            workforce.enabled
+            and entry.name in workforce.skills
+        )
+    )
 ]
 
 with config_tab:
@@ -1171,6 +1179,11 @@ with config_tab:
                 ),
                 "Maior demanda": float(entry.max_demand),
                 "Cenário": float(scenario_capacities[resource]),
+                "Fonte da capacidade": (
+                    "Pessoas / multi-skill"
+                    if workforce.enabled and resource in workforce.skills
+                    else "Capacidade agregada"
+                ),
                 "Δ vs base": (
                     float(scenario_capacities[resource]) - float(entry.base_capacity)
                     if entry.base_capacity is not None
@@ -2085,6 +2098,10 @@ with operation_tab:
     )
 
     all_items = result.frozen_tasks + result.schedule.tasks
+    person_name_by_id = {
+        person.id: person.name
+        for person in workforce.people
+    }
     criticality = analyze_effective_criticality(
         project=project,
         effective_tasks=result.effective_tasks,
@@ -2128,7 +2145,13 @@ with operation_tab:
                     for key, value in item.resources.items()
                 ),
                 "Pessoas": "; ".join(
-                    f"{skill}: {', '.join(person_ids)}"
+                    (
+                        f"{skill}: "
+                        + ", ".join(
+                            person_name_by_id.get(person_id, person_id)
+                            for person_id in person_ids
+                        )
+                    )
                     for skill, person_ids in item.skill_assignments.items()
                 ) or "—",
             }
@@ -2280,6 +2303,15 @@ with operation_tab:
                 "Valor": (
                     ", ".join(row.id for row in stored_scope_rules if row.enabled)
                     or "—"
+                ),
+            },
+            {
+                "Parâmetro": "Multi-skill",
+                "Valor": (
+                    f"{len(workforce.active_people)} pessoa(s) ativa(s) · "
+                    f"{len(workforce.skills)} habilidade(s)"
+                    if workforce.enabled
+                    else "desativado"
                 ),
             },
             {"Parâmetro": "Estratégia solver", "Valor": result.schedule.strategy},
