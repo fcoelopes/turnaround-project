@@ -91,6 +91,7 @@ def materialize_dynamic_scope(
             name=item.name,
             wbs=item.wbs,
             project_uid=None,
+            release_time=item.discovered_at,
             modes=item.modes,
             precedences=item.precedences,
             activation=ActivationRule(kind="mandatory"),
