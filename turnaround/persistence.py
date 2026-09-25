@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +12,7 @@ from typing import Any
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import (
     DateTime,
     Float,
@@ -20,9 +23,10 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     event,
+    inspect,
     select,
 )
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from .advanced_models import DiscoveredTask
@@ -30,6 +34,131 @@ from .advanced_models import DiscoveredTask
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = ROOT / "data" / "turnaround.db"
+
+
+_MIGRATION_THREAD_LOCK = threading.Lock()
+
+
+def _sqlite_database_path(database_url: str) -> Path | None:
+    url = make_url(database_url)
+    if url.get_backend_name() != "sqlite":
+        return None
+    database = url.database
+    if not database or database == ":memory:":
+        return None
+    return Path(database).expanduser().resolve()
+
+
+@contextmanager
+def _migration_lock(database_url: str):
+    """Serializa migrations entre threads e processos para SQLite.
+
+    O lock de processo evita corrida entre sessões Streamlit. Em SQLite em
+    arquivo, um flock adicional evita corrida entre o processo da aplicação e
+    o deploy/Alembic executado em outro processo.
+    """
+    with _MIGRATION_THREAD_LOCK:
+        path = _sqlite_database_path(database_url)
+        if path is None:
+            yield
+            return
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = path.with_suffix(path.suffix + ".migration.lock")
+        handle = lock_path.open("a+")
+
+        try:
+            try:
+                import fcntl
+            except ImportError:
+                fcntl = None
+
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
+
+
+def _alembic_config(database_url: str) -> Config:
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "alembic"))
+    config.set_main_option("sqlalchemy.url", database_url)
+    return config
+
+
+def _current_revision(engine: Engine) -> str | None:
+    inspector = inspect(engine)
+    if "alembic_version" not in inspector.get_table_names():
+        return None
+    with engine.connect() as connection:
+        row = connection.exec_driver_sql(
+            "SELECT version_num FROM alembic_version LIMIT 1"
+        ).first()
+    return None if row is None else str(row[0])
+
+
+def _repair_unversioned_initial_schema(
+    database_url: str,
+    config: Config,
+) -> bool:
+    """Recupera apenas o caso seguro: schema inicial existe sem revision marker.
+
+    SQLite confirma DDL tabela a tabela. Se uma primeira migration for
+    interrompida ou correr em paralelo, tabelas podem existir mesmo sem a linha
+    em alembic_version. Como este projeto possui uma única migration inicial,
+    completamos somente tabelas/índices ausentes, validamos todas as colunas e
+    então carimbamos o revision head. Nenhuma tabela ou dado existente é
+    apagado.
+    """
+    engine = create_sqlite_engine(database_url)
+    try:
+        if _current_revision(engine) is not None:
+            return False
+
+        inspector = inspect(engine)
+        existing = set(inspector.get_table_names())
+        expected = set(Base.metadata.tables)
+        materialized = existing & expected
+        if not materialized:
+            return False
+
+        Base.metadata.create_all(engine, checkfirst=True)
+
+        for table in Base.metadata.tables.values():
+            for index in table.indexes:
+                index.create(bind=engine, checkfirst=True)
+
+        inspector = inspect(engine)
+        missing_tables = expected - set(inspector.get_table_names())
+        if missing_tables:
+            raise RuntimeError(
+                "Schema SQLite parcialmente criado e não recuperável: "
+                f"faltam tabelas {sorted(missing_tables)}"
+            )
+
+        for table_name, table in Base.metadata.tables.items():
+            actual_columns = {
+                column["name"]
+                for column in inspector.get_columns(table_name)
+            }
+            expected_columns = set(table.columns.keys())
+            missing_columns = expected_columns - actual_columns
+            if missing_columns:
+                raise RuntimeError(
+                    "Schema SQLite parcialmente criado e incompatível: "
+                    f"{table_name} sem colunas {sorted(missing_columns)}"
+                )
+
+        head = ScriptDirectory.from_config(config).get_current_head()
+        if head is None:
+            raise RuntimeError("Alembic não possui revision head")
+        command.stamp(config, head)
+        return True
+    finally:
+        engine.dispose()
 
 
 def utc_now() -> datetime:
@@ -250,10 +379,11 @@ def create_sqlite_engine(database_url: str | None = None) -> Engine:
 
 def upgrade_database(database_url: str | None = None) -> None:
     url = database_url or default_database_url()
-    config = Config(str(ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(ROOT / "alembic"))
-    config.set_main_option("sqlalchemy.url", url)
-    command.upgrade(config, "head")
+    config = _alembic_config(url)
+
+    with _migration_lock(url):
+        _repair_unversioned_initial_schema(url, config)
+        command.upgrade(config, "head")
 
 
 class ExecutionStore:
