@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -11,6 +13,7 @@ from turnaround import (
     DiscoveredTask,
     ExecutionMode,
     ExecutionState,
+    ExecutionStore,
     Precedence,
     TaskExecution,
     analyze_effective_criticality,
@@ -23,6 +26,7 @@ from turnaround import (
     resolve_activation,
     reschedule_from_state,
     solve_mrcpsp,
+    upgrade_database,
 )
 from turnaround.io import project_xml_to_tasks
 from turnaround.report import build_conditional_management_pdf
@@ -44,6 +48,12 @@ hero(
     "Ative escopo previsto ou crie trabalho realmente descoberto em campo e replaneje a parada sem reescrever o baseline.",
     "DYNAMIC SCOPE DISCOVERY · REPLANEJAMENTO",
 )
+
+
+@st.cache_resource
+def _get_execution_store() -> ExecutionStore:
+    upgrade_database()
+    return ExecutionStore()
 
 
 def _parse_resource_demands(raw: str) -> dict[str, float]:
@@ -127,28 +137,57 @@ def load_project():
 project, project_name = load_project()
 planned_project = project
 
-project_signature = "|".join(
-    [
-        project_name,
-        *[
-            f"{task.id}:{task.project_uid or '-'}:{task.name}"
-            for task in planned_project.tasks
-        ],
-    ]
-)
-if st.session_state.get("dynamic_scope_project_signature") != project_signature:
-    st.session_state.dynamic_scope_project_signature = project_signature
-    st.session_state.dynamic_scope_tasks = []
-    st.session_state.scope_decision_selections = {}
+project_payload = {
+    "project_name": project_name,
+    "project": planned_project.model_dump(mode="json"),
+}
+project_key = hashlib.sha256(
+    json.dumps(
+        project_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+).hexdigest()
 
-stored_dynamic_scope = st.session_state.setdefault(
-    "dynamic_scope_tasks",
-    [],
+execution_store = _get_execution_store()
+execution_session = execution_store.get_or_create_active_session(
+    project_key=project_key,
+    project_name=project_name,
 )
-discovered_tasks = [
-    DiscoveredTask.model_validate(item)
-    for item in stored_dynamic_scope
-]
+discovered_tasks = execution_store.load_discovered_tasks(
+    execution_session.id
+)
+
+st.caption(
+    f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
+    f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s)"
+)
+
+with st.expander("Sessão de execução persistida", expanded=False):
+    st.write(
+        f"**Sessão:** `{execution_session.id}`  \\n"
+        f"**Baseline:** `{project_key[:12]}`  \\n"
+        "Uma nova sessão arquiva esta execução e começa sem achados, DS-* ou decisões."
+    )
+    confirm_new_session = st.checkbox(
+        "Confirmo que quero iniciar uma nova sessão limpa para este baseline",
+        key=f"confirm_new_execution_{execution_session.id[:8]}",
+    )
+    if st.button(
+        "Iniciar nova sessão",
+        disabled=not confirm_new_session,
+        key=f"new_execution_{execution_session.id[:8]}",
+    ):
+        execution_store.start_new_session(
+            project_key=project_key,
+            project_name=project_name,
+            initial_current_time=0.0,
+        )
+        for key in list(st.session_state):
+            if key.startswith("scope_decision_"):
+                del st.session_state[key]
+        st.rerun()
 dynamic_materialization = materialize_dynamic_scope(
     planned_project,
     discovered_tasks,
@@ -203,14 +242,19 @@ cols = st.columns(min(4, max(1, len(resource_catalog))))
 scenario_capacities: dict[str, float] = {}
 for i, (resource, entry) in enumerate(resource_catalog.items()):
     base_capacity = entry.base_capacity
-    default_value = float(base_capacity) if base_capacity is not None else 0.0
+    persisted_capacity = execution_session.scenario_capacities.get(resource)
+    default_value = (
+        float(persisted_capacity)
+        if persisted_capacity is not None
+        else (float(base_capacity) if base_capacity is not None else 0.0)
+    )
     upper = max(
         2.0,
         default_value * 2.5,
         float(entry.max_demand) * 2.0,
         float(entry.max_demand) + 2.0,
     )
-    values_for_step = [float(entry.max_demand)]
+    values_for_step = [float(entry.max_demand), default_value]
     if base_capacity is not None:
         values_for_step.append(float(base_capacity))
     step = (
@@ -234,7 +278,7 @@ for i, (resource, entry) in enumerate(resource_catalog.items()):
             max_value=float(upper),
             value=default_value,
             step=step,
-            key=f"advanced_cap_{i}_{resource}",
+            key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
             help=help_text,
         )
 
@@ -399,8 +443,9 @@ stability_weight = st.slider(
     "Peso de estabilidade do replanejamento (λ)",
     min_value=0.0,
     max_value=2.0,
-    value=1.0,
+    value=min(2.0, max(0.0, float(execution_session.stability_weight))),
     step=0.1,
+    key=f"stability_weight_{execution_session.id[:8]}",
     help=(
         "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos de início. "
         "Atraso à deadline continua sendo prioridade. λ=0 reproduz o comportamento anterior; "
@@ -412,11 +457,18 @@ st.caption(
     "Novo escopo descoberto não recebe penalidade por não possuir início de referência."
 )
 
+persisted_current_time = float(execution_session.current_time)
+default_current_time = (
+    persisted_current_time
+    if persisted_current_time > 0
+    else min(7.0, float(baseline.makespan))
+)
 current_time = st.number_input(
     "Hora corrente desde o início da parada",
     min_value=0.0,
-    value=min(7.0, float(baseline.makespan)),
+    value=float(default_current_time),
     step=0.5,
+    key=f"current_time_{execution_session.id[:8]}",
 )
 
 executions: dict[str, TaskExecution] = {}
@@ -594,12 +646,12 @@ with st.expander(
             )
 
             candidate = [*discovered_tasks, discovered]
-            # Valida colisões, referências e gates antes de persistir na sessão.
+            # Valida colisões, referências e gates antes de persistir.
             materialize_dynamic_scope(planned_project, candidate)
-            st.session_state.dynamic_scope_tasks = [
-                item.model_dump()
-                for item in candidate
-            ]
+            execution_store.add_discovered_task(
+                execution_session.id,
+                discovered,
+            )
             st.rerun()
         except ValueError as exc:
             st.error(str(exc))
@@ -657,16 +709,45 @@ if discovered_tasks:
         ]
         try:
             materialize_dynamic_scope(planned_project, candidate)
-            st.session_state.dynamic_scope_tasks = [
-                item.model_dump()
-                for item in candidate
-            ]
+            execution_store.remove_discovered_task(
+                execution_session.id,
+                remove_id,
+            )
             st.rerun()
         except ValueError as exc:
             st.error(
                 "Não é possível remover esta descoberta porque outra atividade "
                 f"dinâmica ainda depende dela: {exc}"
             )
+
+with st.expander("Histórico persistido da execução", expanded=False):
+    persisted_events = execution_store.list_events(
+        execution_session.id,
+        limit=100,
+    )
+    if persisted_events:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "ID": item.id,
+                        "Quando": item.occurred_at,
+                        "Evento": item.event_type,
+                        "Atividade": item.task_id or "—",
+                        "Detalhes": json.dumps(
+                            item.payload,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                    }
+                    for item in persisted_events
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("Ainda não há eventos persistidos nesta sessão.")
 
 event_catalog: dict[str, set[str]] = {}
 for task in project.tasks:
@@ -705,9 +786,13 @@ if event_catalog:
         selected = st.multiselect(
             label,
             options=sorted(options),
-            default=[],
+            default=[
+                event_name
+                for event_name in execution_session.observed_events.get(source_id, [])
+                if event_name in options
+            ],
             disabled=not completed,
-            key=f"events_{source_id}",
+            key=f"events_{execution_session.id[:8]}_{source_id}",
         )
         if selected:
             events[source_id] = selected
@@ -733,14 +818,16 @@ if independent_optional:
     selected_optional_ids = st.multiselect(
         "Atividades opcionais selecionadas",
         options=list(labels),
+        default=[
+            task_id
+            for task_id in execution_session.selected_optional_ids
+            if task_id in labels
+        ],
         format_func=lambda task_id: labels[task_id],
+        key=f"optional_{execution_session.id[:8]}",
     )
 
 known_groups = {group.id: group for group in project.logical_groups}
-stored_human_selections = st.session_state.setdefault(
-    "scope_decision_selections",
-    {},
-)
 stored_human_selections = {
     group_id: [
         task_id
@@ -750,7 +837,7 @@ stored_human_selections = {
             and task_id in known_groups[group_id].member_task_ids
         )
     ]
-    for group_id, selection in stored_human_selections.items()
+    for group_id, selection in execution_session.human_selections.items()
     if group_id in known_groups
 }
 stored_human_selections = {
@@ -758,8 +845,6 @@ stored_human_selections = {
     for group_id, selection in stored_human_selections.items()
     if selection
 }
-st.session_state.scope_decision_selections = stored_human_selections
-
 state = ExecutionState(
     current_time=current_time,
     events=events,
@@ -871,15 +956,33 @@ if focused_decision is not None:
 
 if human_choices:
     stored_human_selections.update(human_choices)
-    st.session_state.scope_decision_selections = stored_human_selections
 
 if stored_human_selections:
     if st.button("Reabrir decisões humanas desta sessão"):
-        st.session_state.scope_decision_selections = {}
+        execution_store.update_execution_state(
+            execution_session.id,
+            current_time=float(current_time),
+            observed_events=events,
+            human_selections={},
+            selected_optional_ids=selected_optional_ids,
+            scenario_capacities=scenario_capacities,
+            stability_weight=float(stability_weight),
+        )
         for key in list(st.session_state):
-            if key.startswith("scope_decision_") and key != "scope_decision_selections":
+            if key.startswith("scope_decision_"):
                 del st.session_state[key]
         st.rerun()
+
+# Persiste o estado operacional da sessão antes do replanejamento.
+execution_session = execution_store.update_execution_state(
+    execution_session.id,
+    current_time=float(current_time),
+    observed_events=events,
+    human_selections=stored_human_selections,
+    selected_optional_ids=selected_optional_ids,
+    scenario_capacities=scenario_capacities,
+    stability_weight=float(stability_weight),
+)
 
 # Reexecuta o motor após eventuais escolhas humanas. Ele pode aplicar regras
 # event-driven determinísticas que tenham sido liberadas pela decisão recém tomada.

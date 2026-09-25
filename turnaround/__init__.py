@@ -33,7 +33,10 @@ __all__ = [
     "DynamicScopeMaterialization",
     "EffectiveCriticalityResult",
     "EffectiveDriver",
+    "ExecutionEvent",
     "ExecutionMode",
+    "ExecutionSessionSnapshot",
+    "ExecutionStore",
     "ExecutionState",
     "LogicalGroup",
     "Precedence",
@@ -45,6 +48,7 @@ __all__ = [
     "TurnaroundTask",
     "analyze_effective_criticality",
     "apply_scope_config",
+    "default_database_url",
     "discover_resource_catalog",
     "evaluate_scope_decisions",
     "infer_capacities",
@@ -56,4 +60,7 @@ __all__ = [
     "resolve_activation",
     "reschedule_from_state",
     "solve_mrcpsp",
+    "upgrade_database",
 ]
+
+from .persistence import ExecutionEvent, ExecutionSessionSnapshot, ExecutionStore, default_database_url, upgrade_database

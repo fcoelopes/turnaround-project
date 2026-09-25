@@ -24,7 +24,15 @@ jobs:
 
       - name: Verify runtime dependencies
         run: |
-          uv run python -c "import reportlab; print('reportlab', reportlab.Version)"
+          uv run python -c "import reportlab, sqlalchemy, alembic; print('reportlab', reportlab.Version); print('sqlalchemy', sqlalchemy.__version__); print('alembic', alembic.__version__)"
+
+      - name: Validate database migrations
+        env:
+          TURNAROUND_DATABASE_URL: sqlite:////tmp/turnaround-ci.db
+        run: |
+          rm -f /tmp/turnaround-ci.db /tmp/turnaround-ci.db-wal /tmp/turnaround-ci.db-shm
+          uv run alembic upgrade head
+          uv run alembic current
 
       - name: Compile UI
         run: uv run python -m compileall -q app.py pages turnaround
@@ -39,5 +47,6 @@ jobs:
           bash -n scripts/deploy_vps.sh
           test -f deploy/systemd/turnaround.service
           grep -q '^ExecStart=.*/streamlit run app.py' deploy/systemd/turnaround.service
+          grep -q 'alembic upgrade head' scripts/deploy_vps.sh
           docker compose config -q
           docker build -t turnaround-project:test .

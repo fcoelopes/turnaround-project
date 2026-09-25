@@ -11,6 +11,8 @@ dependencies = [
   "numpy>=1.26",
   "pydantic>=2.5",
   "reportlab>=4.2",
+  "sqlalchemy>=2.0",
+  "alembic>=1.13",
 ]
 
 [tool.pytest.ini_options]

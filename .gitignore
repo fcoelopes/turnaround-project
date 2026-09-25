@@ -22,3 +22,9 @@ htmlcov/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local execution persistence
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite-*
