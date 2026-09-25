@@ -64,6 +64,7 @@ class TurnaroundTask(BaseModel):
     name: str
     wbs: str | None = None
     project_uid: str | None = None
+    release_time: float = Field(default=0.0, ge=0)
     modes: list[ExecutionMode]
     precedences: list[Precedence] = Field(default_factory=list)
     activation: ActivationRule = Field(default_factory=ActivationRule)
