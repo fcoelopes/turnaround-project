@@ -711,35 +711,38 @@ discovered_tasks = execution_store.load_discovered_tasks(
     execution_session.id
 )
 
-st.caption(
-    f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
-    f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s)"
-)
+with config_tab:
+    st.markdown("#### Sessão e persistência")
+    st.caption(
+        f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
+        f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s)"
+    )
 
-with st.expander("Sessão de execução persistida", expanded=False):
-    st.write(
-        f"**Sessão:** `{execution_session.id}`  \\n"
-        f"**Baseline:** `{project_key[:12]}`  \\n"
-        "Uma nova sessão arquiva esta execução e começa sem achados, DS-* ou decisões."
-    )
-    confirm_new_session = st.checkbox(
-        "Confirmo que quero iniciar uma nova sessão limpa para este baseline",
-        key=f"confirm_new_execution_{execution_session.id[:8]}",
-    )
-    if st.button(
-        "Iniciar nova sessão",
-        disabled=not confirm_new_session,
-        key=f"new_execution_{execution_session.id[:8]}",
-    ):
-        execution_store.start_new_session(
-            project_key=project_key,
-            project_name=project_name,
-            initial_current_time=0.0,
+    with st.expander("Sessão de execução persistida", expanded=False):
+        st.write(
+            f"**Sessão:** `{execution_session.id}`  \\n"
+            f"**Baseline:** `{project_key[:12]}`  \\n"
+            "Uma nova sessão arquiva esta execução e começa sem achados, DS-* ou decisões."
         )
-        for key in list(st.session_state):
-            if key.startswith("scope_decision_"):
-                del st.session_state[key]
-        st.rerun()
+        confirm_new_session = st.checkbox(
+            "Confirmo que quero iniciar uma nova sessão limpa para este baseline",
+            key=f"confirm_new_execution_{execution_session.id[:8]}",
+        )
+        if st.button(
+            "Iniciar nova sessão",
+            disabled=not confirm_new_session,
+            key=f"new_execution_{execution_session.id[:8]}",
+        ):
+            execution_store.start_new_session(
+                project_key=project_key,
+                project_name=project_name,
+                initial_current_time=0.0,
+            )
+            for key in list(st.session_state):
+                if key.startswith("scope_decision_"):
+                    del st.session_state[key]
+            st.rerun()
+
 dynamic_materialization = materialize_dynamic_scope(
     planned_project,
     discovered_tasks,
@@ -755,160 +758,184 @@ unknown_resources = [
     if not entry.capacity_defined
 ]
 
-section(
-    "2",
-    "Cenário MRCPSP de recursos",
-    (
-        "Os controles são gerados automaticamente pela união entre Resource Sheet, "
-        "recursos das tarefas e recursos de todos os modos MRCPSP."
-    ),
-)
-
-scenario_name = st.text_input(
-    "Nome do cenário",
-    value="Cenário de recursos A",
-    key="mrcpsp_scenario_name",
-)
-
-if project_name == "Turnaround Kinder Ovo":
-    st.info(
-        "Teste guiado: avance até 7 h. Você terá dois discoveries independentes: "
-        "na inspeção mecânica, marque bearing_damage; no ensaio do motor, marque "
-        "motor_replacement_required. O primeiro testa mudança de modo com Mecânica=4→5; "
-        "o segundo adiciona a substituição do motor (6 h, Elétrica:2, Mecânica:2, Guindaste:1)."
+with config_tab:
+    st.markdown("#### Recursos e modos de execução")
+    st.caption(
+        "Ajuste capacidades somente quando quiser testar outro cenário. "
+        "Os controles são gerados a partir dos recursos usados pelo plano e pelos modos MRCPSP."
     )
 
-if unknown_resources:
-    status(
-        (
-            "Foram encontrados recursos usados por tarefas/modos sem capacidade-base "
-            "declarada no Project/sidecar: "
-            + ", ".join(entry.name for entry in unknown_resources)
-            + ". Eles aparecem abaixo com base não informada e cenário inicial 0."
-        ),
-        tone="warn",
-        title="Capacidades de recursos precisam ser informadas.",
+    scenario_name = st.text_input(
+        "Nome do cenário",
+        value="Cenário de recursos A",
+        key="mrcpsp_scenario_name",
     )
 
-cols = st.columns(min(4, max(1, len(resource_catalog))))
-scenario_capacities: dict[str, float] = {}
-for i, (resource, entry) in enumerate(resource_catalog.items()):
-    base_capacity = entry.base_capacity
-    persisted_capacity = execution_session.scenario_capacities.get(resource)
-    default_value = (
-        float(persisted_capacity)
-        if persisted_capacity is not None
-        else (float(base_capacity) if base_capacity is not None else 0.0)
-    )
-    upper = max(
-        2.0,
-        default_value * 2.5,
-        float(entry.max_demand) * 2.0,
-        float(entry.max_demand) + 2.0,
-    )
-    values_for_step = [float(entry.max_demand), default_value]
-    if base_capacity is not None:
-        values_for_step.append(float(base_capacity))
-    step = (
-        1.0
-        if all(float(value).is_integer() for value in values_for_step)
-        else 0.5
-    )
-    help_text = (
-        f"Capacidade-base: {base_capacity:g}. "
-        if base_capacity is not None
-        else "Capacidade-base não informada. "
-    )
-    help_text += (
-        f"Maior demanda individual observada: {entry.max_demand:g}. "
-        f"Usado em {len(entry.task_ids)} atividade(s)."
-    )
-    with cols[i % len(cols)]:
-        scenario_capacities[resource] = st.slider(
-            resource,
-            min_value=0.0,
-            max_value=float(upper),
-            value=default_value,
-            step=step,
-            key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
-            help=help_text,
+    if project_name == "Turnaround Kinder Ovo":
+        st.info(
+            "Teste guiado: avance até 7 h. Você terá dois discoveries independentes: "
+            "na inspeção mecânica, marque bearing_damage; no ensaio do motor, marque "
+            "motor_replacement_required. O primeiro testa mudança de modo com Mecânica=4→5; "
+            "o segundo adiciona a substituição do motor (6 h, Elétrica:2, Mecânica:2, Guindaste:1)."
         )
 
-resource_scenario_df = pd.DataFrame(
-    [
-        {
-            "Recurso": resource,
-            "Base": (
-                float(entry.base_capacity)
-                if entry.base_capacity is not None
-                else "não informada"
+    if unknown_resources:
+        status(
+            (
+                "Foram encontrados recursos usados por tarefas/modos sem capacidade-base "
+                "declarada no Project/sidecar: "
+                + ", ".join(entry.name for entry in unknown_resources)
+                + ". Eles aparecem abaixo com base não informada e cenário inicial 0."
             ),
-            "Maior demanda": float(entry.max_demand),
-            "Cenário": float(scenario_capacities[resource]),
-            "Δ vs base": (
-                float(scenario_capacities[resource]) - float(entry.base_capacity)
-                if entry.base_capacity is not None
-                else "—"
-            ),
-            "Atividades que usam": len(entry.task_ids),
-        }
-        for resource, entry in resource_catalog.items()
-    ]
-)
-st.dataframe(
-    resource_scenario_df,
-    use_container_width=True,
-    hide_index=True,
-)
+            tone="warn",
+            title="Capacidades de recursos precisam ser informadas.",
+        )
 
-project = base_project.model_copy(
-    update={"capacities": scenario_capacities}
-)
+    cols = st.columns(min(4, max(1, len(resource_catalog))))
+    scenario_capacities: dict[str, float] = {}
+    for i, (resource, entry) in enumerate(resource_catalog.items()):
+        base_capacity = entry.base_capacity
+        persisted_capacity = execution_session.scenario_capacities.get(resource)
+        default_value = (
+            float(persisted_capacity)
+            if persisted_capacity is not None
+            else (float(base_capacity) if base_capacity is not None else 0.0)
+        )
+        upper = max(
+            2.0,
+            default_value * 2.5,
+            float(entry.max_demand) * 2.0,
+            float(entry.max_demand) + 2.0,
+        )
+        values_for_step = [float(entry.max_demand), default_value]
+        if base_capacity is not None:
+            values_for_step.append(float(base_capacity))
+        step = (
+            1.0
+            if all(float(value).is_integer() for value in values_for_step)
+            else 0.5
+        )
+        help_text = (
+            f"Capacidade-base: {base_capacity:g}. "
+            if base_capacity is not None
+            else "Capacidade-base não informada. "
+        )
+        help_text += (
+            f"Maior demanda individual observada: {entry.max_demand:g}. "
+            f"Usado em {len(entry.task_ids)} atividade(s)."
+        )
+        with cols[i % len(cols)]:
+            scenario_capacities[resource] = st.slider(
+                resource,
+                min_value=0.0,
+                max_value=float(upper),
+                value=default_value,
+                step=step,
+                key=f"advanced_cap_{execution_session.id[:8]}_{i}_{resource}",
+                help=help_text,
+            )
 
-with st.expander("Modos disponíveis por atividade", expanded=bool(unknown_resources)):
-    mode_rows = []
-    for task in base_project.tasks:
-        for mode in task.modes:
-            feasible_base = all(
-                demand <= base_capacities.get(resource, 0.0) + 1e-9
-                for resource, demand in mode.resources.items()
-            )
-            feasible_scenario = all(
-                demand <= scenario_capacities.get(resource, 0.0) + 1e-9
-                for resource, demand in mode.resources.items()
-            )
-            missing_base = [
-                resource
-                for resource in mode.resources
-                if resource not in base_capacities
-            ]
-            mode_rows.append(
-                {
-                    "ID": task.id,
-                    "UID Project": task.project_uid or "—",
-                    "Atividade": task.name,
-                    "Tipo": task.activation.kind,
-                    "Modo": mode.name,
-                    "Duração (h)": mode.duration,
-                    "Recursos": ", ".join(
-                        f"{key}:{value:g}"
-                        for key, value in mode.resources.items()
-                    ),
-                    "Custo": mode.cost,
-                    "Capacidade ausente": ", ".join(missing_base) or "—",
-                    "Factível na base": "sim" if feasible_base else "não",
-                    "Factível no cenário": "sim" if feasible_scenario else "não",
-                    "Novo modo liberado": (
-                        "SIM"
-                        if (not feasible_base and feasible_scenario)
-                        else "não"
-                    ),
-                }
-            )
+    resource_scenario_df = pd.DataFrame(
+        [
+            {
+                "Recurso": resource,
+                "Base": (
+                    float(entry.base_capacity)
+                    if entry.base_capacity is not None
+                    else "não informada"
+                ),
+                "Maior demanda": float(entry.max_demand),
+                "Cenário": float(scenario_capacities[resource]),
+                "Δ vs base": (
+                    float(scenario_capacities[resource]) - float(entry.base_capacity)
+                    if entry.base_capacity is not None
+                    else "—"
+                ),
+                "Atividades que usam": len(entry.task_ids),
+            }
+            for resource, entry in resource_catalog.items()
+        ]
+    )
     st.dataframe(
-        pd.DataFrame(mode_rows),
+        resource_scenario_df,
         use_container_width=True,
         hide_index=True,
+    )
+
+    project = base_project.model_copy(
+        update={"capacities": scenario_capacities}
+    )
+
+    with st.expander("Modos disponíveis por atividade", expanded=bool(unknown_resources)):
+        mode_rows = []
+        for task in base_project.tasks:
+            for mode in task.modes:
+                feasible_base = all(
+                    demand <= base_capacities.get(resource, 0.0) + 1e-9
+                    for resource, demand in mode.resources.items()
+                )
+                feasible_scenario = all(
+                    demand <= scenario_capacities.get(resource, 0.0) + 1e-9
+                    for resource, demand in mode.resources.items()
+                )
+                missing_base = [
+                    resource
+                    for resource in mode.resources
+                    if resource not in base_capacities
+                ]
+                mode_rows.append(
+                    {
+                        "ID": task.id,
+                        "UID Project": task.project_uid or "—",
+                        "Atividade": task.name,
+                        "Tipo": task.activation.kind,
+                        "Modo": mode.name,
+                        "Duração (h)": mode.duration,
+                        "Recursos": ", ".join(
+                            f"{key}:{value:g}"
+                            for key, value in mode.resources.items()
+                        ),
+                        "Custo": mode.cost,
+                        "Capacidade ausente": ", ".join(missing_base) or "—",
+                        "Factível na base": "sim" if feasible_base else "não",
+                        "Factível no cenário": "sim" if feasible_scenario else "não",
+                        "Novo modo liberado": (
+                            "SIM"
+                            if (not feasible_base and feasible_scenario)
+                            else "não"
+                        ),
+                    }
+                )
+        st.dataframe(
+            pd.DataFrame(mode_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+with config_tab:
+    st.markdown("#### Preferências do replanejamento")
+    stability_weight = st.slider(
+        "Peso de estabilidade do replanejamento (λ)",
+        min_value=0.0,
+        max_value=2.0,
+        value=min(2.0, max(0.0, float(execution_session.stability_weight))),
+        step=0.1,
+        key=f"stability_weight_{execution_session.id[:8]}",
+        help=(
+            "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos de início. "
+            "Atraso à deadline continua sendo prioridade. λ=0 reproduz o comportamento anterior; "
+            "λ=1 trata 1 h acumulada de mudança de início como 1 h no objetivo."
+        ),
+    )
+    st.caption(
+        "A estabilidade compara apenas atividades futuras que já existiam no plano anterior. "
+        "Novo escopo descoberto não recebe penalidade por não possuir início de referência."
+    )
+
+
+    st.caption(
+        "Deixe λ em 1.0 se não houver motivo para privilegiar mais prazo ou mais estabilidade."
     )
 
 empty_state = ExecutionState(current_time=0)
@@ -991,24 +1018,6 @@ reference_start_times = {
     item.task_id: float(item.start)
     for item in baseline.tasks
 }
-stability_weight = st.slider(
-    "Peso de estabilidade do replanejamento (λ)",
-    min_value=0.0,
-    max_value=2.0,
-    value=min(2.0, max(0.0, float(execution_session.stability_weight))),
-    step=0.1,
-    key=f"stability_weight_{execution_session.id[:8]}",
-    help=(
-        "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos de início. "
-        "Atraso à deadline continua sendo prioridade. λ=0 reproduz o comportamento anterior; "
-        "λ=1 trata 1 h acumulada de mudança de início como 1 h no objetivo."
-    ),
-)
-st.caption(
-    "A estabilidade compara apenas atividades futuras que já existiam no plano anterior. "
-    "Novo escopo descoberto não recebe penalidade por não possuir início de referência."
-)
-
 persisted_current_time = float(execution_session.current_time)
 default_current_time = (
     persisted_current_time
