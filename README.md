@@ -35,11 +35,54 @@ A página **Escopo Condicional MRCPSP** acrescenta a dinâmica típica de turnar
 - grupos lógicos AND, OR e XOR;
 - rescheduling com atividades concluídas/em andamento congeladas;
 - stability-aware rescheduling, penalizando mudanças excessivas nos horários de início;
-- sidecar JSON para regras que não pertencem ao arquivo do Microsoft Project.
+- sidecar JSON para regras que não pertencem ao arquivo do Microsoft Project;
+- editor de regras de escopo em formato de planilha, persistido em SQLite.
 
 O parser de XML é o mesmo do MVP base. Não existe um segundo modelo de importação:
 o cronograma é lido uma vez e convertido para o domínio avançado somente quando
 essa página é usada.
+
+### Regras de escopo em planilha
+
+Além do sidecar JSON, a página avançada possui um editor tabular persistido no
+SQLite. O botão **Adicionar regra** cria uma nova linha e o planejador pode
+preencher regras sem editar JSON manualmente.
+
+Tipos suportados:
+
+- `conditional`: transforma uma atividade existente em condicional;
+- `xor`: exatamente um ramo é escolhido quando o grupo é disparado;
+- `or`: um ou mais ramos podem ser escolhidos;
+- `and`: todos os membros são ativados quando o grupo é disparado.
+
+As colunas permitem definir atividade-alvo, gatilho, eventos, lógica
+`any/all`, membros do grupo, resolução `human/event`, rotas determinísticas
+e observações.
+
+As referências são persistidas preferencialmente como `uid:<UID>` do
+Microsoft Project. Para grupos, os membros são informados separados por `;`:
+
+```text
+uid:9009; uid:9010
+```
+
+Para uma regra determinística `event`, as rotas usam:
+
+```text
+repairable=>uid:9009 | replacement_required=>uid:9010
+```
+
+Grupos criados pela planilha passam a controlar seus membros diretamente; os
+membros são tratados como `optional` na ativação-base para que XOR/OR/AND não
+sejam anulados por uma atividade originalmente `mandatory`.
+
+Antes de salvar, o sistema valida o projeto completo. IDs duplicados,
+referências inexistentes, conflito com grupos do sidecar, duas regras
+`conditional` para o mesmo alvo e combinações ambíguas são rejeitados.
+
+As regras são armazenadas em `scope_rule_rows`, vinculadas ao fingerprint do
+baseline + sidecar. O JSON existente continua compatível; a planilha funciona
+como uma camada adicional.
 
 ### Dynamic scope discovery
 
@@ -112,6 +155,7 @@ A camada SQLAlchemy persiste:
 - hora corrente da parada;
 - eventos/achados observados;
 - decisões humanas já resolvidas;
+- regras de escopo criadas pelo editor tabular;
 - atividades `DS-*`;
 - recursos, predecessoras e sucessoras das atividades descobertas;
 - event log append-only para criação/remoção de `DS-*` e mudanças de estado.
