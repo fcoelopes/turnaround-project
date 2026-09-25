@@ -163,6 +163,31 @@ st.caption(
     f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
     f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s)"
 )
+
+with st.expander("Sessão de execução persistida", expanded=False):
+    st.write(
+        f"**Sessão:** `{execution_session.id}`  \\n"
+        f"**Baseline:** `{project_key[:12]}`  \\n"
+        "Uma nova sessão arquiva esta execução e começa sem achados, DS-* ou decisões."
+    )
+    confirm_new_session = st.checkbox(
+        "Confirmo que quero iniciar uma nova sessão limpa para este baseline",
+        key=f"confirm_new_execution_{execution_session.id[:8]}",
+    )
+    if st.button(
+        "Iniciar nova sessão",
+        disabled=not confirm_new_session,
+        key=f"new_execution_{execution_session.id[:8]}",
+    ):
+        execution_store.start_new_session(
+            project_key=project_key,
+            project_name=project_name,
+            initial_current_time=0.0,
+        )
+        for key in list(st.session_state):
+            if key.startswith("scope_decision_"):
+                del st.session_state[key]
+        st.rerun()
 dynamic_materialization = materialize_dynamic_scope(
     planned_project,
     discovered_tasks,
