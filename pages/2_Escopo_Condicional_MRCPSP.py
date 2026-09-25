@@ -231,6 +231,59 @@ st.caption(
     "como uma camada adicional sobre o XML/sidecar importado."
 )
 
+inherited_rule_rows = []
+for task in base_planned_project.tasks:
+    if task.activation.kind != "conditional":
+        continue
+    for index, condition in enumerate(task.activation.conditions, start=1):
+        inherited_rule_rows.append(
+            {
+                "Origem": "JSON / sidecar",
+                "Regra": f"activation:{task.id}:{index}",
+                "Tipo": "conditional",
+                "Alvo / membros": f"{task.id} · {task.name}",
+                "Gatilho": condition.source_task_id,
+                "Eventos": "; ".join(condition.events),
+                "Resolução": "—",
+            }
+        )
+
+for group in base_planned_project.logical_groups:
+    inherited_rule_rows.append(
+        {
+            "Origem": "JSON / sidecar",
+            "Regra": group.id,
+            "Tipo": group.operator,
+            "Alvo / membros": "; ".join(group.member_task_ids),
+            "Gatilho": (
+                group.when.source_task_id
+                if group.when is not None
+                else "—"
+            ),
+            "Eventos": (
+                "; ".join(group.when.events)
+                if group.when is not None
+                else "—"
+            ),
+            "Resolução": group.resolution_mode,
+        }
+    )
+
+if inherited_rule_rows:
+    with st.expander(
+        f"Regras herdadas do JSON / sidecar ({len(inherited_rule_rows)})",
+        expanded=False,
+    ):
+        st.dataframe(
+            pd.DataFrame(inherited_rule_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption(
+            "Estas regras continuam válidas e não são editadas pela planilha. "
+            "A grade abaixo adiciona uma camada complementar."
+        )
+
 stored_scope_rules = execution_store.load_scope_rules(project_key)
 scope_ref_catalog = task_reference_catalog(base_planned_project)
 scope_label_to_ref = {
