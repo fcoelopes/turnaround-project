@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 ActivationKind = Literal["mandatory", "optional", "conditional"]
 ConditionLogic = Literal["any", "all"]
 LogicalOperator = Literal["and", "or", "xor"]
+DecisionResolutionMode = Literal["human", "optimize", "event"]
 TaskStatus = Literal["not_started", "in_progress", "completed", "skipped"]
 RelationType = Literal["FS", "SS", "FF", "SF"]
 
@@ -82,6 +83,8 @@ class LogicalGroup(BaseModel):
     operator: LogicalOperator
     member_task_ids: list[str]
     when: TriggerCondition | None = None
+    resolution_mode: DecisionResolutionMode = "human"
+    event_routes: dict[str, list[str]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_members(self):
@@ -89,6 +92,37 @@ class LogicalGroup(BaseModel):
             raise ValueError("Grupo lógico exige pelo menos duas atividades")
         if len(self.member_task_ids) != len(set(self.member_task_ids)):
             raise ValueError("Grupo lógico possui membros duplicados")
+
+        members = set(self.member_task_ids)
+        for event_name, route in self.event_routes.items():
+            if not event_name.strip():
+                raise ValueError(f"Grupo {self.id}: event_routes exige evento não vazio")
+            if not route:
+                raise ValueError(f"Grupo {self.id}: rota do evento {event_name} está vazia")
+            unknown = set(route) - members
+            if unknown:
+                raise ValueError(
+                    f"Grupo {self.id}: event_routes contém membros inválidos {sorted(unknown)}"
+                )
+            if self.operator == "xor" and len(route) != 1:
+                raise ValueError(
+                    f"Grupo XOR {self.id}: cada event_route deve selecionar exatamente uma atividade"
+                )
+
+        if self.resolution_mode == "event":
+            if self.when is None:
+                raise ValueError(
+                    f"Grupo {self.id}: resolution_mode=event exige condição when"
+                )
+            if not self.event_routes:
+                raise ValueError(
+                    f"Grupo {self.id}: resolution_mode=event exige event_routes"
+                )
+        elif self.event_routes:
+            raise ValueError(
+                f"Grupo {self.id}: event_routes só pode ser usado com resolution_mode=event"
+            )
+
         return self
 
 
