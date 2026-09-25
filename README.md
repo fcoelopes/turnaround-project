@@ -85,6 +85,57 @@ O modelo rejeita duas ambiguidades estruturais:
 - IDs duplicados de `logical_groups`;
 - uma mesma tarefa pertencendo a mais de um grupo seletivo `XOR/OR`.
 
+### Decisões de escopo sob demanda
+
+Grupos lógicos não geram controles permanentes na interface. Eles ficam
+dormentes até que a condição `when` seja satisfeita. Nesse momento, o motor de
+decisão avalia cenários sombra e aplica uma das três políticas:
+
+- `human` (padrão): calcula o impacto de cada alternativa e mostra somente a
+  decisão ativa para julgamento humano;
+- `optimize`: avalia os ramos e aplica automaticamente o menor score
+  lexicográfico `(atraso, makespan, custo)`;
+- `event`: o evento observado determina diretamente o ramo por
+  `event_routes`.
+
+Exemplo de decisão humana:
+
+```json
+{
+  "id": "P101_impeller_disposition",
+  "operator": "xor",
+  "resolution_mode": "human",
+  "member_task_uids": ["9009", "9010"],
+  "when": {
+    "source_task_uid": "9004",
+    "events": ["impeller_damage"]
+  }
+}
+```
+
+Exemplo event-driven com referências estáveis:
+
+```json
+{
+  "id": "P102_motor_disposition",
+  "operator": "xor",
+  "resolution_mode": "event",
+  "member_task_uids": ["9101", "9102"],
+  "when": {
+    "source_task_uid": "9100",
+    "events": ["repairable", "replacement_required"]
+  },
+  "event_route_uids": {
+    "repairable": ["9101"],
+    "replacement_required": ["9102"]
+  }
+}
+```
+
+A avaliação é lazy/rolling-horizon: grupos cujo gatilho ainda não ocorreu não
+são simulados. Para grupos `OR` grandes, a análise usa um conjunto limitado de
+candidatos em vez de enumerar todas as `2^n - 1` combinações.
+
 ## Interface e saída gerencial
 
 A interface Streamlit separa a análise em visão executiva, cronograma, recursos, risco e exportação. O PDF é a saída gerencial para comunicação da parada; o Excel permanece como saída técnica para exploração e auditoria dos dados. A página de scope discovery possui relatório próprio, registrando baseline, novo escopo, mapa de ativação e cronograma reprogramado.
