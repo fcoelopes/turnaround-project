@@ -13,10 +13,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option(
-    "sqlalchemy.url",
-    os.getenv("TURNAROUND_DATABASE_URL", default_database_url()),
-)
+environment_url = os.getenv("TURNAROUND_DATABASE_URL")
+if environment_url:
+    config.set_main_option("sqlalchemy.url", environment_url)
+elif not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", default_database_url())
 target_metadata = Base.metadata
 
 
