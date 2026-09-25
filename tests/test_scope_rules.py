@@ -232,3 +232,44 @@ def test_spreadsheet_group_id_cannot_collide_with_sidecar_group():
 
     with pytest.raises(ValueError, match="já existem no sidecar"):
         apply_scope_rule_rows(project, rows)
+
+
+def test_spreadsheet_rejects_conditional_target_that_is_also_group_member():
+    project = TurnaroundProject(
+        tasks=[
+            _task("1", "Inspeção", uid="1"),
+            _task("2", "Reparar", uid="2"),
+            _task("3", "Substituir", uid="3"),
+        ],
+        capacities={},
+    )
+    rows = [
+        ScopeRuleRow(
+            id="conditional-2",
+            rule_type="conditional",
+            target_task_ref="uid:2",
+            trigger_task_ref="uid:1",
+            events=["damage"],
+        ),
+        ScopeRuleRow(
+            id="choice",
+            rule_type="xor",
+            member_task_refs=["uid:2", "uid:3"],
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="alvo conditional e membro"):
+        apply_scope_rule_rows(project, rows)
+
+
+def test_spreadsheet_event_rule_requires_route_for_every_trigger_event():
+    with pytest.raises(ValueError, match="faltam rotas"):
+        ScopeRuleRow(
+            id="event-choice",
+            rule_type="xor",
+            trigger_task_ref="uid:1",
+            events=["repairable", "replacement_required"],
+            member_task_refs=["uid:2", "uid:3"],
+            resolution_mode="event",
+            event_routes={"repairable": ["uid:2"]},
+        )
