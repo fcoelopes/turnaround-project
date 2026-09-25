@@ -8,12 +8,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from turnaround import (
+    DiscoveredTask,
+    ExecutionMode,
     ExecutionState,
+    Precedence,
     TaskExecution,
     analyze_effective_criticality,
     apply_scope_config,
     discover_resource_catalog,
     evaluate_scope_decisions,
+    materialize_dynamic_scope,
+    next_discovered_task_id,
     project_from_tasks,
     resolve_activation,
     reschedule_from_state,
@@ -91,7 +96,37 @@ def load_project():
 
 
 project, project_name = load_project()
-base_project = project
+planned_project = project
+
+project_signature = "|".join(
+    [
+        project_name,
+        *[
+            f"{task.id}:{task.project_uid or '-'}:{task.name}"
+            for task in planned_project.tasks
+        ],
+    ]
+)
+if st.session_state.get("dynamic_scope_project_signature") != project_signature:
+    st.session_state.dynamic_scope_project_signature = project_signature
+    st.session_state.dynamic_scope_tasks = []
+    st.session_state.scope_decision_selections = {}
+
+stored_dynamic_scope = st.session_state.setdefault(
+    "dynamic_scope_tasks",
+    [],
+)
+discovered_tasks = [
+    DiscoveredTask.model_validate(item)
+    for item in stored_dynamic_scope
+]
+dynamic_materialization = materialize_dynamic_scope(
+    planned_project,
+    discovered_tasks,
+)
+base_project = dynamic_materialization.project
+dynamic_scope_ids = dynamic_materialization.discovered_ids
+
 resource_catalog = discover_resource_catalog(base_project)
 base_capacities = dict(base_project.capacities)
 unknown_resources = [
@@ -252,10 +287,10 @@ with st.expander("Modos disponíveis por atividade", expanded=bool(unknown_resou
     )
 
 empty_state = ExecutionState(current_time=0)
-baseline_activation = resolve_activation(base_project, empty_state)
+baseline_activation = resolve_activation(planned_project, empty_state)
 baseline_tasks = [
     task
-    for task in base_project.tasks
+    for task in planned_project.tasks
     if task.id in baseline_activation.active_ids
 ]
 
@@ -264,8 +299,8 @@ base_baseline_error = None
 try:
     base_baseline = solve_mrcpsp(
         baseline_tasks,
-        base_project.capacities,
-        deadline=base_project.deadline,
+        planned_project.capacities,
+        deadline=planned_project.deadline,
     )
 except ValueError as exc:
     base_baseline_error = str(exc)
@@ -307,7 +342,7 @@ m3.metric(
 )
 m4.metric(
     "Escopo potencial",
-    len(base_project.tasks) - len(scenario_baseline.tasks),
+    len(planned_project.tasks) - len(scenario_baseline.tasks),
 )
 
 if base_baseline is None:
