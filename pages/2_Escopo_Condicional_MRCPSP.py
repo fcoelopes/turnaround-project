@@ -1280,6 +1280,7 @@ else:
                     "Δ início acumulado (h)": result.schedule.total_start_deviation,
                     "Maior Δ início (h)": result.schedule.max_start_deviation,
                     "λ estabilidade": stability_weight,
+                    "Dynamic scope": len(dynamic_scope_ids),
                     "Modos alterados": int(
                         sum(
                             row["Mudou modo?"] == "SIM"
