@@ -295,11 +295,15 @@ def test_multiskill_person_release_is_visible_as_criticality_driver():
         makespan=schedule.makespan,
     )
 
-    assert criticality.path_ids == ["A", "B"]
+    ordered = sorted(schedule.tasks, key=lambda item: item.start)
+    predecessor_id = ordered[0].task_id
+    successor_id = ordered[1].task_id
+
+    assert criticality.path_ids == [predecessor_id, successor_id]
     assert any(
         driver.kind == "person"
-        and driver.predecessor_id == "A"
-        and driver.successor_id == "B"
+        and driver.predecessor_id == predecessor_id
+        and driver.successor_id == successor_id
         and driver.detail == "P1"
         for driver in criticality.drivers
     )
