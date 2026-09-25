@@ -493,3 +493,54 @@ def test_numeric_task_ids_use_natural_order_for_solver_ties():
     assert [item.task_id for item in by_start] == ["2", "10"]
     assert by_start[0].start == pytest.approx(0)
     assert by_start[1].start == pytest.approx(1)
+
+
+def test_kinder_ovo_resource_scenario_switches_mode_and_recovers_hours():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    tasks, capacities = project_xml_to_tasks(
+        (root / "sample_data" / "turnaround_conditional_model.xml").read_bytes()
+    )
+    project = project_from_tasks(tasks, capacities)
+    project = apply_scope_config(
+        project,
+        root / "sample_data" / "turnaround_conditional_scope.json",
+    )
+
+    state = ExecutionState(
+        current_time=7,
+        events={"4": ["bearing_damage"]},
+        executions={
+            "1": TaskExecution(status="completed", start=0, finish=1, mode_name="base"),
+            "2": TaskExecution(status="completed", start=1, finish=3, mode_name="base"),
+            "3": TaskExecution(status="completed", start=3, finish=5, mode_name="base"),
+            "4": TaskExecution(status="completed", start=5, finish=7, mode_name="base"),
+        },
+    )
+
+    assert project.capacities["Mecânica"] == pytest.approx(4)
+
+    base_result = reschedule_from_state(project, state)
+    base_bearing = next(
+        item for item in base_result.schedule.tasks if item.task_id == "5"
+    )
+    assert base_bearing.mode_name == "normal"
+    assert base_bearing.duration == pytest.approx(5)
+    assert base_result.schedule.makespan == pytest.approx(17)
+
+    scenario = project.model_copy(
+        update={
+            "capacities": {
+                **project.capacities,
+                "Mecânica": 5,
+            }
+        }
+    )
+    scenario_result = reschedule_from_state(scenario, state)
+    scenario_bearing = next(
+        item for item in scenario_result.schedule.tasks if item.task_id == "5"
+    )
+    assert scenario_bearing.mode_name == "reforco"
+    assert scenario_bearing.duration == pytest.approx(3)
+    assert scenario_result.schedule.makespan == pytest.approx(15)
