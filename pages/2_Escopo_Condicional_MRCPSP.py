@@ -370,6 +370,43 @@ def _render_people_tab(
                     title="Cobertura multi-skill insuficiente.",
                 )
 
+            impossible_modes = []
+            for task in project.tasks:
+                for mode in task.modes:
+                    requirements = skill_requirements(
+                        mode.resources,
+                        current,
+                    )
+                    if not requirements:
+                        continue
+                    if assign_people_to_skills(requirements, current) is None:
+                        impossible_modes.append(
+                            {
+                                "ID": task.id,
+                                "Atividade": task.name,
+                                "Modo": mode.name,
+                                "Habilidades exigidas": "; ".join(
+                                    f"{skill}={count}"
+                                    for skill, count in requirements.items()
+                                ),
+                            }
+                        )
+            if impossible_modes:
+                status(
+                    (
+                        f"{len(impossible_modes)} modo(s) têm quantidade por skill aparentemente "
+                        "suficiente, mas não existe matching de pessoas que preencha todas as vagas."
+                    ),
+                    tone="warn",
+                    title="Composição de equipe impossível.",
+                )
+                with st.expander("Ver modos com conflito de composição", expanded=False):
+                    st.dataframe(
+                        pd.DataFrame(impossible_modes),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
     st.caption(
         "Nesta primeira versão, habilidade é binária: a pessoa possui ou não possui. "
         "Níveis de proficiência e produtividade entram em uma evolução posterior."
