@@ -516,6 +516,7 @@ def test_kinder_ovo_resource_scenario_switches_mode_and_recovers_hours():
             "2": TaskExecution(status="completed", start=1, finish=3, mode_name="base"),
             "3": TaskExecution(status="completed", start=3, finish=5, mode_name="base"),
             "4": TaskExecution(status="completed", start=5, finish=7, mode_name="base"),
+            "13": TaskExecution(status="completed", start=3, finish=5, mode_name="base"),
         },
     )
 
@@ -713,7 +714,7 @@ def test_kinder_ovo_motor_test_can_discover_motor_replacement():
 
     baseline_activation = resolve_activation(project, ExecutionState())
     assert motor_test.id in baseline_activation.active_ids
-    assert motor_replace.id in baseline_activation.inactive_ids
+    assert motor_replace.id in baseline_activation.pending_ids
 
     baseline_tasks = [
         task for task in project.tasks if task.id in baseline_activation.active_ids
