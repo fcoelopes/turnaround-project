@@ -39,7 +39,7 @@ from turnaround import (
 )
 from turnaround.io import project_xml_to_tasks
 from turnaround.report import build_conditional_management_pdf
-from turnaround.ui import apply_app_style, hero, section, status, workflow_strip
+from turnaround.ui import app_header, apply_app_style, section, status, workflow_strip
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO_XML = ROOT / "sample_data" / "turnaround_conditional_model.xml"
@@ -52,16 +52,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 apply_app_style()
-hero(
-    "Planejar a incerteza sem perder o baseline.",
-    (
-        "O Microsoft Project continua sendo a referência. Aqui você trata achados, "
-        "escopo condicional, pessoas multi-skill e restrições de recursos para entender "
-        "o impacto antes de reprogramar a parada."
-    ),
+app_header(
     "TURNAROUND DECISION SUPPORT",
-    note_title="Pergunta central",
-    note_body="O que mudou, o que controla o término e qual decisão precisa ser tomada agora?",
+    "Escopo, recursos e incerteza sobre o baseline.",
+    badge="T/A",
+    context="Scope discovery · MRCPSP · Multi-skill",
 )
 workflow_strip(
     [
