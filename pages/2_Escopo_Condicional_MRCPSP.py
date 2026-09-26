@@ -567,7 +567,7 @@ depois da leitura executiva; não precisam orientar a primeira decisão.
 def load_project():
     section(
         "1",
-        "Planejamento-base e regras de escopo",
+        "Carregar baseline",
         "Carregue o baseline do Microsoft Project. Regras, pessoas e capacidades são configuradas nas abas próprias.",
     )
 
@@ -2524,8 +2524,8 @@ with operation_tab:
 
     section(
         "3",
-        "Impacto atual e comunicação",
-        "Leia primeiro a situação da janela e o que mudou; use os detalhes técnicos somente quando precisar investigar.",
+        "Impacto e decisão",
+        "Situação da janela, mudança de escopo e cadeia que controla o término.",
     )
 
     tab_exec, tab_schedule, tab_export = st.tabs(
