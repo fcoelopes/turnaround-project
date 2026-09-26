@@ -1,4 +1,4 @@
-# Turnaround Scheduler — Streamlit MVP
+# Turnaround Decision Support
 
 Aplicação para receber um cronograma exportado do Microsoft Project e aplicar um modelo inicial de **turnaround/shutdown scheduling**.
 
