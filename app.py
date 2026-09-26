@@ -25,7 +25,7 @@ st.set_page_config(
     page_title="Turnaround Scheduler",
     page_icon="🛠️",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 apply_app_style()
 hero(
