@@ -25,7 +25,10 @@ ALIASES = {
 
 
 def _norm(s: str) -> str:
-    return re.sub(r"\s+", " ", str(s).strip().lower())
+    # CSV salvo por Excel pode trazer BOM UTF-8 antes do primeiro cabeçalho.
+    # Visualmente continua "ID", mas internamente vira "\ufeffID".
+    text = str(s).replace("\ufeff", "")
+    return re.sub(r"\s+", " ", text.strip().lower())
 
 
 def _pick_column(columns: Iterable[str], key: str) -> str | None:
@@ -280,9 +283,19 @@ def load_schedule(uploaded_file, hours_per_day: int = 8) -> Tuple[List[Task], Di
         return project_xml_to_tasks(content, hours_per_day)
     if name.endswith(".csv"):
         try:
-            df = pd.read_csv(io.BytesIO(content), sep=None, engine="python")
+            df = pd.read_csv(
+                io.BytesIO(content),
+                sep=None,
+                engine="python",
+                encoding="utf-8-sig",
+            )
         except UnicodeDecodeError:
-            df = pd.read_csv(io.BytesIO(content), sep=None, engine="python", encoding="latin1")
+            df = pd.read_csv(
+                io.BytesIO(content),
+                sep=None,
+                engine="python",
+                encoding="latin1",
+            )
         return dataframe_to_tasks(df, hours_per_day), {}
     if name.endswith((".xlsx", ".xls")):
         df = pd.read_excel(io.BytesIO(content))
