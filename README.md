@@ -25,7 +25,7 @@ de execução.
 
 ### Scope discovery — MRCPSP + escopo condicional
 
-A página **Escopo Condicional MRCPSP** acrescenta a dinâmica típica de turnaround:
+A página **Escopo e Replanejamento** acrescenta a dinâmica típica de turnaround:
 
 - modos alternativos de execução por atividade;
 - atividades `mandatory`, `optional` e `conditional`;
@@ -353,7 +353,7 @@ Com uv:
 
 ```bash
 uv sync
-uv run streamlit run app.py
+uv run streamlit run Planejamento.py
 ```
 
 Ou, com venv tradicional:
@@ -362,7 +362,7 @@ Ou, com venv tradicional:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-streamlit run app.py
+streamlit run Planejamento.py
 ```
 
 ## Entrada recomendada
@@ -394,7 +394,7 @@ O arquivo `sample_data/cronograma_exemplo.csv` pode ser usado imediatamente.
 - O CPM exibido é uma aproximação de folga para vínculos complexos; o agendador respeita FS/SS/FF/SF e lag na programação.
 - Recursos do Excel/CSV usam demanda unitária por padrão; a coluna `Demandas` permite sobrescrever.
 - Não lê `.mpp` nativo. XML é preferido porque evita dependência Java/MPXJ.
-- A simulação de risco da página base perturba duração; o **scope discovery discreto** é tratado separadamente na página MRCPSP.
+- A simulação de risco da página base perturba duração; o **scope discovery discreto** é tratado separadamente na página de Escopo e Replanejamento.
 
 ## Arquivos de exemplo
 
