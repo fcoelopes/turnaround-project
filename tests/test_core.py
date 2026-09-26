@@ -23,3 +23,21 @@ def test_parallel_when_capacity_allows():
     tasks = dataframe_to_tasks(df)
     best, _ = optimize_turnaround(tasks, {"Mecânica": 2})
     assert best.makespan_h == 4
+
+
+def test_dataframe_accepts_utf8_bom_in_first_header():
+    df = pd.DataFrame([
+        {
+            "\ufeffID": 1,
+            "Nome": "Abrir equipamento",
+            "Duracao_h": 4,
+            "Predecessoras": "",
+            "Recursos": "Mecânica",
+        }
+    ])
+
+    tasks = dataframe_to_tasks(df)
+
+    assert len(tasks) == 1
+    assert tasks[0].id == "1"
+    assert tasks[0].name == "Abrir equipamento"
