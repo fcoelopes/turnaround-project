@@ -39,7 +39,7 @@ from turnaround import (
 )
 from turnaround.io import project_xml_to_tasks
 from turnaround.report import build_conditional_management_pdf
-from turnaround.ui import apply_app_style, hero, section, status
+from turnaround.ui import apply_app_style, hero, section, status, workflow_strip
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO_XML = ROOT / "sample_data" / "turnaround_conditional_model.xml"
@@ -49,13 +49,28 @@ st.set_page_config(
     page_title="Escopo condicional · MRCPSP",
     page_icon="🧩",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 apply_app_style()
 hero(
-    "Escopo condicional + MRCPSP",
-    "Ative escopo previsto ou crie trabalho realmente descoberto em campo e replaneje a parada sem reescrever o baseline.",
-    "DYNAMIC SCOPE DISCOVERY · REPLANEJAMENTO",
+    "Planejar a incerteza sem perder o baseline.",
+    (
+        "O Microsoft Project continua sendo a referência. Aqui você trata achados, "
+        "escopo condicional, pessoas multi-skill e restrições de recursos para entender "
+        "o impacto antes de reprogramar a parada."
+    ),
+    "TURNAROUND DECISION SUPPORT",
+    note_title="Pergunta central",
+    note_body="O que mudou, o que controla o término e qual decisão precisa ser tomada agora?",
+)
+workflow_strip(
+    [
+        ("Plano", "Baseline", "Importe o Project"),
+        ("Estado", "Execução", "Congele o realizado"),
+        ("Escopo", "Achados", "Ative ou descubra"),
+        ("Capacidade", "Recursos", "Pessoas + equipamentos"),
+        ("Decisão", "Replanejar", "Leia impacto e janela"),
+    ]
 )
 
 
@@ -479,10 +494,10 @@ def render_manual() -> None:
     st.markdown("#### O que fica em cada aba")
     st.markdown(
         """
-- **Operação:** carregar o plano, avançar a execução, registrar achados, resolver decisões e acompanhar impacto.
-- **Configuração:** regras de escopo, capacidades de equipamentos/recursos, estabilidade e sessão persistida.
-- **Pessoas:** roster da parada, habilidades humanas e cobertura multi-skill.
-- **Manual:** este guia e o glossário rápido.
+- **Operação:** estado atual, achados, decisões pendentes e impacto na janela.
+- **Configuração:** regras, capacidades, estabilidade e auditoria.
+- **Pessoas:** roster, habilidades e cobertura multi-skill.
+- **Manual:** fluxo de uso e conceitos essenciais.
         """
     )
 
@@ -611,7 +626,7 @@ def load_project():
 execution_store = _get_execution_store()
 
 operation_tab, config_tab, people_tab, manual_tab = st.tabs(
-    ["▶️ Operação", "⚙️ Configuração", "👥 Pessoas", "📘 Manual"]
+    ["Operação", "Configuração", "Pessoas", "Manual"]
 )
 
 with manual_tab:
@@ -1388,24 +1403,6 @@ with operation_tab:
         "Avance a parada, registre apenas o que mudou e acompanhe o efeito sobre a janela."
     )
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric(
-        "Makespan planejado",
-        "—" if base_baseline is None else f"{base_baseline.makespan:.1f} h",
-    )
-    m2.metric(
-        "Makespan · cenário-base",
-        f"{scenario_baseline.makespan:.1f} h",
-    )
-    m3.metric(
-        "Tarefas ativas na base",
-        len(scenario_baseline.tasks),
-    )
-    m4.metric(
-        "Escopo potencial",
-        len(planned_project.tasks) - len(scenario_baseline.tasks),
-    )
-
     if base_baseline is None:
         status(
             (
@@ -1466,7 +1463,7 @@ with operation_tab:
                 },
             )
 
-    st.markdown("#### Dynamic scope discovery")
+    st.markdown("#### Mudanças de escopo")
 
     completed_ids = [
         task_id
@@ -2538,12 +2535,11 @@ with operation_tab:
         "Leia primeiro a situação da janela e o que mudou; use os detalhes técnicos somente quando precisar investigar.",
     )
 
-    tab_exec, tab_activation, tab_schedule, tab_export = st.tabs(
+    tab_exec, tab_schedule, tab_export = st.tabs(
         [
-            "Visão executiva",
-            "Mapa de ativação",
+            "Decisão",
             "Cronograma",
-            "Exportação",
+            "Relatório",
         ]
     )
 
@@ -2731,33 +2727,19 @@ with operation_tab:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    with tab_activation:
-        st.dataframe(
-            activation_df,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        state_counts = activation_df["Estado"].value_counts()
-        state_chart = pd.DataFrame(
-            {
-                "Estado": state_counts.index,
-                "Quantidade": state_counts.values,
-            }
-        )
-        st.bar_chart(
-            state_chart,
-            x="Estado",
-            y="Quantidade",
-            use_container_width=True,
-        )
-
     with tab_schedule:
         st.dataframe(
             schedule_df.drop(columns=["_Ordem"], errors="ignore"),
             use_container_width=True,
             hide_index=True,
         )
+
+        with st.expander("Rastrear ativação do escopo", expanded=False):
+            st.dataframe(
+                activation_df,
+                use_container_width=True,
+                hide_index=True,
+            )
         st.caption(
             f"Solver: {result.schedule.strategy} · "
             f"combinações de modos={result.schedule.mode_combinations} · "
