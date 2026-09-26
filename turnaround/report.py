@@ -129,7 +129,7 @@ def _page(canvas, doc):
     canvas.line(18 * mm, 13 * mm, A4[0] - 18 * mm, 13 * mm)
     canvas.setFont("Helvetica", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(18 * mm, 8.5 * mm, "Turnaround Scheduler - relatório gerencial")
+    canvas.drawString(18 * mm, 8.5 * mm, "Turnaround Decision Support - relatório gerencial")
     canvas.drawRightString(
         A4[0] - 18 * mm,
         8.5 * mm,
