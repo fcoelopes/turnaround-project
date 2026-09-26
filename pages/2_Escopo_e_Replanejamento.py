@@ -765,15 +765,20 @@ with config_tab:
     )
 
     st.markdown("#### Regras de escopo em planilha")
-    st.caption(
-        (
-            "Plano real: a planilha abaixo é a entrada principal para cadastrar regras; "
-            "o JSON acima é opcional."
-            if project_source_kind == "real"
-            else
+    if project_source_kind == "approved":
+        st.caption(
+            "Baseline aprovado: as regras abaixo são uma camada adicional sobre "
+            "o plano liberado na guia Planejamento."
+        )
+    elif project_source_kind == "real":
+        st.caption(
+            "Plano carregado por XML: a planilha abaixo é a entrada principal "
+            "para cadastrar regras; o JSON acima é opcional."
+        )
+    else:
+        st.caption(
             "Cenário demonstrativo: a planilha adiciona regras sobre o sidecar Kinder Ovo."
         )
-    )
 
     inherited_rule_rows = []
     for task in base_planned_project.tasks:
