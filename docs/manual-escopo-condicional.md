@@ -10,7 +10,8 @@ A funcionalidade foi criada para tratar um problema típico de paradas de manute
 
 A página permite:
 
-- carregar um cronograma-base do Microsoft Project;
+- continuar a execução a partir de um baseline aprovado na guia Planejamento;
+- carregar diretamente um cronograma-base do Microsoft Project quando não houver baseline aprovado;
 - acrescentar regras de escopo por meio de um JSON;
 - tratar atividades obrigatórias, opcionais e condicionais;
 - registrar eventos e achados de inspeção;
@@ -26,6 +27,8 @@ O fluxo geral é:
 
 ```text
 Planejamento-base
+      ↓
+Aprovação do baseline RCPSP
       ↓
 Execução da parada
       ↓
@@ -98,9 +101,15 @@ Executar uma atividade oportunística selecionada pelo usuário
 
 ---
 
-## 4. Arquivos de entrada
+## 4. Entrada do baseline e regras
 
-A página usa dois arquivos complementares.
+O caminho preferencial é aprovar o cenário na guia **Planejamento**. Esse
+snapshot é persistido no SQLite com tarefas, precedências, capacidades,
+deadline e horários RCPSP. Ao abrir **Escopo e Replanejamento**, selecione
+**Baseline aprovado** e continue a execução sem reenviar o arquivo.
+
+Quando a execução não passou pela guia Planejamento, o XML continua disponível
+como entrada direta.
 
 ### 4.1 Microsoft Project XML
 
@@ -116,11 +125,11 @@ O XML contém a estrutura principal do cronograma:
 - recursos;
 - unidades/demanda de recursos.
 
-Na interface:
+Na interface, escolha **Importar XML** como origem do baseline e envie o
+arquivo. O formato recomendado é XML exportado pelo Microsoft Project.
 
-**Microsoft Project XML → Upload**
-
-O formato recomendado é XML exportado pelo Microsoft Project.
+Quando a origem for **Baseline aprovado**, o mesmo modelo normalizado já foi
+persistido pela guia Planejamento e o upload não é necessário.
 
 ### 4.2 JSON de regras de escopo
 
