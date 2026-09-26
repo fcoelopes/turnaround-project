@@ -15,6 +15,7 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 9. Gera um **relatório gerencial em PDF** com KPIs, gargalos, risco e cronograma.
 10. Permite **aprovar o cenário RCPSP como baseline de execução** e continuar na página avançada sem novo upload.
 11. Em uma página avançada, trata **MRCPSP**, escopo opcional/condicional e rescheduling após inspeções.
+12. Exporta o snapshot operacional replanejado em **Microsoft Project XML (MSPDI)**, materializando condicionais ativadas, atividades `DS-*`, precedências, recursos e novos horários.
 
 ## Dois níveis de planejamento
 
@@ -367,9 +368,21 @@ ou recuperar com base em prazo/custo. Se uma alternativa exigir um recurso sem
 capacidade disponível, o cenário sombra é marcado como inviável e a interface
 expõe explicitamente o déficit de recurso.
 
-## Interface e saída gerencial
+## Interface e saídas
 
-A interface Streamlit separa a análise em visão executiva, cronograma, recursos, risco e exportação. O PDF é a saída gerencial para comunicação da parada; o Excel permanece como saída técnica para exploração e auditoria dos dados. A página de scope discovery possui relatório próprio, registrando baseline, novo escopo, mapa de ativação e cronograma reprogramado.
+A interface Streamlit separa a análise em visão executiva, cronograma, recursos, risco e exportação.
+
+Na página base:
+- o PDF é a saída gerencial para comunicação do planejamento;
+- o Excel permanece como saída técnica para exploração e auditoria.
+
+Na página **Escopo e Replanejamento**:
+- o PDF registra baseline, novo escopo, mapa de ativação e cronograma reprogramado;
+- o **Microsoft Project XML (MSPDI)** devolve o cronograma operacional ao ambiente de planejamento.
+
+O XML exportado representa o **snapshot materializado atual**. Entram as atividades efetivamente ativas, incluindo condicionais já disparadas e atividades `DS-*` descobertas durante a execução. Também são exportados os horários replanejados, precedências efetivas, recursos, modo escolhido e metadados de rastreabilidade em `Notes`.
+
+Regras condicionais ainda dormentes, grupos XOR/OR/AND e a lógica de decisão não são serializados como regras nativas porque o Microsoft Project não possui esses conceitos. Quando uma regra é resolvida, seu efeito é materializado no cronograma exportado.
 
 ## Por que RCPSP?
 
@@ -472,7 +485,7 @@ O núcleo foi separado da interface para substituir o heurístico por **CP-SAT/M
 - custos de overtime e contratação;
 - restrições de área, LOTO, acesso, guindaste e simultaneidade;
 - buffers por risco e janela P80;
-- reexportação compatível com Microsoft Project.
+- exportação nativa `.mpp` opcional; o fluxo atual já devolve Microsoft Project XML (MSPDI).
 
 
 ## Deploy na OCI
