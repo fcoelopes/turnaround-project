@@ -34,12 +34,13 @@ def apply_app_style() -> None:
         }
 
         .ta-hero {
-            border: 1px solid var(--ta-line);
-            border-radius: 20px;
-            padding: 1.6rem 1.8rem;
-            margin-bottom: 1.25rem;
-            background: linear-gradient(135deg, #ffffff 0%, #f2f8f7 100%);
-            box-shadow: 0 10px 30px rgba(19, 34, 56, 0.05);
+            display: grid;
+            grid-template-columns: minmax(0, 1.7fr) minmax(240px, .7fr);
+            gap: 2rem;
+            align-items: end;
+            border-bottom: 1px solid var(--ta-line);
+            padding: .5rem 0 1.35rem;
+            margin-bottom: 1rem;
         }
 
         .ta-kicker {
@@ -53,18 +54,74 @@ def apply_app_style() -> None:
 
         .ta-hero h1 {
             color: var(--ta-ink);
-            font-size: clamp(2rem, 4vw, 3.3rem);
-            line-height: 1.03;
+            font-size: clamp(1.9rem, 3.4vw, 3rem);
+            line-height: 1.04;
             letter-spacing: -.035em;
-            margin: 0 0 .65rem 0;
+            margin: 0 0 .55rem 0;
         }
 
         .ta-hero p {
             color: var(--ta-muted);
-            font-size: 1.02rem;
+            font-size: .98rem;
             line-height: 1.55;
             margin: 0;
-            max-width: 72rem;
+            max-width: 60rem;
+        }
+
+        .ta-hero-note {
+            border-left: 3px solid var(--ta-accent);
+            padding: .25rem 0 .25rem 1rem;
+        }
+
+        .ta-hero-note strong {
+            display: block;
+            color: var(--ta-ink);
+            font-size: 1rem;
+            margin-bottom: .25rem;
+        }
+
+        .ta-hero-note span {
+            color: var(--ta-muted);
+            font-size: .82rem;
+            line-height: 1.4;
+        }
+
+        .ta-flow {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            border-top: 1px solid var(--ta-line);
+            border-bottom: 1px solid var(--ta-line);
+            margin: 0 0 1.2rem;
+        }
+
+        .ta-flow-step {
+            padding: .7rem .8rem;
+            border-right: 1px solid var(--ta-line);
+        }
+
+        .ta-flow-step:last-child {
+            border-right: 0;
+        }
+
+        .ta-flow-step b {
+            display: block;
+            color: var(--ta-accent);
+            font-size: .67rem;
+            letter-spacing: .08em;
+            margin-bottom: .2rem;
+        }
+
+        .ta-flow-step span {
+            color: var(--ta-ink);
+            font-size: .82rem;
+            font-weight: 750;
+        }
+
+        .ta-flow-step small {
+            display: block;
+            color: var(--ta-muted);
+            font-size: .72rem;
+            margin-top: .15rem;
         }
 
         .ta-section {
@@ -106,7 +163,7 @@ def apply_app_style() -> None:
             border-radius: 16px;
             padding: 1rem 1.05rem;
             box-shadow: 0 5px 18px rgba(19,34,56,.035);
-            min-height: 116px;
+            min-height: 96px;
         }
 
         div[data-testid="stMetric"] label {
@@ -192,21 +249,89 @@ def apply_app_style() -> None:
         [data-testid="stSidebar"] {
             border-right: 1px solid var(--ta-line);
         }
+
+        .stTabs [data-baseweb="tab-list"] {
+            gap: .35rem;
+            border-bottom: 1px solid var(--ta-line);
+            padding-bottom: .35rem;
+            overflow-x: auto;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            height: 40px;
+            border-radius: 8px;
+            padding: 0 .8rem;
+            color: var(--ta-muted);
+        }
+
+        .stTabs [aria-selected="true"] {
+            background: var(--ta-accent-soft) !important;
+            color: var(--ta-accent) !important;
+        }
+
+        @media (max-width: 900px) {
+            .ta-hero {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            .ta-flow {
+                grid-template-columns: 1fr 1fr;
+            }
+            .ta-flow-step:nth-child(2n) {
+                border-right: 0;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def hero(title: str, subtitle: str, kicker: str = "TURNAROUND") -> None:
+def hero(
+    title: str,
+    subtitle: str,
+    kicker: str = "TURNAROUND",
+    *,
+    note_title: str | None = None,
+    note_body: str | None = None,
+) -> None:
+    note_html = ""
+    if note_title or note_body:
+        note_html = (
+            '<aside class="ta-hero-note">'
+            f'<strong>{escape(note_title or "")}</strong>'
+            f'<span>{escape(note_body or "")}</span>'
+            '</aside>'
+        )
+
     st.markdown(
         f"""
         <div class="ta-hero">
-            <div class="ta-kicker">{escape(kicker)}</div>
-            <h1>{escape(title)}</h1>
-            <p>{escape(subtitle)}</p>
+            <div>
+                <div class="ta-kicker">{escape(kicker)}</div>
+                <h1>{escape(title)}</h1>
+                <p>{escape(subtitle)}</p>
+            </div>
+            {note_html}
         </div>
         """,
+        unsafe_allow_html=True,
+    )
+
+
+def workflow_strip(steps: list[tuple[str, str, str]]) -> None:
+    """Compact decision workflow; navigation cue, not decoration."""
+    cells = []
+    for index, (title, label, detail) in enumerate(steps, start=1):
+        cells.append(
+            '<div class="ta-flow-step">'
+            f'<b>{index:02d} · {escape(title.upper())}</b>'
+            f'<span>{escape(label)}</span>'
+            f'<small>{escape(detail)}</small>'
+            '</div>'
+        )
+    st.markdown(
+        '<div class="ta-flow">' + "".join(cells) + '</div>',
         unsafe_allow_html=True,
     )
 
