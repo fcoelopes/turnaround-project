@@ -39,7 +39,7 @@ from turnaround import (
 )
 from turnaround.io import project_xml_to_tasks
 from turnaround.report import build_conditional_management_pdf
-from turnaround.ui import apply_app_style, hero, section, status
+from turnaround.ui import apply_app_style, hero, section, status, workflow_strip
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO_XML = ROOT / "sample_data" / "turnaround_conditional_model.xml"
@@ -49,13 +49,28 @@ st.set_page_config(
     page_title="Escopo condicional · MRCPSP",
     page_icon="🧩",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 apply_app_style()
 hero(
-    "Escopo condicional + MRCPSP",
-    "Ative escopo previsto ou crie trabalho realmente descoberto em campo e replaneje a parada sem reescrever o baseline.",
-    "DYNAMIC SCOPE DISCOVERY · REPLANEJAMENTO",
+    "Planejar a incerteza sem perder o baseline.",
+    (
+        "O Microsoft Project continua sendo a referência. Aqui você trata achados, "
+        "escopo condicional, pessoas multi-skill e restrições de recursos para entender "
+        "o impacto antes de reprogramar a parada."
+    ),
+    "TURNAROUND DECISION SUPPORT",
+    note_title="Pergunta central",
+    note_body="O que mudou, o que controla o término e qual decisão precisa ser tomada agora?",
+)
+workflow_strip(
+    [
+        ("Plano", "Baseline", "Importe o Project"),
+        ("Estado", "Execução", "Congele o realizado"),
+        ("Escopo", "Achados", "Ative ou descubra"),
+        ("Capacidade", "Recursos", "Pessoas + equipamentos"),
+        ("Decisão", "Replanejar", "Leia impacto e janela"),
+    ]
 )
 
 
@@ -209,7 +224,7 @@ def _render_people_tab(
 
     add_col, save_col, discard_col = st.columns([1, 1, 1])
     with add_col:
-        if st.button("➕ Adicionar pessoa", type="primary", key="add_workforce_person"):
+        if st.button("Adicionar pessoa", type="primary", key="add_workforce_person"):
             draft = list(st.session_state.get(draft_key, []))
             draft.append(
                 {
@@ -264,7 +279,7 @@ def _render_people_tab(
     st.session_state[draft_key] = edited_people_df.to_dict("records")
 
     with save_col:
-        if st.button("💾 Salvar equipe", key="save_workforce"):
+        if st.button("Salvar equipe", key="save_workforce"):
             try:
                 people: list[Person] = []
                 for row_number, raw in enumerate(
@@ -307,7 +322,7 @@ def _render_people_tab(
                 st.error(f"Não foi possível salvar a equipe: {exc}")
 
     with discard_col:
-        if st.button("↩ Descartar alterações", key="discard_workforce"):
+        if st.button("Descartar alterações", key="discard_workforce"):
             st.session_state.pop(draft_key, None)
             st.session_state.pop(editor_key, None)
             st.rerun()
@@ -345,11 +360,12 @@ def _render_people_tab(
                     ),
                 }
             )
-        st.dataframe(
-            pd.DataFrame(coverage_rows),
-            use_container_width=True,
-            hide_index=True,
-        )
+        with st.expander("Cobertura de habilidades", expanded=False):
+            st.dataframe(
+                pd.DataFrame(coverage_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
 
         if current.enabled and project is not None:
             uncovered = [
@@ -479,10 +495,10 @@ def render_manual() -> None:
     st.markdown("#### O que fica em cada aba")
     st.markdown(
         """
-- **Operação:** carregar o plano, avançar a execução, registrar achados, resolver decisões e acompanhar impacto.
-- **Configuração:** regras de escopo, capacidades de equipamentos/recursos, estabilidade e sessão persistida.
-- **Pessoas:** roster da parada, habilidades humanas e cobertura multi-skill.
-- **Manual:** este guia e o glossário rápido.
+- **Operação:** estado atual, achados, decisões pendentes e impacto na janela.
+- **Configuração:** regras, capacidades, estabilidade e auditoria.
+- **Pessoas:** roster, habilidades e cobertura multi-skill.
+- **Manual:** fluxo de uso e conceitos essenciais.
         """
     )
 
@@ -522,8 +538,8 @@ regra previamente cadastrada.
 3. Na aba **Pessoas**, cadastre o roster e classifique quais recursos do plano são habilidades humanas.
 4. Confira as capacidades dos recursos não humanos em **Configuração**.
 5. Volte para **Operação**, informe a hora corrente e registre os achados.
-5. Resolva apenas as decisões que realmente forem disparadas.
-6. Gere o PDF quando a visão executiva representar o cenário que você quer comunicar.
+6. Resolva apenas as decisões que realmente forem disparadas.
+7. Gere o PDF quando a visão executiva representar o cenário que você quer comunicar.
         """
         )
 
@@ -551,8 +567,8 @@ depois da leitura executiva; não precisam orientar a primeira decisão.
 def load_project():
     section(
         "1",
-        "Planejamento-base e regras de escopo",
-        "Carregue um XML real ou use o cenário demonstrativo. O JSON é opcional; regras novas também podem ser cadastradas pela planilha abaixo.",
+        "Carregar baseline",
+        "Carregue o baseline do Microsoft Project. Regras, pessoas e capacidades são configuradas nas abas próprias.",
     )
 
     xml_upload = st.file_uploader(
@@ -562,12 +578,13 @@ def load_project():
         help="Ao enviar um XML real, a planilha de regras continua disponível mesmo sem JSON.",
     )
 
-    use_demo = st.checkbox(
-        "Usar cenário demonstrativo 'Kinder Ovo'",
-        value=xml_upload is None,
-        disabled=xml_upload is not None,
-        help="Só é usado quando nenhum XML real foi enviado.",
-    )
+    with st.expander("Cenário demonstrativo", expanded=False):
+        use_demo = st.checkbox(
+            "Usar Kinder Ovo",
+            value=False,
+            disabled=xml_upload is not None,
+            help="Use apenas para testar o fluxo sem carregar um XML real.",
+        )
 
     if xml_upload is not None:
         source_kind = "real"
@@ -601,9 +618,7 @@ def load_project():
         project = apply_scope_config(project, DEMO_SCOPE)
 
     if source_kind == "real":
-        st.success(
-            "Plano real carregado. O JSON é opcional; use a planilha de regras abaixo para cadastrar novas regras."
-        )
+        st.caption(f"{project_name} · baseline carregado")
 
     return project, project_name, source_kind
 
@@ -611,7 +626,7 @@ def load_project():
 execution_store = _get_execution_store()
 
 operation_tab, config_tab, people_tab, manual_tab = st.tabs(
-    ["▶️ Operação", "⚙️ Configuração", "👥 Pessoas", "📘 Manual"]
+    ["Operação", "Configuração", "Pessoas", "Manual"]
 )
 
 with manual_tab:
@@ -625,37 +640,10 @@ with people_tab:
 
 if project is None:
     with config_tab:
-        st.markdown("### Configuração de regras de escopo")
-        st.caption(
-            "A planilha de regras fica nesta aba e não depende do cenário Kinder Ovo. "
-            "Carregue um XML na aba Planejamento para habilitar as referências de atividades."
-        )
-        st.data_editor(
-            pd.DataFrame(
-                columns=[
-                    "Excluir",
-                    "Regra",
-                    "Ativa",
-                    "Tipo",
-                    "Atividade alvo",
-                    "Gatilho",
-                    "Eventos",
-                    "Lógica eventos",
-                    "Membros",
-                    "Resolução",
-                    "Rotas event",
-                    "Observação",
-                ]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="fixed",
-            disabled=True,
-            key="scope_rule_editor_empty",
-        )
+        st.markdown("### Configuração")
         st.info(
-            "A configuração está disponível para planos reais. "
-            "O JSON é opcional e o Kinder Ovo não precisa ser habilitado."
+            "Carregue um XML na aba Operação para configurar regras e capacidades. "
+            "O JSON e o cenário Kinder Ovo são opcionais."
         )
     st.stop()
 
@@ -790,7 +778,7 @@ with config_tab:
     add_rule_col, save_rule_col, discard_rule_col = st.columns([1, 1, 1])
     with add_rule_col:
         if st.button(
-            "➕ Adicionar regra",
+            "Adicionar regra",
             type="primary",
             key=f"add_scope_rule_{project_key[:12]}",
         ):
@@ -916,7 +904,7 @@ with config_tab:
 
     with save_rule_col:
         if st.button(
-            "💾 Salvar regras",
+            "Salvar regras",
             key=f"save_scope_rules_{project_key[:12]}",
         ):
             try:
@@ -991,7 +979,7 @@ with config_tab:
 
     with discard_rule_col:
         if st.button(
-            "↩ Descartar alterações",
+            "Descartar alterações",
             key=f"discard_scope_rules_{project_key[:12]}",
         ):
             st.session_state.pop(scope_draft_key, None)
@@ -1018,7 +1006,6 @@ discovered_tasks = execution_store.load_discovered_tasks(
 )
 
 with config_tab:
-    st.markdown("#### Sessão e persistência")
     st.caption(
         f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
         f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s)"
@@ -1050,8 +1037,7 @@ with config_tab:
             st.rerun()
 
 with config_tab:
-    st.markdown("#### Auditoria da execução")
-    with st.expander("Histórico persistido da execução", expanded=False):
+    with st.expander("Histórico da execução", expanded=False):
         persisted_events = execution_store.list_events(
             execution_session.id,
             limit=100,
@@ -1109,10 +1095,9 @@ with config_tab:
         "Os controles são gerados a partir dos recursos usados pelo plano e pelos modos MRCPSP."
     )
 
-    scenario_name = st.text_input(
-        "Nome do cenário",
-        value="Cenário de recursos A",
-        key="mrcpsp_scenario_name",
+    scenario_name = st.session_state.get(
+        "mrcpsp_scenario_name",
+        "Cenário de recursos A",
     )
 
     if project_name == "Turnaround Kinder Ovo":
@@ -1233,11 +1218,12 @@ with config_tab:
             for resource, entry in resource_catalog.items()
         ]
     )
-    st.dataframe(
-        resource_scenario_df,
-        use_container_width=True,
-        hide_index=True,
-    )
+    with st.expander("Resumo das capacidades", expanded=False):
+        st.dataframe(
+            resource_scenario_df,
+            use_container_width=True,
+            hide_index=True,
+        )
 
     project = base_project.model_copy(
         update={"capacities": scenario_capacities}
@@ -1388,24 +1374,6 @@ with operation_tab:
         "Avance a parada, registre apenas o que mudou e acompanhe o efeito sobre a janela."
     )
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric(
-        "Makespan planejado",
-        "—" if base_baseline is None else f"{base_baseline.makespan:.1f} h",
-    )
-    m2.metric(
-        "Makespan · cenário-base",
-        f"{scenario_baseline.makespan:.1f} h",
-    )
-    m3.metric(
-        "Tarefas ativas na base",
-        len(scenario_baseline.tasks),
-    )
-    m4.metric(
-        "Escopo potencial",
-        len(planned_project.tasks) - len(scenario_baseline.tasks),
-    )
-
     if base_baseline is None:
         status(
             (
@@ -1466,7 +1434,7 @@ with operation_tab:
                 },
             )
 
-    st.markdown("#### Dynamic scope discovery")
+    st.markdown("#### Mudanças de escopo")
 
     completed_ids = [
         task_id
@@ -1718,33 +1686,55 @@ with operation_tab:
     name_by_id = {task.id: task.name for task in project.tasks}
     project_order = {task.id: index for index, task in enumerate(project.tasks)}
     wbs_by_id = {task.id: task.wbs for task in project.tasks}
-    events: dict[str, list[str]] = {}
 
-    if event_catalog:
-        with st.expander("Registrar achados nas atividades gatilho", expanded=True):
-            for source_id, options in sorted(event_catalog.items()):
-                execution = executions.get(source_id)
+    # Eventos já registrados permanecem no estado mesmo quando o controle não
+    # precisa ser exibido. A UI mostra somente gatilhos que podem ser usados agora.
+    events: dict[str, list[str]] = {
+        source_id: [
+            event_name
+            for event_name in execution_session.observed_events.get(source_id, [])
+            if event_name in options
+        ]
+        for source_id, options in event_catalog.items()
+        if any(
+            event_name in options
+            for event_name in execution_session.observed_events.get(source_id, [])
+        )
+    }
+    actionable_event_sources = [
+        source_id
+        for source_id in event_catalog
+        if (
+            (
+                source_id in executions
+                and executions[source_id].status == "completed"
+            )
+            or source_id in events
+        )
+    ]
+
+    if actionable_event_sources:
+        with st.expander(
+            f"Registrar achados ({len(actionable_event_sources)} gatilho(s) disponível(is))",
+            expanded=True,
+        ):
+            for source_id in sorted(actionable_event_sources):
+                options = event_catalog[source_id]
                 completed = (
-                    execution is not None
-                    and execution.status == "completed"
-                )
-                label = (
-                    f"{name_by_id.get(source_id, source_id)} · "
-                    f"{'concluída' if completed else 'ainda não concluída'}"
+                    source_id in executions
+                    and executions[source_id].status == "completed"
                 )
                 selected = st.multiselect(
-                    label,
+                    name_by_id.get(source_id, source_id),
                     options=sorted(options),
-                    default=[
-                        event_name
-                        for event_name in execution_session.observed_events.get(source_id, [])
-                        if event_name in options
-                    ],
+                    default=events.get(source_id, []),
                     disabled=not completed,
                     key=f"events_{execution_session.id[:8]}_{source_id}",
                 )
                 if selected:
                     events[source_id] = selected
+                else:
+                    events.pop(source_id, None)
 
     group_members = {
         task_id
@@ -2381,11 +2371,6 @@ with operation_tab:
         ]
     )
 
-    st.markdown("#### Análise avançada do cenário")
-    st.caption(
-        "Abra os detalhes abaixo apenas quando quiser separar o efeito dos recursos do efeito do novo escopo."
-    )
-
     if base_result is None:
         status(
             (
@@ -2485,7 +2470,7 @@ with operation_tab:
                     "por permitir ou restringir paralelismo."
                 )
 
-            with st.expander("Comparação completa das atividades futuras", expanded=True):
+            with st.expander("Comparação completa das atividades futuras", expanded=False):
                 st.dataframe(
                     mode_comparison_df,
                     use_container_width=True,
@@ -2493,6 +2478,11 @@ with operation_tab:
                 )
 
             st.session_state.setdefault("mrcpsp_saved_scenarios", [])
+            scenario_name = st.text_input(
+                "Nome para salvar esta comparação",
+                value=str(scenario_name),
+                key="mrcpsp_scenario_name",
+            )
             save_col, clear_col = st.columns(2)
             with save_col:
                 if st.button("Salvar cenário na comparação", type="primary"):
@@ -2534,16 +2524,15 @@ with operation_tab:
 
     section(
         "3",
-        "Impacto atual e comunicação",
-        "Leia primeiro a situação da janela e o que mudou; use os detalhes técnicos somente quando precisar investigar.",
+        "Impacto e decisão",
+        "Situação da janela, mudança de escopo e cadeia que controla o término.",
     )
 
-    tab_exec, tab_activation, tab_schedule, tab_export = st.tabs(
+    tab_exec, tab_schedule, tab_export = st.tabs(
         [
-            "Visão executiva",
-            "Mapa de ativação",
+            "Decisão",
             "Cronograma",
-            "Exportação",
+            "Relatório",
         ]
     )
 
@@ -2731,33 +2720,19 @@ with operation_tab:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    with tab_activation:
-        st.dataframe(
-            activation_df,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        state_counts = activation_df["Estado"].value_counts()
-        state_chart = pd.DataFrame(
-            {
-                "Estado": state_counts.index,
-                "Quantidade": state_counts.values,
-            }
-        )
-        st.bar_chart(
-            state_chart,
-            x="Estado",
-            y="Quantidade",
-            use_container_width=True,
-        )
-
     with tab_schedule:
         st.dataframe(
             schedule_df.drop(columns=["_Ordem"], errors="ignore"),
             use_container_width=True,
             hide_index=True,
         )
+
+        with st.expander("Rastrear ativação do escopo", expanded=False):
+            st.dataframe(
+                activation_df,
+                use_container_width=True,
+                hide_index=True,
+            )
         st.caption(
             f"Solver: {result.schedule.strategy} · "
             f"combinações de modos={result.schedule.mode_combinations} · "
@@ -2811,7 +2786,7 @@ with operation_tab:
         )
 
         st.download_button(
-            "⬇ Baixar relatório gerencial em PDF",
+            "Baixar relatório gerencial em PDF",
             data=pdf_bytes,
             file_name=(
                 f"{project_name.lower().replace(' ', '_')}"
