@@ -27,10 +27,40 @@ def apply_app_style() -> None:
                 #f7f9fb;
         }
 
+        /*
+         * Streamlit reserva uma faixa inteira para o header mesmo quando a aplicação
+         * não usa conteúdo ali. No layout wide isso vira o vazio visível acima do
+         * cabeçalho do produto. Mantemos o toolbar acessível, mas fora do fluxo.
+         */
+        header[data-testid="stHeader"] {
+            height: 0 !important;
+            min-height: 0 !important;
+            background: transparent !important;
+        }
+
+        [data-testid="stToolbar"] {
+            position: fixed !important;
+            top: .35rem !important;
+            right: .45rem !important;
+            z-index: 1000 !important;
+        }
+
+        [data-testid="stDecoration"] {
+            display: none !important;
+        }
+
+        [data-testid="stAppViewContainer"] > .main {
+            padding-top: 0 !important;
+        }
+
         .block-container {
             max-width: 1440px;
-            padding-top: 1rem;
+            padding-top: .55rem;
             padding-bottom: 4rem;
+        }
+
+        [data-testid="stSidebar"] .block-container {
+            padding-top: .55rem;
         }
 
         .ta-app-header {
