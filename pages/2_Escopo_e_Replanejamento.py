@@ -62,7 +62,7 @@ app_header(
 )
 workflow_strip(
     [
-        ("Plano", "Baseline", "Importe o Project"),
+        ("Plano", "Baseline", "Aprovado ou Project"),
         ("Estado", "Execução", "Congele o realizado"),
         ("Escopo", "Achados", "Ative ou descubra"),
         ("Capacidade", "Recursos", "Pessoas + equipamentos"),
@@ -530,13 +530,13 @@ regra previamente cadastrada.
     with st.expander("Plano real: caminho mínimo", expanded=False):
         st.markdown(
             """
-1. Envie somente o **XML**.
-2. Vá para **Configuração** e cadastre regras na planilha; o JSON é opcional.
-3. Na aba **Pessoas**, cadastre o roster e classifique quais recursos do plano são habilidades humanas.
-4. Confira as capacidades dos recursos não humanos em **Configuração**.
-5. Volte para **Operação**, informe a hora corrente e registre os achados.
-6. Resolva apenas as decisões que realmente forem disparadas.
-7. Gere o PDF quando a visão executiva representar o cenário que você quer comunicar.
+1. Preferencialmente, **aprove o plano na guia Planejamento** e continue aqui pelo baseline persistido.
+2. Se a execução não veio do Planejamento, carregue diretamente o **XML** do Microsoft Project.
+3. Vá para **Configuração** e cadastre regras na planilha; o JSON é opcional.
+4. Na aba **Pessoas**, cadastre o roster e classifique quais recursos do plano são habilidades humanas.
+5. Confira as capacidades dos recursos não humanos em **Configuração**.
+6. Volte para **Operação**, informe a hora corrente e registre os achados.
+7. Resolva apenas as decisões que realmente forem disparadas e gere o PDF quando o snapshot estiver consistente.
         """
         )
 
@@ -729,8 +729,8 @@ if project is None:
     with config_tab:
         st.markdown("### Configuração")
         st.info(
-            "Carregue um XML na aba Operação para configurar regras e capacidades. "
-            "O JSON e o cenário Kinder Ovo são opcionais."
+            "Selecione um baseline aprovado, carregue um XML na aba Operação "
+            "ou use o cenário demonstrativo para configurar regras e capacidades."
         )
     st.stop()
 
@@ -1543,11 +1543,12 @@ with operation_tab:
             for item in baseline.tasks
         }
     persisted_current_time = float(execution_session.current_time)
-    default_current_time = (
-        persisted_current_time
-        if persisted_current_time > 0
-        else min(7.0, float(baseline.makespan))
-    )
+    if persisted_current_time > 0:
+        default_current_time = persisted_current_time
+    elif project_source_kind == "demo":
+        default_current_time = min(7.0, float(baseline.makespan))
+    else:
+        default_current_time = 0.0
     current_time = st.number_input(
         "Hora corrente desde o início da parada",
         min_value=0.0,
