@@ -123,7 +123,7 @@ except Exception as exc:
     st.error(f"Falha ao ler o cronograma: {exc}")
     st.stop()
 
-st.success(f"{len(tasks)} atividades executáveis carregadas.")
+st.caption(f"{project_name} · {len(tasks)} atividades carregadas")
 
 with st.expander("Atividades normalizadas", expanded=False):
     st.dataframe(
