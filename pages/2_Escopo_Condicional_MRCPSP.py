@@ -360,11 +360,12 @@ def _render_people_tab(
                     ),
                 }
             )
-        st.dataframe(
-            pd.DataFrame(coverage_rows),
-            use_container_width=True,
-            hide_index=True,
-        )
+        with st.expander("Cobertura de habilidades", expanded=False):
+            st.dataframe(
+                pd.DataFrame(coverage_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
 
         if current.enabled and project is not None:
             uncovered = [
@@ -1248,11 +1249,12 @@ with config_tab:
             for resource, entry in resource_catalog.items()
         ]
     )
-    st.dataframe(
-        resource_scenario_df,
-        use_container_width=True,
-        hide_index=True,
-    )
+    with st.expander("Resumo das capacidades", expanded=False):
+        st.dataframe(
+            resource_scenario_df,
+            use_container_width=True,
+            hide_index=True,
+        )
 
     project = base_project.model_copy(
         update={"capacities": scenario_capacities}
@@ -2378,11 +2380,6 @@ with operation_tab:
         ]
     )
 
-    st.markdown("#### Análise avançada do cenário")
-    st.caption(
-        "Abra os detalhes abaixo apenas quando quiser separar o efeito dos recursos do efeito do novo escopo."
-    )
-
     if base_result is None:
         status(
             (
@@ -2482,7 +2479,7 @@ with operation_tab:
                     "por permitir ou restringir paralelismo."
                 )
 
-            with st.expander("Comparação completa das atividades futuras", expanded=True):
+            with st.expander("Comparação completa das atividades futuras", expanded=False):
                 st.dataframe(
                     mode_comparison_df,
                     use_container_width=True,
