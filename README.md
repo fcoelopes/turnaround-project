@@ -13,7 +13,8 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 7. Faz Monte Carlo triangular das durações e calcula P50/P80/P90 e probabilidade de cumprir a janela.
 8. Exporta os dados técnicos para Excel.
 9. Gera um **relatório gerencial em PDF** com KPIs, gargalos, risco e cronograma.
-10. Em uma página avançada, trata **MRCPSP**, escopo opcional/condicional e rescheduling após inspeções.
+10. Permite **aprovar o cenário RCPSP como baseline de execução** e continuar na página avançada sem novo upload.
+11. Em uma página avançada, trata **MRCPSP**, escopo opcional/condicional e rescheduling após inspeções.
 
 ## Dois níveis de planejamento
 
@@ -22,6 +23,32 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 A página principal mantém o MVP original: CPM + RCPSP heurístico + risco de prazo.
 É apropriada quando o escopo já é conhecido e cada atividade possui um único modo
 de execução.
+
+### Ponte Planejamento → Execução
+
+A página **Planejamento** não é mais um fluxo isolado. Depois de analisar
+capacidade, makespan, CPM e risco, o planejador pode usar **Aprovar como baseline
+da execução**.
+
+A aprovação grava no SQLite um snapshot imutável do cenário escolhido:
+
+- tarefas e precedências normalizadas;
+- capacidades aprovadas;
+- janela/deadline;
+- cronograma RCPSP escolhido, com início e término de cada atividade;
+- regra heurística vencedora;
+- P80 e probabilidade de cumprir a janela, quando disponíveis.
+
+A página **Escopo e Replanejamento** oferece esse baseline aprovado como fonte
+preferencial. Quando o modelo avançado continua compatível com o plano-base, a
+execução começa exatamente nos horários RCPSP aprovados. Se regras de escopo,
+modos alternativos ou multi-skill exigirem reconstrução, o MRCPSP pode gerar a
+linha operacional, mas os horários aprovados continuam sendo a referência do
+**stability-aware rescheduling**.
+
+Cada cenário aprovado recebe um fingerprint SHA-256 determinístico. Reaprovar o
+mesmo cenário atualiza o snapshot em vez de criar duplicatas; alterar tarefas,
+capacidades, deadline ou o cronograma produz uma nova identidade de baseline.
 
 ### Scope discovery — MRCPSP + escopo condicional
 
@@ -38,9 +65,9 @@ A página **Escopo e Replanejamento** acrescenta a dinâmica típica de turnarou
 - sidecar JSON para regras que não pertencem ao arquivo do Microsoft Project;
 - editor de regras de escopo em formato de planilha, persistido em SQLite.
 
-O parser de XML é o mesmo do MVP base. Não existe um segundo modelo de importação:
-o cronograma é lido uma vez e convertido para o domínio avançado somente quando
-essa página é usada.
+O parser continua sendo uma única fonte de verdade. A página avançada pode
+consumir diretamente um baseline aprovado no Planejamento ou, como fallback,
+ler um XML do Microsoft Project e convertê-lo para o domínio avançado.
 
 ### Regras de escopo em planilha
 
@@ -174,6 +201,7 @@ PRAGMA synchronous=NORMAL
 
 A camada SQLAlchemy persiste:
 
+- baselines RCPSP aprovados na guia Planejamento;
 - sessões de execução por baseline;
 - hora corrente da parada;
 - eventos/achados observados;
