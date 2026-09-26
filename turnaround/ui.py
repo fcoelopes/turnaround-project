@@ -29,7 +29,7 @@ def apply_app_style() -> None:
 
         .block-container {
             max-width: 1440px;
-            padding-top: 2rem;
+            padding-top: 1rem;
             padding-bottom: 4rem;
         }
 
@@ -96,59 +96,6 @@ def apply_app_style() -> None:
             text-align: right;
             white-space: nowrap;
             flex: 0 0 auto;
-        }
-
-        .ta-hero {
-            display: grid;
-            grid-template-columns: minmax(0, 1.7fr) minmax(240px, .7fr);
-            gap: 2rem;
-            align-items: end;
-            border-bottom: 1px solid var(--ta-line);
-            padding: .5rem 0 1.35rem;
-            margin-bottom: 1rem;
-        }
-
-        .ta-kicker {
-            color: var(--ta-accent);
-            font-size: .72rem;
-            font-weight: 800;
-            letter-spacing: .12em;
-            text-transform: uppercase;
-            margin-bottom: .4rem;
-        }
-
-        .ta-hero h1 {
-            color: var(--ta-ink);
-            font-size: clamp(1.9rem, 3.4vw, 3rem);
-            line-height: 1.04;
-            letter-spacing: -.035em;
-            margin: 0 0 .55rem 0;
-        }
-
-        .ta-hero p {
-            color: var(--ta-muted);
-            font-size: .98rem;
-            line-height: 1.55;
-            margin: 0;
-            max-width: 60rem;
-        }
-
-        .ta-hero-note {
-            border-left: 3px solid var(--ta-accent);
-            padding: .25rem 0 .25rem 1rem;
-        }
-
-        .ta-hero-note strong {
-            display: block;
-            color: var(--ta-ink);
-            font-size: 1rem;
-            margin-bottom: .25rem;
-        }
-
-        .ta-hero-note span {
-            color: var(--ta-muted);
-            font-size: .82rem;
-            line-height: 1.4;
         }
 
         .ta-flow {
@@ -348,10 +295,6 @@ def apply_app_style() -> None:
                 padding-left: 4.5rem;
             }
 
-            .ta-hero {
-                grid-template-columns: 1fr;
-                gap: 1rem;
-            }
             .ta-flow {
                 grid-template-columns: 1fr 1fr;
             }
@@ -392,38 +335,6 @@ def app_header(
                 </div>
             </div>
             {context_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def hero(
-    title: str,
-    subtitle: str,
-    kicker: str = "TURNAROUND",
-    *,
-    note_title: str | None = None,
-    note_body: str | None = None,
-) -> None:
-    note_html = ""
-    if note_title or note_body:
-        note_html = (
-            '<aside class="ta-hero-note">'
-            f'<strong>{escape(note_title or "")}</strong>'
-            f'<span>{escape(note_body or "")}</span>'
-            '</aside>'
-        )
-
-    st.markdown(
-        f"""
-        <div class="ta-hero">
-            <div>
-                <div class="ta-kicker">{escape(kicker)}</div>
-                <h1>{escape(title)}</h1>
-                <p>{escape(subtitle)}</p>
-            </div>
-            {note_html}
         </div>
         """,
         unsafe_allow_html=True,
