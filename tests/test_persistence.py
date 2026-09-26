@@ -36,6 +36,7 @@ def test_alembic_creates_execution_schema_and_sqlite_pragmas(tmp_path):
         "discovered_task_successors",
         "execution_events",
         "workforce_profiles",
+        "planning_baselines",
     }.issubset(tables)
 
     with store.engine.connect() as connection:
@@ -264,7 +265,7 @@ def test_upgrade_repairs_unversioned_initial_schema_without_deleting_data(tmp_pa
             text("SELECT project_name FROM execution_sessions WHERE id='recover-me'")
         ).scalar_one()
 
-    assert revision == "0003_multiskill_workforce"
+    assert revision == "0004_approved_planning_baselines"
     assert preserved == "Parada interrompida"
 
 
@@ -285,7 +286,7 @@ def test_concurrent_upgrade_database_calls_are_serialized(tmp_path):
             text("SELECT version_num FROM alembic_version")
         ).scalars().all()
 
-    assert revisions == ["0003_multiskill_workforce"]
+    assert revisions == ["0004_approved_planning_baselines"]
 
 
 
