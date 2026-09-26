@@ -508,3 +508,16 @@ docker compose up -d --build
 ```
 
 A porta 8501 fica somente na rede Docker; exponha publicamente apenas 80/443.
+
+
+## Licença
+
+Este projeto é distribuído sob a **Apache License 2.0**.
+
+Você pode usar, estudar, modificar e redistribuir o código, inclusive em projetos
+comerciais, desde que cumpra os termos da licença, preserve os avisos aplicáveis
+e indique modificações quando redistribuir arquivos alterados.
+
+Copyright 2026 Edson Lopes.
+
+Consulte o arquivo [LICENSE](LICENSE) para os termos completos.
