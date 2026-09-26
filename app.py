@@ -18,20 +18,34 @@ from turnaround.io import load_schedule
 from turnaround.rcpsp import infer_capacities, optimize_turnaround
 from turnaround.report import build_base_management_pdf
 from turnaround.risk import simulate_deadline_risk
-from turnaround.ui import apply_app_style, hero, section, status
+from turnaround.ui import apply_app_style, hero, section, status, workflow_strip
 
 
 st.set_page_config(
     page_title="Turnaround Scheduler",
     page_icon="🛠️",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 apply_app_style()
 hero(
-    "Turnaround Scheduler",
-    "Do cronograma do Microsoft Project a uma leitura executiva de prazo, recursos e risco.",
+    "Do plano de referência à restrição que realmente controla a parada.",
+    (
+        "Importe o cronograma do Microsoft Project, teste a capacidade disponível "
+        "e leia o efeito de recursos e incerteza sobre a janela."
+    ),
     "PLANEJAMENTO BASE · RCPSP",
+    note_title="Papel desta tela",
+    note_body="Validar prazo e capacidade do baseline. Incerteza de escopo e replanejamento ficam na página avançada.",
+)
+workflow_strip(
+    [
+        ("Plano", "Importar", "Project / Excel / CSV"),
+        ("Capacidade", "Recursos", "Equipes e compartilhados"),
+        ("Sequência", "RCPSP", "Cronograma factível"),
+        ("Risco", "Prazo", "P80 e janela"),
+        ("Decisão", "Comunicar", "Plano e relatório"),
+    ]
 )
 
 with st.sidebar:
@@ -122,32 +136,29 @@ base_caps = infer_capacities(tasks)
 for resource, quantity in xml_caps.items():
     base_caps[resource] = max(base_caps.get(resource, 0), quantity)
 
-section(
-    "2",
-    "Dimensionar recursos",
-    "Ajuste equipes e recursos compartilhados antes de rodar o sequenciamento.",
-)
 resources = sorted(base_caps)
 if not resources:
     st.warning(
         "O arquivo não possui recursos atribuídos. "
-        "O modelo ainda calcula precedências, mas sem restrição de capacidade."
+        "O modelo calcula precedências sem restrição de capacidade."
     )
     capacities = {}
 else:
-    cols = st.columns(min(4, max(1, len(resources))))
     capacities = {}
-    for idx, resource in enumerate(resources):
-        default = max(1, int(base_caps.get(resource, 1)))
-        capacities[resource] = int(
-            cols[idx % len(cols)].number_input(
-                resource,
-                min_value=1,
-                value=default,
-                step=1,
-                key=f"cap_{idx}",
-            )
-        )
+    with st.sidebar:
+        with st.expander("Capacidades de recursos", expanded=True):
+            st.caption("Altere somente o que representa o cenário que você quer testar.")
+            for idx, resource in enumerate(resources):
+                default = max(1, int(base_caps.get(resource, 1)))
+                capacities[resource] = int(
+                    st.number_input(
+                        resource,
+                        min_value=1,
+                        value=default,
+                        step=1,
+                        key=f"cap_{idx}",
+                    )
+                )
 
 run = st.button(
     "▶ Gerar plano otimizado",
@@ -221,40 +232,36 @@ cand_df = pd.DataFrame(
 ).sort_values(["Atraso_h", "Makespan_h"])
 
 section(
-    "3",
-    "Leitura gerencial",
-    "O resultado técnico é reorganizado abaixo para apoiar decisão e comunicação da parada.",
+    "2",
+    "Leitura para decisão",
+    "Prazo, restrição de recursos e risco primeiro; detalhes técnicos ficam recolhidos.",
 )
 
 tab_exec, tab_schedule, tab_resources, tab_risk, tab_export = st.tabs(
     [
-        "Visão executiva",
+        "Decisão",
         "Cronograma",
         "Recursos",
         "Risco",
-        "Exportação",
+        "Relatório",
     ]
 )
 
 with tab_exec:
-    metric_cols = st.columns(5)
+    metric_cols = st.columns(4)
     metric_cols[0].metric(
         "Makespan",
         f"{best.makespan_h / hours_per_day:.2f} d",
     )
     metric_cols[1].metric(
-        "CPM sem recursos",
-        f"{comparison['unconstrained_makespan_h'] / hours_per_day:.2f} d",
-    )
-    metric_cols[2].metric(
         "Penalidade de recursos",
         f"{comparison['resource_penalty_h']:.1f} h",
     )
-    metric_cols[3].metric(
+    metric_cols[2].metric(
         "P80",
         "—" if not risk else f"{risk['p80_h'] / hours_per_day:.2f} d",
     )
-    metric_cols[4].metric(
+    metric_cols[3].metric(
         "P(cumprir janela)",
         (
             "—"
@@ -288,38 +295,23 @@ with tab_exec:
             title="Ação gerencial necessária.",
         )
 
-    left, right = st.columns([2.15, 1])
-    with left:
-        fig = px.timeline(
-            schedule_df,
-            x_start="Inicio_h",
-            x_end="Fim_h",
-            y="Atividade",
-            hover_data=["ID", "Duracao_h", "Recursos", "WBS"],
-            title="Cronograma otimizado",
-        )
-        fig.update_yaxes(autorange="reversed", title="")
-        fig.update_layout(
-            xaxis_title="Horas desde o início da parada",
-            margin=dict(l=15, r=15, t=55, b=15),
-            paper_bgcolor="white",
-            plot_bgcolor="white",
-            legend_title_text="",
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    with right:
-        st.markdown("#### Regras testadas")
-        st.dataframe(
-            cand_df,
-            use_container_width=True,
-            hide_index=True,
-            height=310,
-        )
-        st.caption(
-            "O solver escolhe a melhor combinação entre atraso e makespan "
-            "dentre as regras heurísticas avaliadas."
-        )
+    fig = px.timeline(
+        schedule_df,
+        x_start="Inicio_h",
+        x_end="Fim_h",
+        y="Atividade",
+        hover_data=["ID", "Duracao_h", "Recursos", "WBS"],
+        title="Cronograma factível",
+    )
+    fig.update_yaxes(autorange="reversed", title="")
+    fig.update_layout(
+        xaxis_title="Horas desde o início da parada",
+        margin=dict(l=15, r=15, t=55, b=15),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        legend_title_text="",
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 with tab_schedule:
     st.markdown("#### Cronograma completo")
@@ -335,6 +327,19 @@ with tab_schedule:
         use_container_width=True,
         hide_index=True,
     )
+
+    with st.expander("Diagnóstico do heurístico", expanded=False):
+        d1, d2 = st.columns(2)
+        d1.metric(
+            "CPM sem recursos",
+            f"{comparison['unconstrained_makespan_h'] / hours_per_day:.2f} d",
+        )
+        d2.metric("Regra selecionada", best.priority_rule)
+        st.dataframe(
+            cand_df,
+            use_container_width=True,
+            hide_index=True,
+        )
 
 with tab_resources:
     if resources:
@@ -455,18 +460,16 @@ with tab_export:
         risk=risk,
     )
 
-    export_left, export_right = st.columns(2)
-    with export_left:
-        st.download_button(
-            "⬇ Baixar relatório gerencial em PDF",
-            data=pdf_bytes,
-            file_name=f"{Path(uploaded.name).stem}_relatorio_gerencial.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-            type="primary",
-        )
+    st.download_button(
+        "Baixar relatório gerencial em PDF",
+        data=pdf_bytes,
+        file_name=f"{Path(uploaded.name).stem}_relatorio_gerencial.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+        type="primary",
+    )
 
-    with export_right:
+    with st.expander("Dados técnicos", expanded=False):
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             schedule_df.to_excel(
@@ -492,7 +495,7 @@ with tab_export:
             )
 
         st.download_button(
-            "⬇ Baixar dados técnicos em Excel",
+            "Baixar Excel para auditoria",
             data=buffer.getvalue(),
             file_name=f"{Path(uploaded.name).stem}_dados_tecnicos.xlsx",
             mime=(
@@ -501,13 +504,3 @@ with tab_export:
             ),
             use_container_width=True,
         )
-
-    st.markdown(
-        """
-        <div class="ta-note">
-        O PDF é a saída gerencial; o Excel permanece como apoio técnico para
-        auditoria, exploração e tratamento posterior dos dados.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
