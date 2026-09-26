@@ -29,6 +29,6 @@ def test_systemd_unit_matches_production_layout():
 
     assert "User=ubuntu" in unit
     assert "WorkingDirectory=/home/ubuntu/turnaround-project" in unit
-    assert "/home/ubuntu/turnaround-project/.venv/bin/streamlit run app.py" in unit
+    assert "/home/ubuntu/turnaround-project/.venv/bin/streamlit run Planejamento.py" in unit
     assert "--server.address=127.0.0.1" in unit
     assert "--server.port=8501" in unit
