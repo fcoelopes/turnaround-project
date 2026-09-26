@@ -18,7 +18,7 @@ from turnaround.io import load_schedule
 from turnaround.rcpsp import infer_capacities, optimize_turnaround
 from turnaround.report import build_base_management_pdf
 from turnaround.risk import simulate_deadline_risk
-from turnaround.ui import apply_app_style, hero, section, status, workflow_strip
+from turnaround.ui import app_header, apply_app_style, section, status, workflow_strip
 
 
 st.set_page_config(
@@ -28,15 +28,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 apply_app_style()
-hero(
-    "Do plano de referência à restrição que realmente controla a parada.",
-    (
-        "Importe o cronograma do Microsoft Project, teste a capacidade disponível "
-        "e leia o efeito de recursos e incerteza sobre a janela."
-    ),
-    "PLANEJAMENTO BASE · RCPSP",
-    note_title="Papel desta tela",
-    note_body="Validar prazo e capacidade do baseline. Incerteza de escopo e replanejamento ficam na página avançada.",
+app_header(
+    "TURNAROUND PLANNING",
+    "Baseline, capacidade e risco de prazo.",
+    badge="T/A",
+    context="RCPSP · recursos · janela",
 )
 workflow_strip(
     [
