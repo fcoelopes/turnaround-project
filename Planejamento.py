@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -14,6 +16,7 @@ from turnaround.analysis import (
     schedule_dataframe,
     tasks_dataframe,
 )
+from turnaround import ExecutionStore, build_planning_baseline, upgrade_database
 from turnaround.io import load_schedule
 from turnaround.rcpsp import infer_capacities, optimize_turnaround
 from turnaround.report import build_base_management_pdf
@@ -27,6 +30,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+
+@st.cache_resource
+def _get_execution_store() -> ExecutionStore:
+    upgrade_database()
+    return ExecutionStore()
+
+
+execution_store = _get_execution_store()
 apply_app_style()
 app_header(
     "TURNAROUND DECISION SUPPORT",
@@ -156,24 +168,86 @@ else:
                     )
                 )
 
+planning_signature = hashlib.sha256(
+    json.dumps(
+        {
+            "source_sha256": hashlib.sha256(
+                uploaded.getvalue()
+            ).hexdigest(),
+            "hours_per_day": int(hours_per_day),
+            "deadline_h": deadline_h,
+            "capacities": capacities,
+            "simulations": int(simulations),
+            "optimistic_pct": int(optimistic_pct),
+            "pessimistic_pct": int(pessimistic_pct),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+).hexdigest()
+
 run = st.button(
     "▶ Gerar plano otimizado",
     type="primary",
     use_container_width=True,
 )
-if not run:
+
+cached_result = st.session_state.get("planning_result")
+if run:
+    try:
+        best, candidates = optimize_turnaround(
+            tasks,
+            capacities,
+            deadline_h=deadline_h,
+        )
+        comparison = compare_baseline(tasks, best)
+    except Exception as exc:
+        st.session_state.pop("planning_result", None)
+        st.error(f"Não foi possível gerar um cronograma factível: {exc}")
+        st.stop()
+
+    risk_error = None
+    with st.spinner("Simulando incerteza de duração..."):
+        try:
+            risk = simulate_deadline_risk(
+                tasks,
+                capacities,
+                priority_rule=best.priority_rule,
+                deadline_h=deadline_h,
+                n=int(simulations),
+                optimistic_factor=1 + optimistic_pct / 100,
+                most_likely_factor=1.0,
+                pessimistic_factor=1 + pessimistic_pct / 100,
+            )
+        except Exception as exc:
+            risk = None
+            risk_error = str(exc)
+
+    cached_result = {
+        "signature": planning_signature,
+        "best": best,
+        "candidates": candidates,
+        "comparison": comparison,
+        "risk": risk,
+        "risk_error": risk_error,
+    }
+    st.session_state["planning_result"] = cached_result
+elif (
+    not cached_result
+    or cached_result.get("signature") != planning_signature
+):
     st.stop()
 
-try:
-    best, candidates = optimize_turnaround(
-        tasks,
-        capacities,
-        deadline_h=deadline_h,
+best = cached_result["best"]
+candidates = cached_result["candidates"]
+comparison = cached_result["comparison"]
+risk = cached_result["risk"]
+risk_error = cached_result.get("risk_error")
+if risk_error:
+    st.warning(
+        f"A simulação de risco não pôde ser concluída: {risk_error}"
     )
-    comparison = compare_baseline(tasks, best)
-except Exception as exc:
-    st.error(f"Não foi possível gerar um cronograma factível: {exc}")
-    st.stop()
 
 schedule_df = schedule_dataframe(best, int(hours_per_day))
 crit_df = criticality_dataframe(tasks)
@@ -267,22 +341,6 @@ if resources:
     ).sort_values("Utilizacao_%", ascending=False)
 else:
     util_df = pd.DataFrame()
-
-with st.spinner("Simulando incerteza de duração..."):
-    try:
-        risk = simulate_deadline_risk(
-            tasks,
-            capacities,
-            priority_rule=best.priority_rule,
-            deadline_h=deadline_h,
-            n=int(simulations),
-            optimistic_factor=1 + optimistic_pct / 100,
-            most_likely_factor=1.0,
-            pessimistic_factor=1 + pessimistic_pct / 100,
-        )
-    except Exception as exc:
-        st.warning(f"A simulação de risco não pôde ser concluída: {exc}")
-        risk = None
 
 cand_df = pd.DataFrame(
     [
@@ -429,6 +487,85 @@ with tab_exec:
         tickformat=("%d/%m<br>%H:%M" if use_calendar_axis else None),
     )
     st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+    st.markdown("#### Liberar plano para execução")
+    st.caption(
+        "Ao aprovar, este cenário passa a ser a referência persistida de "
+        "Escopo e Replanejamento: tarefas, capacidades, janela e horários "
+        "RCPSP deixam de ser recalculados como um baseline independente."
+    )
+
+    approval_candidate = build_planning_baseline(
+        project_name=project_name,
+        source_name=uploaded.name,
+        hours_per_day=int(hours_per_day),
+        deadline_h=(
+            None
+            if deadline_h is None
+            else float(deadline_h)
+        ),
+        capacities=capacities,
+        tasks=tasks,
+        result=best,
+        risk=risk,
+    )
+    approved_baseline = execution_store.load_planning_baseline(
+        approval_candidate.key
+    )
+
+    if approved_baseline is None:
+        status(
+            "Este cenário ainda é apenas uma análise de planejamento.",
+            tone="warn",
+            title="Baseline ainda não aprovado.",
+        )
+    else:
+        st.session_state["execution_baseline_key"] = approved_baseline.key
+        status(
+            (
+                f"Baseline aprovado · {approved_baseline.makespan_h:.1f} h · "
+                f"{len(approved_baseline.schedule)} atividades · "
+                f"ID {approved_baseline.key[:12]}."
+            ),
+            tone="ok",
+            title="Pronto para execução.",
+        )
+
+    if st.button(
+        (
+            "Reaprovar este baseline"
+            if approved_baseline is not None
+            else "✓ Aprovar como baseline da execução"
+        ),
+        type="primary",
+        use_container_width=True,
+        key=f"approve_baseline_{approval_candidate.key[:12]}",
+    ):
+        approved_baseline = execution_store.save_planning_baseline(
+            approval_candidate
+        )
+        st.session_state["execution_baseline_key"] = approved_baseline.key
+        st.session_state["planning_approval_notice"] = approved_baseline.key
+        st.rerun()
+
+    if (
+        st.session_state.get("planning_approval_notice")
+        == approval_candidate.key
+    ):
+        st.success(
+            "Baseline persistido. Escopo e Replanejamento já pode continuar "
+            "a partir deste plano sem novo upload."
+        )
+        st.session_state.pop("planning_approval_notice", None)
+
+    if approved_baseline is not None:
+        st.page_link(
+            "pages/2_Escopo_e_Replanejamento.py",
+            label="Abrir Escopo e Replanejamento",
+            icon="➡️",
+            use_container_width=True,
+        )
 
 with tab_schedule:
     st.markdown("#### Cronograma completo")
