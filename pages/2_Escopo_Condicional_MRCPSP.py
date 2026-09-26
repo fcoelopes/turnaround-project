@@ -568,7 +568,7 @@ def load_project():
     section(
         "1",
         "Planejamento-base e regras de escopo",
-        "Carregue um XML real ou use o cenário demonstrativo. O JSON é opcional; regras novas também podem ser cadastradas pela planilha abaixo.",
+        "Carregue o baseline do Microsoft Project. Regras, pessoas e capacidades são configuradas nas abas próprias.",
     )
 
     xml_upload = st.file_uploader(
@@ -618,9 +618,7 @@ def load_project():
         project = apply_scope_config(project, DEMO_SCOPE)
 
     if source_kind == "real":
-        st.success(
-            "Plano real carregado. O JSON é opcional; use a planilha de regras abaixo para cadastrar novas regras."
-        )
+        st.caption(f"{project_name} · baseline carregado")
 
     return project, project_name, source_kind
 
@@ -642,37 +640,10 @@ with people_tab:
 
 if project is None:
     with config_tab:
-        st.markdown("### Configuração de regras de escopo")
-        st.caption(
-            "A planilha de regras fica nesta aba e não depende do cenário Kinder Ovo. "
-            "Carregue um XML na aba Operação para habilitar as referências de atividades."
-        )
-        st.data_editor(
-            pd.DataFrame(
-                columns=[
-                    "Excluir",
-                    "Regra",
-                    "Ativa",
-                    "Tipo",
-                    "Atividade alvo",
-                    "Gatilho",
-                    "Eventos",
-                    "Lógica eventos",
-                    "Membros",
-                    "Resolução",
-                    "Rotas event",
-                    "Observação",
-                ]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="fixed",
-            disabled=True,
-            key="scope_rule_editor_empty",
-        )
+        st.markdown("### Configuração")
         st.info(
-            "A configuração está disponível para planos reais. "
-            "O JSON é opcional e o Kinder Ovo não precisa ser habilitado."
+            "Carregue um XML na aba Operação para configurar regras e capacidades. "
+            "O JSON e o cenário Kinder Ovo são opcionais."
         )
     st.stop()
 
