@@ -16,6 +16,15 @@ from .advanced_models import (
     TurnaroundTask,
 )
 from .io import load_schedule
+from .planning_baseline import (
+    ApprovedPlanningBaseline,
+    PlanningLinkSnapshot,
+    PlanningScheduleItemSnapshot,
+    PlanningTaskSnapshot,
+    approved_schedule_matches_project,
+    approved_schedule_to_advanced,
+    build_planning_baseline,
+)
 from .mrcpsp import AdvancedScheduleResult, ResourceCatalogEntry, discover_resource_catalog, solve_mrcpsp
 from .rcpsp import infer_capacities, optimize_turnaround
 from .reschedule import RescheduleResult, reschedule_from_state
@@ -26,6 +35,7 @@ __all__ = [
     "ActivationRule",
     "ActivationState",
     "AdvancedScheduleResult",
+    "ApprovedPlanningBaseline",
     "DecisionEngineResult",
     "DecisionEvaluation",
     "DecisionImpact",
@@ -39,6 +49,9 @@ __all__ = [
     "ExecutionStore",
     "ScopeRuleRow",
     "Person",
+    "PlanningLinkSnapshot",
+    "PlanningScheduleItemSnapshot",
+    "PlanningTaskSnapshot",
     "WorkforceProfile",
     "ExecutionState",
     "LogicalGroup",
@@ -50,9 +63,12 @@ __all__ = [
     "TurnaroundProject",
     "TurnaroundTask",
     "analyze_effective_criticality",
+    "approved_schedule_matches_project",
+    "approved_schedule_to_advanced",
     "apply_scope_config",
     "apply_scope_rule_rows",
     "assign_people_to_skills",
+    "build_planning_baseline",
     "default_database_url",
     "discover_resource_catalog",
     "effective_capacities",
