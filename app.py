@@ -360,11 +360,12 @@ with tab_resources:
             )
             st.plotly_chart(fig2, use_container_width=True)
 
-        st.dataframe(
-            util_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+        with st.expander("Detalhes de utilização", expanded=False):
+            st.dataframe(
+                util_df,
+                use_container_width=True,
+                hide_index=True,
+            )
 
         if not util_df.empty:
             bottleneck = util_df.iloc[0]
@@ -383,7 +384,7 @@ with tab_risk:
     if not risk:
         st.info("A simulação de risco não está disponível para este cenário.")
     else:
-        risk_cols = st.columns(5)
+        risk_cols = st.columns(4)
         risk_cols[0].metric(
             "P50",
             f"{risk['p50_h'] / hours_per_day:.2f} d",
@@ -397,12 +398,12 @@ with tab_risk:
             f"{risk['p90_h'] / hours_per_day:.2f} d",
         )
         risk_cols[3].metric(
-            "Média",
-            f"{risk['mean_h'] / hours_per_day:.2f} d",
-        )
-        risk_cols[4].metric(
-            "Desvio",
-            f"{risk['std_h'] / hours_per_day:.2f} d",
+            "P(cumprir janela)",
+            (
+                "—"
+                if risk.get("probability_meet_deadline") is None
+                else f"{risk['probability_meet_deadline'] * 100:.1f}%"
+            ),
         )
 
         hist_df = pd.DataFrame(
@@ -427,6 +428,11 @@ with tab_risk:
             plot_bgcolor="white",
         )
         st.plotly_chart(fig3, use_container_width=True)
+
+        with st.expander("Estatística descritiva", expanded=False):
+            s1, s2 = st.columns(2)
+            s1.metric("Média", f"{risk['mean_h'] / hours_per_day:.2f} d")
+            s2.metric("Desvio", f"{risk['std_h'] / hours_per_day:.2f} d")
 
         if deadline_h and risk.get("probability_meet_deadline") is not None:
             probability = risk["probability_meet_deadline"]
