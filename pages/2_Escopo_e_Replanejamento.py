@@ -20,6 +20,8 @@ from turnaround import (
     TaskExecution,
     WorkforceProfile,
     analyze_effective_criticality,
+    approved_schedule_matches_project,
+    approved_schedule_to_advanced,
     apply_scope_config,
     assign_people_to_skills,
     apply_scope_rule_rows,
@@ -559,48 +561,134 @@ depois da leitura executiva; não precisam orientar a primeira decisão.
         )
 
 
-def load_project():
+def load_project(store: ExecutionStore):
     section(
         "1",
         "Carregar baseline",
-        "Carregue o baseline do Microsoft Project. Regras, pessoas e capacidades são configuradas nas abas próprias.",
+        (
+            "Continue a partir de um plano aprovado na guia Planejamento ou, "
+            "quando necessário, carregue diretamente um XML do Microsoft Project."
+        ),
     )
 
-    xml_upload = st.file_uploader(
-        "Microsoft Project XML",
-        type=["xml"],
-        key="advanced_xml",
-        help="Ao enviar um XML real, a planilha de regras continua disponível mesmo sem JSON.",
+    approved_baselines = store.list_planning_baselines(limit=20)
+    source_options = []
+    if approved_baselines:
+        source_options.append("Baseline aprovado")
+    source_options.extend(["Importar XML", "Cenário demonstrativo"])
+
+    source_mode = st.radio(
+        "Origem do baseline",
+        options=source_options,
+        horizontal=True,
+        key="advanced_baseline_source",
     )
 
-    with st.expander("Cenário demonstrativo", expanded=False):
-        use_demo = st.checkbox(
-            "Usar Kinder Ovo",
-            value=False,
-            disabled=xml_upload is not None,
-            help="Use apenas para testar o fluxo sem carregar um XML real.",
+    approved_baseline = None
+    source_kind = None
+    tasks = None
+    xml_caps = None
+    project_name = None
+
+    if source_mode == "Baseline aprovado":
+        preferred_key = st.session_state.get("execution_baseline_key")
+        keys = [item.key for item in approved_baselines]
+        preferred_index = (
+            keys.index(preferred_key)
+            if preferred_key in keys
+            else 0
+        )
+        selected_key = st.selectbox(
+            "Plano aprovado para execução",
+            options=keys,
+            index=preferred_index,
+            format_func=lambda key: next(
+                (
+                    (
+                        f"{item.project_name} · {item.makespan_h:.1f} h · "
+                        f"{item.approved_at.astimezone().strftime('%d/%m/%Y %H:%M')}"
+                    )
+                    for item in approved_baselines
+                    if item.key == key
+                ),
+                key[:12],
+            ),
+            key="approved_baseline_selector",
+        )
+        approved_baseline = next(
+            item
+            for item in approved_baselines
+            if item.key == selected_key
+        )
+        st.session_state["execution_baseline_key"] = approved_baseline.key
+        tasks = approved_baseline.to_tasks()
+        xml_caps = {
+            resource: float(quantity)
+            for resource, quantity in approved_baseline.capacities.items()
+        }
+        project_name = approved_baseline.project_name
+        source_kind = "approved"
+
+        status(
+            (
+                f"{len(approved_baseline.tasks)} atividades · "
+                f"makespan aprovado {approved_baseline.makespan_h:.1f} h · "
+                f"regra {approved_baseline.priority_rule} · "
+                f"ID {approved_baseline.key[:12]}"
+            ),
+            tone="ok",
+            title="Baseline herdado do Planejamento.",
+        )
+        st.caption(
+            "As capacidades, a janela e os horários RCPSP aprovados acompanham "
+            "o baseline. O replanejamento passa a medir mudanças contra essa referência."
         )
 
-    if xml_upload is not None:
-        source_kind = "real"
+    elif source_mode == "Importar XML":
+        xml_upload = st.file_uploader(
+            "Microsoft Project XML",
+            type=["xml"],
+            key="advanced_xml",
+            help=(
+                "Use esta opção quando a execução não nasceu da guia Planejamento. "
+                "A planilha de regras continua disponível mesmo sem JSON."
+            ),
+        )
+        if xml_upload is None:
+            st.info("Envie um XML do Microsoft Project para continuar.")
+            return None, None, None, None
+
         tasks, xml_caps = project_xml_to_tasks(xml_upload.getvalue())
         project_name = Path(xml_upload.name).stem.replace("_", " ")
-    elif use_demo:
-        source_kind = "demo"
+        source_kind = "real"
+
+    else:
         tasks, xml_caps = project_xml_to_tasks(DEMO_XML.read_bytes())
         project_name = "Turnaround Kinder Ovo"
-    else:
-        st.info("Envie um XML do Project ou habilite o cenário demonstrativo.")
-        return None, None, None
+        source_kind = "demo"
 
-    project = project_from_tasks(tasks, xml_caps)
+    project = project_from_tasks(
+        tasks,
+        xml_caps,
+        deadline=(
+            approved_baseline.deadline_h
+            if approved_baseline is not None
+            else None
+        ),
+    )
 
-    with st.expander("Importar regras existentes por JSON (opcional)", expanded=False):
+    with st.expander(
+        "Importar regras existentes por JSON (opcional)",
+        expanded=False,
+    ):
         scope_upload = st.file_uploader(
             "Regras de escopo / modos (JSON)",
             type=["json"],
             key="advanced_scope",
-            help="Opcional. Você pode usar somente a planilha de regras para um plano real.",
+            help=(
+                "Opcional. As regras podem ser cadastradas diretamente na "
+                "planilha de configuração."
+            ),
         )
 
     if scope_upload is not None:
@@ -609,13 +697,12 @@ def load_project():
             io.BytesIO(scope_upload.getvalue()),
         )
     elif source_kind == "demo":
-        # O sidecar demonstrativo só pode ser aplicado ao próprio Kinder Ovo.
         project = apply_scope_config(project, DEMO_SCOPE)
 
     if source_kind == "real":
-        st.caption(f"{project_name} · baseline carregado")
+        st.caption(f"{project_name} · baseline carregado diretamente do XML")
 
-    return project, project_name, source_kind
+    return project, project_name, source_kind, approved_baseline
 
 
 execution_store = _get_execution_store()
@@ -628,7 +715,12 @@ with manual_tab:
     render_manual()
 
 with operation_tab:
-    project, project_name, project_source_kind = load_project()
+    (
+        project,
+        project_name,
+        project_source_kind,
+        approved_planning_baseline,
+    ) = load_project(execution_store)
 
 with people_tab:
     workforce = _render_people_tab(execution_store, project)
@@ -651,6 +743,11 @@ project_payload = {
     "project_name": project_name,
     "project": base_planned_project.model_dump(mode="json"),
 }
+if approved_planning_baseline is not None:
+    project_payload["approved_planning_baseline"] = (
+        approved_planning_baseline.key
+    )
+
 project_key = hashlib.sha256(
     json.dumps(
         project_payload,
@@ -1330,15 +1427,38 @@ baseline_tasks = [
 
 base_baseline = None
 base_baseline_error = None
-try:
-    base_baseline = solve_mrcpsp(
-        baseline_tasks,
-        planned_project.capacities,
-        deadline=planned_project.deadline,
-        workforce=workforce,
+approved_schedule_in_use = False
+
+baseline_active_ids = {
+    task.id
+    for task in baseline_tasks
+}
+
+if (
+    approved_planning_baseline is not None
+    and not workforce.enabled
+    and approved_schedule_matches_project(
+        approved_planning_baseline,
+        planned_project,
+        baseline_active_ids,
     )
-except ValueError as exc:
-    base_baseline_error = str(exc)
+):
+    base_baseline = approved_schedule_to_advanced(
+        approved_planning_baseline,
+        planned_project,
+        baseline_active_ids,
+    )
+    approved_schedule_in_use = True
+else:
+    try:
+        base_baseline = solve_mrcpsp(
+            baseline_tasks,
+            planned_project.capacities,
+            deadline=planned_project.deadline,
+            workforce=workforce,
+        )
+    except ValueError as exc:
+        base_baseline_error = str(exc)
 
 scenario_baseline = None
 scenario_baseline_error = None
@@ -1359,8 +1479,10 @@ if scenario_baseline is None:
     )
     st.stop()
 
-# O estado da parada usa o planejamento-base quando ele é factível; caso a
-# capacidade-base esteja incompleta, usa o cenário informado como referência.
+# O estado da parada parte do cronograma aprovado quando ele continua
+# compatível com o escopo-base. Se regras/modos ou multi-skill exigirem uma
+# reconstrução, o MRCPSP gera a linha de execução, mas a estabilidade continua
+# comparada contra os horários aprovados no Planejamento.
 baseline = base_baseline or scenario_baseline
 
 with operation_tab:
@@ -1369,7 +1491,27 @@ with operation_tab:
         "Avance a parada, registre apenas o que mudou e acompanhe o efeito sobre a janela."
     )
 
-    if base_baseline is None:
+    if approved_planning_baseline is not None:
+        if approved_schedule_in_use:
+            status(
+                (
+                    "A execução está ancorada exatamente no cronograma RCPSP "
+                    f"aprovado no Planejamento ({approved_planning_baseline.key[:12]})."
+                ),
+                tone="ok",
+                title="Continuidade do baseline preservada.",
+            )
+        else:
+            status(
+                (
+                    "O baseline aprovado continua sendo a referência de estabilidade, "
+                    "mas a linha operacional precisou ser reconstruída pelo MRCPSP "
+                    "porque regras/modos ou o multi-skill alteraram o modelo executável."
+                ),
+                tone="warn",
+                title="Baseline aprovado adaptado ao modelo avançado.",
+            )
+    elif base_baseline is None:
         status(
             (
                 "O planejamento não pode ser resolvido apenas com as capacidades-base "
@@ -1386,10 +1528,20 @@ with operation_tab:
         "Informe a hora corrente; atividades concluídas ou em andamento ficam congeladas no replanejamento.",
     )
 
-    reference_start_times = {
-        item.task_id: float(item.start)
-        for item in baseline.tasks
-    }
+    if approved_planning_baseline is not None:
+        approved_reference_start_times = (
+            approved_planning_baseline.reference_start_times()
+        )
+        reference_start_times = {
+            task_id: start
+            for task_id, start in approved_reference_start_times.items()
+            if task_id in baseline_active_ids
+        }
+    else:
+        reference_start_times = {
+            item.task_id: float(item.start)
+            for item in baseline.tasks
+        }
     persisted_current_time = float(execution_session.current_time)
     default_current_time = (
         persisted_current_time
