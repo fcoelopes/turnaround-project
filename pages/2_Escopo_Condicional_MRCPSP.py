@@ -538,8 +538,8 @@ regra previamente cadastrada.
 3. Na aba **Pessoas**, cadastre o roster e classifique quais recursos do plano são habilidades humanas.
 4. Confira as capacidades dos recursos não humanos em **Configuração**.
 5. Volte para **Operação**, informe a hora corrente e registre os achados.
-5. Resolva apenas as decisões que realmente forem disparadas.
-6. Gere o PDF quando a visão executiva representar o cenário que você quer comunicar.
+6. Resolva apenas as decisões que realmente forem disparadas.
+7. Gere o PDF quando a visão executiva representar o cenário que você quer comunicar.
         """
         )
 
@@ -645,7 +645,7 @@ if project is None:
         st.markdown("### Configuração de regras de escopo")
         st.caption(
             "A planilha de regras fica nesta aba e não depende do cenário Kinder Ovo. "
-            "Carregue um XML na aba Planejamento para habilitar as referências de atividades."
+            "Carregue um XML na aba Operação para habilitar as referências de atividades."
         )
         st.data_editor(
             pd.DataFrame(
@@ -1716,33 +1716,55 @@ with operation_tab:
     name_by_id = {task.id: task.name for task in project.tasks}
     project_order = {task.id: index for index, task in enumerate(project.tasks)}
     wbs_by_id = {task.id: task.wbs for task in project.tasks}
-    events: dict[str, list[str]] = {}
 
-    if event_catalog:
-        with st.expander("Registrar achados nas atividades gatilho", expanded=True):
-            for source_id, options in sorted(event_catalog.items()):
-                execution = executions.get(source_id)
+    # Eventos já registrados permanecem no estado mesmo quando o controle não
+    # precisa ser exibido. A UI mostra somente gatilhos que podem ser usados agora.
+    events: dict[str, list[str]] = {
+        source_id: [
+            event_name
+            for event_name in execution_session.observed_events.get(source_id, [])
+            if event_name in options
+        ]
+        for source_id, options in event_catalog.items()
+        if any(
+            event_name in options
+            for event_name in execution_session.observed_events.get(source_id, [])
+        )
+    }
+    actionable_event_sources = [
+        source_id
+        for source_id in event_catalog
+        if (
+            (
+                source_id in executions
+                and executions[source_id].status == "completed"
+            )
+            or source_id in events
+        )
+    ]
+
+    if actionable_event_sources:
+        with st.expander(
+            f"Registrar achados ({len(actionable_event_sources)} gatilho(s) disponível(is))",
+            expanded=True,
+        ):
+            for source_id in sorted(actionable_event_sources):
+                options = event_catalog[source_id]
                 completed = (
-                    execution is not None
-                    and execution.status == "completed"
-                )
-                label = (
-                    f"{name_by_id.get(source_id, source_id)} · "
-                    f"{'concluída' if completed else 'ainda não concluída'}"
+                    source_id in executions
+                    and executions[source_id].status == "completed"
                 )
                 selected = st.multiselect(
-                    label,
+                    name_by_id.get(source_id, source_id),
                     options=sorted(options),
-                    default=[
-                        event_name
-                        for event_name in execution_session.observed_events.get(source_id, [])
-                        if event_name in options
-                    ],
+                    default=events.get(source_id, []),
                     disabled=not completed,
                     key=f"events_{execution_session.id[:8]}_{source_id}",
                 )
                 if selected:
                     events[source_id] = selected
+                else:
+                    events.pop(source_id, None)
 
     group_members = {
         task_id
