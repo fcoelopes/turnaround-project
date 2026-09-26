@@ -1,6 +1,6 @@
-# Manual de Uso — Escopo Condicional + MRCPSP
+# Manual de Uso — Escopo e Replanejamento
 
-Este manual descreve o uso da página **Escopo Condicional + MRCPSP** do Turnaround Decision Support.
+Este manual descreve o uso da página **Escopo e Replanejamento** do Turnaround Decision Support.
 
 A funcionalidade foi criada para tratar um problema típico de paradas de manutenção: o planejamento começa com um escopo conhecido, mas novas atividades podem surgir somente depois da abertura e inspeção do equipamento.
 
