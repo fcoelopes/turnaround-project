@@ -1,6 +1,6 @@
 # Manual de Uso — Escopo Condicional + MRCPSP
 
-Este manual descreve o uso da página **Escopo Condicional + MRCPSP** do Turnaround Scheduler.
+Este manual descreve o uso da página **Escopo Condicional + MRCPSP** do Turnaround Decision Support.
 
 A funcionalidade foi criada para tratar um problema típico de paradas de manutenção: o planejamento começa com um escopo conhecido, mas novas atividades podem surgir somente depois da abertura e inspeção do equipamento.
 
