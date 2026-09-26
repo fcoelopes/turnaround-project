@@ -224,7 +224,7 @@ def _render_people_tab(
 
     add_col, save_col, discard_col = st.columns([1, 1, 1])
     with add_col:
-        if st.button("➕ Adicionar pessoa", type="primary", key="add_workforce_person"):
+        if st.button("Adicionar pessoa", type="primary", key="add_workforce_person"):
             draft = list(st.session_state.get(draft_key, []))
             draft.append(
                 {
@@ -279,7 +279,7 @@ def _render_people_tab(
     st.session_state[draft_key] = edited_people_df.to_dict("records")
 
     with save_col:
-        if st.button("💾 Salvar equipe", key="save_workforce"):
+        if st.button("Salvar equipe", key="save_workforce"):
             try:
                 people: list[Person] = []
                 for row_number, raw in enumerate(
@@ -322,7 +322,7 @@ def _render_people_tab(
                 st.error(f"Não foi possível salvar a equipe: {exc}")
 
     with discard_col:
-        if st.button("↩ Descartar alterações", key="discard_workforce"):
+        if st.button("Descartar alterações", key="discard_workforce"):
             st.session_state.pop(draft_key, None)
             st.session_state.pop(editor_key, None)
             st.rerun()
@@ -578,12 +578,13 @@ def load_project():
         help="Ao enviar um XML real, a planilha de regras continua disponível mesmo sem JSON.",
     )
 
-    use_demo = st.checkbox(
-        "Usar cenário demonstrativo 'Kinder Ovo'",
-        value=xml_upload is None,
-        disabled=xml_upload is not None,
-        help="Só é usado quando nenhum XML real foi enviado.",
-    )
+    with st.expander("Cenário demonstrativo", expanded=False):
+        use_demo = st.checkbox(
+            "Usar Kinder Ovo",
+            value=False,
+            disabled=xml_upload is not None,
+            help="Use apenas para testar o fluxo sem carregar um XML real.",
+        )
 
     if xml_upload is not None:
         source_kind = "real"
@@ -806,7 +807,7 @@ with config_tab:
     add_rule_col, save_rule_col, discard_rule_col = st.columns([1, 1, 1])
     with add_rule_col:
         if st.button(
-            "➕ Adicionar regra",
+            "Adicionar regra",
             type="primary",
             key=f"add_scope_rule_{project_key[:12]}",
         ):
@@ -932,7 +933,7 @@ with config_tab:
 
     with save_rule_col:
         if st.button(
-            "💾 Salvar regras",
+            "Salvar regras",
             key=f"save_scope_rules_{project_key[:12]}",
         ):
             try:
@@ -1007,7 +1008,7 @@ with config_tab:
 
     with discard_rule_col:
         if st.button(
-            "↩ Descartar alterações",
+            "Descartar alterações",
             key=f"discard_scope_rules_{project_key[:12]}",
         ):
             st.session_state.pop(scope_draft_key, None)
@@ -1034,7 +1035,6 @@ discovered_tasks = execution_store.load_discovered_tasks(
 )
 
 with config_tab:
-    st.markdown("#### Sessão e persistência")
     st.caption(
         f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
         f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s)"
@@ -1066,8 +1066,7 @@ with config_tab:
             st.rerun()
 
 with config_tab:
-    st.markdown("#### Auditoria da execução")
-    with st.expander("Histórico persistido da execução", expanded=False):
+    with st.expander("Histórico da execução", expanded=False):
         persisted_events = execution_store.list_events(
             execution_session.id,
             limit=100,
@@ -2790,7 +2789,7 @@ with operation_tab:
         )
 
         st.download_button(
-            "⬇ Baixar relatório gerencial em PDF",
+            "Baixar relatório gerencial em PDF",
             data=pdf_bytes,
             file_name=(
                 f"{project_name.lower().replace(' ', '_')}"
