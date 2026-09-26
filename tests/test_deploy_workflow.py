@@ -21,7 +21,10 @@ def test_deploy_script_verifies_expected_sha_and_service():
 
     assert "EXPECTED_SHA" in script
     assert 'ACTUAL_SHA="$(git rev-parse HEAD)"' in script
-    assert "turnaround.service não está instalado" in script
+    assert 'UNIT_SOURCE="$APP_DIR/deploy/systemd/turnaround.service"' in script
+    assert 'sudo -n install -m 0644 "$UNIT_SOURCE" "$UNIT_TARGET"' in script
+    assert "sudo -n systemctl daemon-reload" in script
+    assert "turnaround.service não pôde ser carregado" in script
 
 
 def test_systemd_unit_matches_production_layout():
