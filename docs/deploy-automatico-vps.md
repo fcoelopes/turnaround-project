@@ -62,17 +62,22 @@ ssh-keygen -t ed25519 -C "github-actions-turnaround" -f ~/.ssh/github_actions_tu
 
 Adicione o conteúdo de `~/.ssh/github_actions_turnaround.pub` ao arquivo `~/.ssh/authorized_keys` do usuário `ubuntu` na VPS.
 
-Permita que o usuário reinicie somente o serviço do Turnaround sem senha. Edite:
+O deploy atualiza também o unit file versionado do systemd. O usuário de deploy precisa executar sem senha os comandos usados pelo script. Edite:
 
 ```bash
 sudo visudo -f /etc/sudoers.d/turnaround-deploy
 ```
 
-e adicione:
+Em uma VPS dedicada a este serviço, configure as permissões necessárias para instalar o unit file e controlar o serviço, de acordo com a política de sudo da máquina. O fluxo executado é:
 
 ```text
-ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl restart turnaround.service
+install -m 0644 deploy/systemd/turnaround.service /etc/systemd/system/turnaround.service
+systemctl daemon-reload
+systemctl stop turnaround.service
+systemctl start turnaround.service
 ```
+
+O script usa `sudo -n`: se qualquer uma dessas operações exigir senha, o deploy falhará de forma explícita em vez de ficar aguardando interação.
 
 Valide:
 
