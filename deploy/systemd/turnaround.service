@@ -1,5 +1,5 @@
 [Unit]
-Description=Turnaround Scheduler Streamlit
+Description=Turnaround Decision Support
 After=network-online.target
 Wants=network-online.target
 
