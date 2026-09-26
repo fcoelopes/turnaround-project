@@ -35,7 +35,7 @@ jobs:
           uv run alembic current
 
       - name: Compile UI
-        run: uv run python -m compileall -q app.py pages turnaround
+        run: uv run python -m compileall -q Planejamento.py pages turnaround
 
       - name: Test
         run: uv run pytest -q
@@ -46,7 +46,7 @@ jobs:
         run: |
           bash -n scripts/deploy_vps.sh
           test -f deploy/systemd/turnaround.service
-          grep -q '^ExecStart=.*/streamlit run app.py' deploy/systemd/turnaround.service
+          grep -q '^ExecStart=.*/streamlit run Planejamento.py' deploy/systemd/turnaround.service
           grep -q 'from turnaround.persistence import upgrade_database; upgrade_database()' scripts/deploy_vps.sh
           grep -q 'systemctl stop turnaround.service' scripts/deploy_vps.sh
           docker compose config -q
