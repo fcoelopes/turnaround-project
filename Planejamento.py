@@ -522,6 +522,7 @@ with tab_exec:
         )
     else:
         st.session_state["execution_baseline_key"] = approved_baseline.key
+        st.session_state["advanced_baseline_source"] = "Baseline aprovado"
         status(
             (
                 f"Baseline aprovado · {approved_baseline.makespan_h:.1f} h · "
@@ -546,6 +547,7 @@ with tab_exec:
             approval_candidate
         )
         st.session_state["execution_baseline_key"] = approved_baseline.key
+        st.session_state["advanced_baseline_source"] = "Baseline aprovado"
         st.session_state["planning_approval_notice"] = approved_baseline.key
         st.rerun()
 
