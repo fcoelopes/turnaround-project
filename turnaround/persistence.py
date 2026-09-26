@@ -31,6 +31,7 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from .advanced_models import DiscoveredTask
+from .planning_baseline import ApprovedPlanningBaseline
 from .scope_rules import ScopeRuleRow
 from .workforce import WorkforceProfile
 
@@ -326,6 +327,23 @@ class WorkforceProfileRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class PlanningBaselineRecord(Base):
+    __tablename__ = "planning_baselines"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    project_name: Mapped[str] = mapped_column(String(255))
+    source_name: Mapped[str] = mapped_column(String(255))
+    makespan_h: Mapped[float] = mapped_column(Float)
+    deadline_h: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        index=True,
+    )
+
+
 class ExecutionEventRecord(Base):
     __tablename__ = "execution_events"
 
@@ -426,6 +444,80 @@ class ExecutionStore:
             expire_on_commit=False,
             class_=Session,
         )
+
+    def save_planning_baseline(
+        self,
+        baseline: ApprovedPlanningBaseline,
+    ) -> ApprovedPlanningBaseline:
+        now = utc_now()
+        stored = baseline.model_copy(
+            update={"approved_at": now},
+        )
+        payload = stored.model_dump_json()
+
+        with self.SessionLocal.begin() as db:
+            record = db.get(PlanningBaselineRecord, stored.key)
+            if record is None:
+                record = PlanningBaselineRecord(
+                    key=stored.key,
+                    project_name=stored.project_name,
+                    source_name=stored.source_name,
+                    makespan_h=float(stored.makespan_h),
+                    deadline_h=(
+                        None
+                        if stored.deadline_h is None
+                        else float(stored.deadline_h)
+                    ),
+                    payload_json=payload,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(record)
+            else:
+                record.project_name = stored.project_name
+                record.source_name = stored.source_name
+                record.makespan_h = float(stored.makespan_h)
+                record.deadline_h = (
+                    None
+                    if stored.deadline_h is None
+                    else float(stored.deadline_h)
+                )
+                record.payload_json = payload
+                record.updated_at = now
+
+        return stored
+
+    def load_planning_baseline(
+        self,
+        baseline_key: str,
+    ) -> ApprovedPlanningBaseline | None:
+        with self.SessionLocal() as db:
+            record = db.get(PlanningBaselineRecord, baseline_key)
+            if record is None:
+                return None
+            return ApprovedPlanningBaseline.model_validate_json(
+                record.payload_json
+            )
+
+    def list_planning_baselines(
+        self,
+        limit: int = 20,
+    ) -> list[ApprovedPlanningBaseline]:
+        if limit <= 0:
+            return []
+
+        with self.SessionLocal() as db:
+            records = db.scalars(
+                select(PlanningBaselineRecord)
+                .order_by(PlanningBaselineRecord.updated_at.desc())
+                .limit(limit)
+            ).all()
+            return [
+                ApprovedPlanningBaseline.model_validate_json(
+                    record.payload_json
+                )
+                for record in records
+            ]
 
     def load_workforce_profile(
         self,
