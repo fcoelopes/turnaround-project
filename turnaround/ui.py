@@ -27,10 +27,50 @@ def apply_app_style() -> None:
                 #f7f9fb;
         }
 
+        /*
+         * Remove o espaço vertical reservado pelo header nativo sem deixar a
+         * camada transparente bloquear cliques no conteúdo da aplicação.
+         * O toolbar permanece clicável por ter pointer-events reativado.
+         */
+        header[data-testid="stHeader"] {
+            height: 0 !important;
+            min-height: 0 !important;
+            background: transparent !important;
+            pointer-events: none !important;
+        }
+
+        header[data-testid="stHeader"] * {
+            pointer-events: none !important;
+        }
+
+        [data-testid="stToolbar"] {
+            position: fixed !important;
+            top: .35rem !important;
+            right: .45rem !important;
+            z-index: 1000 !important;
+            pointer-events: auto !important;
+        }
+
+        [data-testid="stToolbar"] * {
+            pointer-events: auto !important;
+        }
+
+        [data-testid="stDecoration"] {
+            display: none !important;
+        }
+
+        [data-testid="stAppViewContainer"] > .main {
+            padding-top: 0 !important;
+        }
+
         .block-container {
             max-width: 1440px;
-            padding-top: 1rem;
+            padding-top: .55rem;
             padding-bottom: 4rem;
+        }
+
+        [data-testid="stSidebar"] .block-container {
+            padding-top: .55rem;
         }
 
         .ta-app-header {
