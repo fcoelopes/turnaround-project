@@ -27,8 +27,21 @@ fi
 
 "$UV" sync --frozen
 
+UNIT_SOURCE="$APP_DIR/deploy/systemd/turnaround.service"
+UNIT_TARGET="/etc/systemd/system/turnaround.service"
+
+if [[ ! -f "$UNIT_SOURCE" ]]; then
+  echo "Unit file versionado não encontrado: $UNIT_SOURCE" >&2
+  exit 1
+fi
+
+# O unit file faz parte da versão publicada. Instale-o antes do restart para
+# manter o ExecStart sincronizado com eventuais renomes do entrypoint.
+sudo -n install -m 0644 "$UNIT_SOURCE" "$UNIT_TARGET"
+sudo -n systemctl daemon-reload
+
 if ! systemctl cat turnaround.service >/dev/null 2>&1; then
-  echo "turnaround.service não está instalado. Consulte docs/deploy-automatico-vps.md." >&2
+  echo "turnaround.service não pôde ser carregado após a instalação." >&2
   exit 1
 fi
 
