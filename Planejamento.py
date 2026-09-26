@@ -208,6 +208,43 @@ schedule_df["Rótulo"] = schedule_df.apply(
     axis=1,
 )
 gantt_labels = schedule_df["Rótulo"].tolist()
+
+# Quando o arquivo traz datas de baseline, usamos a primeira data como âncora
+# de calendário para o cronograma factível produzido pelo solver. A lógica do
+# RCPSP continua em horas; apenas a visualização passa a mostrar data/hora real.
+baseline_start_values = [
+    task.baseline_start
+    for task in tasks
+    if task.baseline_start
+]
+calendar_anchor = None
+if baseline_start_values:
+    parsed_starts = pd.to_datetime(
+        pd.Series(baseline_start_values, dtype="object"),
+        errors="coerce",
+        utc=True,
+    ).dropna()
+    if not parsed_starts.empty:
+        calendar_anchor = parsed_starts.min().tz_convert(None)
+
+use_calendar_axis = calendar_anchor is not None
+if use_calendar_axis:
+    schedule_df["Início calendário"] = (
+        calendar_anchor
+        + pd.to_timedelta(schedule_df["Inicio_h"], unit="h")
+    )
+    schedule_df["Término calendário"] = (
+        calendar_anchor
+        + pd.to_timedelta(schedule_df["Fim_h"], unit="h")
+    )
+    gantt_x_start = "Início calendário"
+    gantt_x_end = "Término calendário"
+    gantt_xaxis_title = "Data / hora"
+else:
+    gantt_x_start = "Inicio_h"
+    gantt_x_end = "Fim_h"
+    gantt_xaxis_title = "Horas desde o início da parada"
+
 schedule_view_df = schedule_df.drop(
     columns=["_Ordem", "Rótulo"],
     errors="ignore",
@@ -326,14 +363,34 @@ with tab_exec:
             title="Ação gerencial necessária.",
         )
 
-    st.caption(
-        "A ordem vertical preserva o cronograma importado. "
-        "As atividades destacadas possuem folga total zero no CPM do baseline."
-    )
+    if use_calendar_axis:
+        st.caption(
+            "A ordem vertical preserva o cronograma importado. "
+            "O eixo usa a data inicial do baseline como âncora para o plano "
+            "factível; atividades destacadas possuem folga total zero no CPM."
+        )
+    else:
+        st.caption(
+            "A ordem vertical preserva o cronograma importado. "
+            "As atividades destacadas possuem folga total zero no CPM do baseline."
+        )
+
+    gantt_hover = {
+        "Rótulo": False,
+        "ID": True,
+        "Duracao_h": True,
+        "Recursos": True,
+        "WBS": True,
+        "Criticidade": True,
+    }
+    if use_calendar_axis:
+        gantt_hover["Início calendário"] = "|%d/%m/%Y %H:%M"
+        gantt_hover["Término calendário"] = "|%d/%m/%Y %H:%M"
+
     fig = px.timeline(
         schedule_df,
-        x_start="Inicio_h",
-        x_end="Fim_h",
+        x_start=gantt_x_start,
+        x_end=gantt_x_end,
         y="Rótulo",
         color="Criticidade",
         category_orders={
@@ -345,15 +402,12 @@ with tab_exec:
             "Caminho crítico CPM": "#DC2626",
         },
         hover_name="Atividade",
-        hover_data={
-            "Rótulo": False,
-            "ID": True,
-            "Duracao_h": True,
-            "Recursos": True,
-            "WBS": True,
-            "Criticidade": True,
-        },
-        title="Cronograma factível",
+        hover_data=gantt_hover,
+        title=(
+            "Cronograma factível · calendário"
+            if use_calendar_axis
+            else "Cronograma factível"
+        ),
     )
     fig.update_yaxes(
         autorange="reversed",
@@ -362,12 +416,17 @@ with tab_exec:
         categoryarray=gantt_labels,
     )
     fig.update_layout(
-        xaxis_title="Horas desde o início da parada",
-        height=max(440, min(1100, 34 * len(schedule_df) + 140)),
+        xaxis_title=gantt_xaxis_title,
+        height=max(440, min(1600, 34 * len(schedule_df) + 140)),
         margin=dict(l=15, r=15, t=55, b=15),
         paper_bgcolor="white",
         plot_bgcolor="white",
         legend_title_text="",
+    )
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="#E5E7EB",
+        tickformat=("%d/%m<br>%H:%M" if use_calendar_axis else None),
     )
     st.plotly_chart(fig, use_container_width=True)
 
