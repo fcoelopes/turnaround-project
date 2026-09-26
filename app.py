@@ -22,15 +22,15 @@ from turnaround.ui import app_header, apply_app_style, section, status, workflow
 
 
 st.set_page_config(
-    page_title="Turnaround Scheduler",
+    page_title="Turnaround Decision Support",
     page_icon="🛠️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 apply_app_style()
 app_header(
-    "TURNAROUND PLANNING",
-    "Baseline, capacidade e risco de prazo.",
+    "TURNAROUND DECISION SUPPORT",
+    "Planejamento, capacidade, criticidade e risco de prazo.",
     badge="T/A",
     context="RCPSP · recursos · janela",
 )
@@ -178,6 +178,41 @@ except Exception as exc:
 schedule_df = schedule_dataframe(best, int(hours_per_day))
 crit_df = criticality_dataframe(tasks)
 
+# O solver pode devolver as atividades em ordem de execução. Para leitura gerencial,
+# preservamos a ordem estrutural do cronograma importado (Project/Excel/CSV).
+project_order = {str(task.id): index for index, task in enumerate(tasks)}
+schedule_df["_Ordem"] = (
+    schedule_df["ID"]
+    .astype(str)
+    .map(project_order)
+    .fillna(len(project_order))
+    .astype(int)
+)
+schedule_df = schedule_df.sort_values(
+    ["_Ordem", "Inicio_h", "Fim_h"],
+    kind="stable",
+).reset_index(drop=True)
+
+critical_ids = set(
+    crit_df.loc[crit_df["Critical"].fillna(False), "ID"].astype(str)
+)
+schedule_df["Criticidade"] = schedule_df["ID"].astype(str).map(
+    lambda task_id: (
+        "Caminho crítico CPM"
+        if task_id in critical_ids
+        else "Não crítica"
+    )
+)
+schedule_df["Rótulo"] = schedule_df.apply(
+    lambda row: f"{row['ID']} · {row['Atividade']}",
+    axis=1,
+)
+gantt_labels = schedule_df["Rótulo"].tolist()
+schedule_view_df = schedule_df.drop(
+    columns=["_Ordem", "Rótulo"],
+    errors="ignore",
+)
+
 if resources:
     util_df = pd.DataFrame(
         [
@@ -291,17 +326,44 @@ with tab_exec:
             title="Ação gerencial necessária.",
         )
 
+    st.caption(
+        "A ordem vertical preserva o cronograma importado. "
+        "As atividades destacadas possuem folga total zero no CPM do baseline."
+    )
     fig = px.timeline(
         schedule_df,
         x_start="Inicio_h",
         x_end="Fim_h",
-        y="Atividade",
-        hover_data=["ID", "Duracao_h", "Recursos", "WBS"],
+        y="Rótulo",
+        color="Criticidade",
+        category_orders={
+            "Rótulo": gantt_labels,
+            "Criticidade": ["Não crítica", "Caminho crítico CPM"],
+        },
+        color_discrete_map={
+            "Não crítica": "#64748B",
+            "Caminho crítico CPM": "#DC2626",
+        },
+        hover_name="Atividade",
+        hover_data={
+            "Rótulo": False,
+            "ID": True,
+            "Duracao_h": True,
+            "Recursos": True,
+            "WBS": True,
+            "Criticidade": True,
+        },
         title="Cronograma factível",
     )
-    fig.update_yaxes(autorange="reversed", title="")
+    fig.update_yaxes(
+        autorange="reversed",
+        title="",
+        categoryorder="array",
+        categoryarray=gantt_labels,
+    )
     fig.update_layout(
         xaxis_title="Horas desde o início da parada",
+        height=max(440, min(1100, 34 * len(schedule_df) + 140)),
         margin=dict(l=15, r=15, t=55, b=15),
         paper_bgcolor="white",
         plot_bgcolor="white",
@@ -312,7 +374,7 @@ with tab_exec:
 with tab_schedule:
     st.markdown("#### Cronograma completo")
     st.dataframe(
-        schedule_df,
+        schedule_view_df,
         use_container_width=True,
         hide_index=True,
     )
@@ -456,7 +518,7 @@ with tab_export:
         deadline_h=None if deadline_h is None else float(deadline_h),
         priority_rule=best.priority_rule,
         comparison=comparison,
-        schedule_df=schedule_df,
+        schedule_df=schedule_view_df,
         criticality_df=crit_df,
         resource_df=util_df,
         risk=risk,
@@ -474,7 +536,7 @@ with tab_export:
     with st.expander("Dados técnicos", expanded=False):
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            schedule_df.to_excel(
+            schedule_view_df.to_excel(
                 writer,
                 index=False,
                 sheet_name="Cronograma Otimizado",
