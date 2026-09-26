@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -40,6 +41,7 @@ from turnaround import (
     upgrade_database,
 )
 from turnaround.io import project_xml_to_tasks
+from turnaround.project_export import build_project_xml
 from turnaround.report import build_conditional_management_pdf
 from turnaround.ui import app_header, apply_app_style, section, status, workflow_strip
 
@@ -656,7 +658,7 @@ def load_project(store: ExecutionStore):
         )
         if xml_upload is None:
             st.info("Envie um XML do Microsoft Project para continuar.")
-            return None, None, None, None
+            return None, None, None, None, None
 
         tasks, xml_caps = project_xml_to_tasks(xml_upload.getvalue())
         project_name = Path(xml_upload.name).stem.replace("_", " ")
@@ -666,6 +668,21 @@ def load_project(store: ExecutionStore):
         tasks, xml_caps = project_xml_to_tasks(DEMO_XML.read_bytes())
         project_name = "Turnaround Kinder Ovo"
         source_kind = "demo"
+
+    baseline_start_values = [
+        task.baseline_start
+        for task in tasks
+        if task.baseline_start
+    ]
+    parsed_starts = pd.to_datetime(
+        pd.Series(baseline_start_values, dtype="object"),
+        errors="coerce",
+    ).dropna()
+    calendar_origin = (
+        parsed_starts.min().to_pydatetime()
+        if not parsed_starts.empty
+        else None
+    )
 
     project = project_from_tasks(
         tasks,
@@ -702,7 +719,13 @@ def load_project(store: ExecutionStore):
     if source_kind == "real":
         st.caption(f"{project_name} · baseline carregado diretamente do XML")
 
-    return project, project_name, source_kind, approved_baseline
+    return (
+        project,
+        project_name,
+        source_kind,
+        approved_baseline,
+        calendar_origin,
+    )
 
 
 execution_store = _get_execution_store()
@@ -720,6 +743,7 @@ with operation_tab:
         project_name,
         project_source_kind,
         approved_planning_baseline,
+        calendar_origin,
     ) = load_project(execution_store)
 
 with people_tab:
@@ -2950,6 +2974,64 @@ with operation_tab:
             type="primary",
             use_container_width=True,
             key=f"download_management_report_{report_snapshot_id}",
+            on_click="ignore",
+        )
+
+        st.markdown("#### Cronograma operacional para Microsoft Project")
+        st.caption(
+            "Exporta o snapshot materializado em Microsoft Project XML (MSPDI). "
+            "Entram atividades ativas, condicionais já disparadas, escopo DS-* "
+            "descoberto, precedências efetivas, recursos, modo escolhido e horários "
+            "do replanejamento. Regras ainda dormentes não são materializadas."
+        )
+
+        export_origin = calendar_origin
+        if export_origin is None:
+            e1, e2 = st.columns(2)
+            with e1:
+                export_date = st.date_input(
+                    "Data de início para o arquivo Project",
+                    key=f"project_export_date_{report_snapshot_id}",
+                )
+            with e2:
+                export_time = st.time_input(
+                    "Hora de início para o arquivo Project",
+                    key=f"project_export_time_{report_snapshot_id}",
+                )
+            export_origin = datetime.combine(export_date, export_time)
+            st.caption(
+                "O arquivo de origem não trouxe uma data-base; esta data/hora "
+                "será usada como âncora para converter as horas relativas."
+            )
+        else:
+            st.caption(
+                "Âncora de calendário herdada do planejamento: "
+                f"{export_origin:%d/%m/%Y %H:%M}."
+            )
+
+        project_xml_bytes = build_project_xml(
+            project_name=project_name,
+            project=project,
+            active_task_ids=set(result.activation.active_ids),
+            schedule_items=all_items,
+            effective_tasks=result.effective_tasks,
+            state=state,
+            calendar_origin=export_origin,
+            dynamic_scope_ids=set(dynamic_scope_ids),
+            activation_reasons=result.activation.reasons,
+            snapshot_id=report_snapshot_id,
+        )
+
+        st.download_button(
+            "Baixar cronograma replanejado para Microsoft Project (.xml)",
+            data=project_xml_bytes,
+            file_name=(
+                f"{project_name.lower().replace(' ', '_')}"
+                f"_{report_snapshot_id}_replanejado.xml"
+            ),
+            mime="application/xml",
+            use_container_width=True,
+            key=f"download_project_xml_{report_snapshot_id}",
             on_click="ignore",
         )
 
