@@ -1124,10 +1124,9 @@ with config_tab:
         "Os controles são gerados a partir dos recursos usados pelo plano e pelos modos MRCPSP."
     )
 
-    scenario_name = st.text_input(
-        "Nome do cenário",
-        value="Cenário de recursos A",
-        key="mrcpsp_scenario_name",
+    scenario_name = st.session_state.get(
+        "mrcpsp_scenario_name",
+        "Cenário de recursos A",
     )
 
     if project_name == "Turnaround Kinder Ovo":
@@ -2508,6 +2507,11 @@ with operation_tab:
                 )
 
             st.session_state.setdefault("mrcpsp_saved_scenarios", [])
+            scenario_name = st.text_input(
+                "Nome para salvar esta comparação",
+                value=str(scenario_name),
+                key="mrcpsp_scenario_name",
+            )
             save_col, clear_col = st.columns(2)
             with save_col:
                 if st.button("Salvar cenário na comparação", type="primary"):
