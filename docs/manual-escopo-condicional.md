@@ -58,10 +58,12 @@ A página distingue:
 - **Baseline vigente**: original ou última `Rev.n` formalmente aprovada;
 - **Forecast atual**: cronograma produzido pelo estado corrente da parada.
 
-Use **Promover este replanejamento a nova linha de base** somente quando a
-mudança de compromisso tiver sido aprovada. A promoção registra uma revisão
-imutável, de `Rev.1` a `Rev.10`, com motivo, janela aprovada, snapshot,
-cronograma, makespan e metadados de aprovação.
+Na aba **Governança**, compare primeiro a **Baseline original**, a
+**Baseline vigente** e o **Forecast atual**. Use **Promover este replanejamento a
+nova linha de base** somente quando a mudança de compromisso tiver sido
+formalmente aprovada. A promoção registra uma revisão imutável, de `Rev.1` a
+`Rev.10`, com motivo, janela aprovada, snapshot, cronograma, makespan e
+metadados de aprovação. O controle de promoção não fica mais na área operacional.
 
 Depois da promoção, o replanejamento passa a usar os horários da revisão como
 referência de estabilidade. A baseline original não é apagada: o relatório
