@@ -69,6 +69,13 @@ Depois da promoção, o replanejamento passa a usar os horários da revisão com
 referência de estabilidade. A baseline original não é apagada: o relatório
 continua mostrando simultaneamente **Δ vs original** e **Δ vs vigente**.
 
+Cada nova `Rev.n` exige um aprovador e registra também a referência formal que
+estava vigente antes da promoção, o makespan/janela anteriores, o snapshot
+promovido e os deltas **vs anterior** e **vs Original**. A aba **Governança**
+mostra a cadeia `Original → Rev.1 → Rev.2...` para permitir auditoria do
+histórico de compromisso. Revisões antigas continuam compatíveis mesmo quando
+não possuem esses campos adicionais.
+
 No Microsoft Project XML exportado:
 
 - `Baseline` / `Number=0` representa o plano original;
