@@ -92,19 +92,29 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
         [
             {
                 "Linha de base": "Original",
+                "Anterior": "—",
                 "Makespan (h)": 17.0,
                 "Janela (h)": 24.0,
+                "Δ vs anterior (h)": 0.0,
                 "Δ vs original (h)": 0.0,
                 "Aprovada em": "26/09/2026 18:00",
+                "Aprovado por": "Planejamento",
                 "Motivo": "Plano original",
+                "Snapshot": "baseline0001",
+                "Observação": "—",
             },
             {
                 "Linha de base": "Rev.1",
+                "Anterior": "Original",
                 "Makespan (h)": 23.0,
                 "Janela (h)": 26.0,
+                "Δ vs anterior (h)": 6.0,
                 "Δ vs original (h)": 6.0,
                 "Aprovada em": "26/09/2026 19:00",
+                "Aprovado por": "Gerência da parada",
                 "Motivo": "Novo escopo aprovado",
+                "Snapshot": "snap-rev1",
+                "Observação": "Janela revisada",
             },
         ]
     )
@@ -179,4 +189,8 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
     assert "1.0" in table_text
     assert "Reparo descoberto" in table_text
     assert "Rev.1" in table_text
+    assert "Original" in table_text
+    assert "Gerência da parada" in table_text
+    assert "snap-rev1" in table_text
     assert "Novo escopo aprovado" in table_text
+    assert "Janela revisada" in table_text
