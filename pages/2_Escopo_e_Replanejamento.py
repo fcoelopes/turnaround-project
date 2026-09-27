@@ -158,6 +158,16 @@ def _render_people_tab(
         "Cadastre pessoas reais e marque quais recursos do cronograma representam "
         "habilidades humanas. Uma pessoa multi-skill só pode ocupar uma vaga por vez."
     )
+    with st.expander("Ajuda · como funciona o multi-skill", expanded=False):
+        st.markdown(
+            """
+- **Habilidade** é uma competência humana, como Mecânica, Elétrica ou Soldagem.
+- **Pessoa multi-skill** pode possuir várias habilidades, mas não ocupa duas vagas simultaneamente.
+- Recursos físicos, como guindaste ou ferramenta especial, continuam como recursos agregados e não devem ser classificados como habilidade humana.
+- O scheduler só usa o roster quando **Aplicar multi-skill ao scheduling** está habilitado.
+- **Cobertura de habilidades** mostra se existem pessoas ativas suficientes e se há combinação viável de pessoas para preencher todas as vagas de um modo.
+            """
+        )
 
     enabled = st.checkbox(
         "Aplicar multi-skill ao scheduling",
@@ -473,98 +483,6 @@ def _parse_resource_demands(raw: str) -> dict[str, float]:
     return demands
 
 
-def render_manual() -> None:
-    st.markdown("### Manual de uso")
-    st.caption(
-        "Use esta página como um fluxo de execução da parada: configure uma vez, "
-        "registre apenas o que mudou e leia o impacto antes de tomar decisões."
-    )
-
-    st.markdown("#### Fluxo recomendado")
-    st.markdown(
-        """
-1. **Carregue o planejamento** — envie o XML do Microsoft Project ou use o Kinder Ovo.
-2. **Configure o modelo** — na aba Configuração, revise recursos, λ e regras de escopo.
-3. **Informe onde a parada está** — avance a hora corrente.
-4. **Registre achados** — marque eventos de inspeção ou crie uma atividade DS-* se o trabalho não existia no plano.
-5. **Resolva decisões técnicas** — quando houver XOR/OR humano, escolha a alternativa após comparar impactos.
-6. **Leia o efeito** — confira makespan, janela, novo escopo e cadeia controladora.
-7. **Comunique** — gere o PDF do snapshot atual quando o cenário estiver consistente.
-        """
-    )
-
-    st.markdown("#### O que fica em cada aba")
-    st.markdown(
-        """
-- **Operação:** estado atual, achados, decisões pendentes e impacto na janela.
-- **Configuração:** regras, capacidades, estabilidade e auditoria.
-- **Pessoas:** roster, habilidades e cobertura multi-skill.
-- **Manual:** fluxo de uso e conceitos essenciais.
-        """
-    )
-
-    with st.expander("Glossário rápido", expanded=True):
-        st.markdown(
-            """
-- **Baseline:** plano de referência antes dos achados da execução.
-- **Scope discovery:** escopo conhecido ou criado após inspeções/achados.
-- **Conditional:** atividade prevista, mas só ativada quando uma condição ocorre.
-- **Dynamic scope / DS-***: trabalho que não existia no planejamento e nasceu durante a execução.
-- **XOR:** exatamente uma alternativa; **OR:** uma ou mais; **AND:** todas.
-- **Makespan:** tempo total até o término do cronograma.
-- **Hora corrente:** ponto da execução; o que já terminou ou começou fica congelado.
-- **λ de estabilidade:** peso dado a evitar mudanças desnecessárias nos horários já planejados.
-- **Cadeia controladora:** atividades que, no estado atual, controlam o término por precedência, gates ou recursos.
-        """
-        )
-
-    with st.expander("O que a ferramenta decide — e o que ela não decide", expanded=False):
-        st.markdown(
-            """
-O scheduler **programa** o escopo escolhido e calcula consequências de prazo, custo,
-recursos e estabilidade. Ele **não escolhe uma ação técnica** como reparar ou substituir
-porque uma delas termina mais cedo. Quando a decisão é técnica, a ferramenta mostra os
-cenários sombra e a escolha continua humana.
-
-Uma regra event só é automática quando o próprio evento já determina a ação por uma
-regra previamente cadastrada.
-        """
-        )
-
-    with st.expander("Plano real: caminho mínimo", expanded=False):
-        st.markdown(
-            """
-1. Preferencialmente, **aprove o plano na guia Planejamento** e continue aqui pelo baseline persistido.
-2. Se a execução não veio do Planejamento, carregue diretamente o **XML** do Microsoft Project.
-3. Vá para **Configuração** e cadastre regras na planilha; o JSON é opcional.
-4. Na aba **Pessoas**, cadastre o roster e classifique quais recursos do plano são habilidades humanas.
-5. Confira as capacidades dos recursos não humanos em **Configuração**.
-6. Volte para **Operação**, informe a hora corrente e registre os achados.
-7. Resolva apenas as decisões que realmente forem disparadas e gere o PDF quando o snapshot estiver consistente.
-        """
-        )
-
-    with st.expander("Quando usar cada tipo de regra", expanded=False):
-        st.markdown(
-            """
-- conditional: uma atividade específica entra quando um evento ocorre.
-- xor + human: há alternativas técnicas e uma pessoa deve escolher uma.
-- or + human: uma ou mais alternativas podem ser necessárias.
-- and: o gatilho ativa todo o conjunto.
-- event: use apenas quando o evento já determina de forma objetiva qual ramo entra.
-        """
-        )
-
-    with st.expander("Leitura do relatório gerencial", expanded=False):
-        st.markdown(
-            """
-Leia o PDF nesta ordem: **situação da janela → impacto vs baseline → o que mudou →
-cadeia controladora → Gantt**. Detalhes de recursos, estabilidade e auditoria ficam
-depois da leitura executiva; não precisam orientar a primeira decisão.
-        """
-        )
-
-
 def load_project(store: ExecutionStore):
     section(
         "1",
@@ -737,12 +655,9 @@ def load_project(store: ExecutionStore):
 
 execution_store = _get_execution_store()
 
-operation_tab, config_tab, people_tab, governance_tab, manual_tab = st.tabs(
-    ["Operação", "Configuração", "Pessoas", "Governança", "Manual"]
+operation_tab, config_tab, people_tab, governance_tab = st.tabs(
+    ["Operação", "Configuração", "Pessoas", "Governança"]
 )
-
-with manual_tab:
-    render_manual()
 
 with operation_tab:
     (
@@ -752,6 +667,25 @@ with operation_tab:
         approved_planning_baseline,
         calendar_origin,
     ) = load_project(execution_store)
+
+    with st.expander("Ajuda · fluxo operacional", expanded=False):
+        st.markdown(
+            """
+**Use Operação para registrar o que realmente aconteceu na parada.**
+
+1. Avance a **hora corrente** para representar onde a execução está.
+2. Registre **achados/eventos** quando uma inspeção ou atividade produzir uma condição observada.
+3. Se o trabalho não existia no plano, crie uma atividade **DS-***.
+4. Quando uma regra `XOR/OR` usa resolução **human**, o evento abre **Decisão de escopo necessária**; compare os cenários e escolha em **Resolver decisão**.
+5. Quando a resolução é **event**, a rota previamente configurada é aplicada automaticamente.
+6. Leia o efeito no makespan, janela, novo escopo e cadeia controladora antes de formalizar qualquer rebaseline.
+
+**Importante:** registrar um evento e decidir o que fazer com ele não são necessariamente a mesma coisa.
+            """
+        )
+        st.caption(
+            "O manual técnico completo permanece em docs/manual-escopo-condicional.md."
+        )
 
 with people_tab:
     workforce = _render_people_tab(execution_store, project)
@@ -794,6 +728,21 @@ with config_tab:
         "Esta aba existe para qualquer plano carregado. "
         "O JSON é apenas uma fonte opcional de regras herdadas."
     )
+
+    with st.expander("Ajuda · conditional, XOR/OR/AND e resolução", expanded=False):
+        st.markdown(
+            """
+- **conditional** não representa escolha: se o gatilho/evento ocorrer, a atividade-alvo entra.
+- **XOR** exige exatamente uma alternativa.
+- **OR** permite uma ou mais alternativas.
+- **AND** ativa todos os membros quando a condição é satisfeita.
+- **Resolução = human:** o evento abre uma decisão na aba Operação; o sistema calcula impactos, mas não escolhe a alternativa técnica.
+- **Resolução = event:** o próprio evento determina o ramo por meio de **Rotas event**.
+- **Rotas event** usam o formato `evento=>atividade | outro_evento=>outra_atividade`.
+
+Exemplo: `replacement_required=>uid:10 | repairable=>uid:9`.
+            """
+        )
 
     st.markdown("#### Regras de escopo em planilha")
     if project_source_kind == "approved":
@@ -3257,6 +3206,17 @@ with governance_tab:
         "Separe o forecast operacional da referência formal. "
         "Replanejar não altera a linha de base até que uma Rev.n seja aprovada."
     )
+    with st.expander("Ajuda · forecast, baseline vigente e rebaseline", expanded=False):
+        st.markdown(
+            """
+- **Baseline original / Baseline 0:** compromisso formal inicial; não é apagado.
+- **Baseline vigente:** Baseline 0 ou a última `Rev.n` formalmente aprovada.
+- **Forecast atual:** melhor previsão com o estado, escopo e recursos atuais; pode mudar a cada replanejamento.
+- **Replanejar não é rebaseline:** um forecast só vira `Rev.n` quando a mudança de compromisso é formalmente aprovada.
+- Antes de promover, compare **Δ vs vigente** e **Δ vs Original** e registre aprovador, motivo e nova janela.
+- Use **Auditar uma revisão** para reconstruir a cadeia de aprovação e o snapshot que originou cada compromisso.
+            """
+        )
 
     impact_vs_original = (
         result.schedule.makespan - original_baseline_makespan
