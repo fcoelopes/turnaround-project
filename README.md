@@ -198,6 +198,79 @@ As regras são armazenadas em `scope_rule_rows`, vinculadas ao fingerprint do
 baseline + sidecar. O JSON existente continua compatível; a planilha funciona
 como uma camada adicional.
 
+### Onde a decisão associada ao gatilho acontece
+
+A configuração da regra e a resolução da decisão são etapas diferentes.
+
+Na aba **Configuração**, o planejador define a lógica:
+
+- `conditional`: não representa escolha entre alternativas. É uma ativação direta:
+  se o gatilho for concluído e o evento ocorrer, a atividade-alvo entra no escopo;
+- `xor`: exatamente um ramo deve ser escolhido;
+- `or`: uma ou mais alternativas podem ser escolhidas;
+- `and`: todos os membros são ativados quando a condição é satisfeita.
+
+Para grupos `xor/or`, a coluna **Resolução** define quem resolve a alternativa:
+
+- `human`: o gatilho + evento apenas abrem a decisão. Na aba **Operação**, depois
+  que o achado é registrado, aparece **Decisão de escopo necessária**. A aplicação
+  calcula cenários sombra para cada alternativa e mostra factibilidade, makespan,
+  atraso, custo, deslocamento do plano e gargalos. A seleção é feita manualmente em
+  **Resolver decisão**; o scheduler não escolhe a ação técnica;
+- `event`: usado quando o próprio evento já determina objetivamente o ramo. A coluna
+  **Rotas event** mapeia evento → atividade(s). Ao registrar o achado na Operação, a
+  rota é aplicada automaticamente e aparece em **Regras determinísticas aplicadas**.
+
+Exemplo de decisão humana:
+
+~~~text
+Tipo: xor
+Gatilho: Inspecionar impelidor
+Eventos: impeller_damage
+Resolução: human
+Membros: Reparar impelidor; Substituir impelidor
+~~~
+
+Fluxo:
+
+~~~text
+CONFIGURAÇÃO
+gatilho + evento + alternativas + modo de resolução
+        ↓
+OPERAÇÃO
+gatilho concluído
+        ↓
+Registrar achado/evento
+        ↓
+Resolução = human
+        ↓
+Decisão de escopo necessária
+        ↓
+cenários sombra
+        ↓
+Resolver decisão
+        ↓
+novo escopo entra no replanejamento
+~~~
+
+Exemplo de resolução determinística por evento:
+
+~~~text
+Tipo: xor
+Gatilho: Ensaiar motor
+Eventos: repairable; replacement_required
+Resolução: event
+Membros: Reparar motor; Substituir motor
+
+Rotas event:
+repairable=>Reparar motor |
+replacement_required=>Substituir motor
+~~~
+
+Nesse segundo caso não existe escolha humana: o evento observado já contém a
+regra de roteamento. A aplicação materializa o ramo correspondente e segue para
+o replanejamento.
+
 ### Multi-skill workforce (MS-RCPSP)
 
 A página avançada possui a aba **Pessoas** para cadastrar o roster da parada e
