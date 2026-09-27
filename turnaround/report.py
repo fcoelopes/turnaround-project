@@ -939,8 +939,9 @@ def build_base_management_pdf(
                 "Nota metodológica: o cronograma-base usa SSGS/RCPSP heurístico. "
                 "A simulação de risco perturba durações por distribuição triangular e, "
                 "quando configurado, sorteia eventos Bernoulli de ampliação de escopo antes "
-                "de materializar o projeto de cada iteração. O relatório não representa "
-                "prova de ótimo global.",
+                "de materializar o projeto de cada iteração. "
+                f"A conversão de horas em dias usa {hours_per_day} h/d e não representa "
+                "calendário real de turnos. O relatório não representa prova de ótimo global.",
                 s["muted"],
             ),
         ]
