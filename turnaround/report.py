@@ -757,13 +757,13 @@ def build_base_management_pdf(
     elif makespan_h <= deadline_h:
         tone = "good"
         status_text = (
-            f"Cronograma determinístico dentro da janela: {makespan_h:.1f} h "
+            f"Cronograma determinístico do escopo-base dentro da janela: {makespan_h:.1f} h "
             f"para um limite de {deadline_h:.1f} h."
         )
     else:
         tone = "danger"
         status_text = (
-            f"Cronograma determinístico excede a janela em {makespan_h - deadline_h:.1f} h "
+            f"Cronograma determinístico do escopo-base excede a janela em {makespan_h - deadline_h:.1f} h "
             f"({makespan_h:.1f} h planejadas para {deadline_h:.1f} h disponíveis)."
         )
     story.extend([_status_box(status_text, tone), Spacer(1, 4 * mm)])
@@ -779,7 +779,10 @@ def build_base_management_pdf(
         [
             _metric_table(
                 [
-                    ("Makespan", f"{makespan_h / hours_per_day:.2f} d"),
+                    (
+                        "Makespan base" if risk and risk.get("scope_enabled") else "Makespan",
+                        f"{makespan_h / hours_per_day:.2f} d",
+                    ),
                     (
                         "CPM sem recursos",
                         f"{comparison['unconstrained_makespan_h'] / hours_per_day:.2f} d",
