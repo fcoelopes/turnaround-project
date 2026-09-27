@@ -342,6 +342,10 @@ def test_formal_baseline_revision_survives_store_restart(tmp_path):
         approved_by="Coordenação da parada",
         notes="Janela revisada",
         snapshot_id="snapshot-001",
+        previous_baseline_label="Original",
+        previous_makespan_h=36.0,
+        previous_deadline_h=40.0,
+        original_makespan_h=36.0,
         current_time_h=12.0,
         makespan_h=42.0,
         deadline_h=48.0,
@@ -384,10 +388,18 @@ def test_formal_baseline_revision_survives_store_restart(tmp_path):
         "A": 0.0,
         "DS-001": 12.0,
     }
+    assert latest.previous_baseline_label == "Original"
+    assert latest.previous_makespan_h == 36.0
+    assert latest.previous_deadline_h == 40.0
+    assert latest.original_makespan_h == 36.0
+    assert latest.delta_vs_previous_h == 6.0
+    assert latest.delta_vs_original_h == 6.0
     assert second.next_baseline_revision_number(session.id) == 2
     assert any(
         event.event_type == "BASELINE_REVISION_APPROVED"
         and event.payload["revision_number"] == 1
+        and event.payload["previous_baseline_label"] == "Original"
+        and event.payload["delta_vs_previous_h"] == 6.0
         for event in events
     )
 
@@ -407,6 +419,7 @@ def test_formal_baseline_revision_is_immutable_per_number(tmp_path):
         revision_number=1,
         name="Rev.1",
         reason="Mudança aprovada",
+        approved_by="Gerência",
         snapshot_id="snap",
         current_time_h=5.0,
         makespan_h=20.0,
@@ -431,3 +444,42 @@ def test_formal_baseline_revision_is_immutable_per_number(tmp_path):
 
     with pytest.raises(ValueError, match="já existe"):
         store.save_baseline_revision(revision)
+
+
+
+def test_new_revision_requires_approver_for_governance(tmp_path):
+    import pytest
+
+    url = _database_url(tmp_path)
+    upgrade_database(url)
+    store = ExecutionStore(url)
+    session = store.get_or_create_active_session(
+        project_key="approval-required",
+        project_name="Parada",
+    )
+
+    with pytest.raises(ValueError, match="aprovador"):
+        build_baseline_revision(
+            session_id=session.id,
+            project_key=session.project_key,
+            revision_number=1,
+            name="Rev.1",
+            reason="Mudança formal",
+            snapshot_id="snap-approval",
+            current_time_h=4.0,
+            makespan_h=12.0,
+            deadline_h=16.0,
+            total_cost=0.0,
+            schedule_items=[
+                AdvancedScheduledTask(
+                    task_id="A",
+                    task_name="A",
+                    mode_name="base",
+                    start=0.0,
+                    finish=12.0,
+                    duration=12.0,
+                    resources={},
+                    cost=0.0,
+                )
+            ],
+        )
