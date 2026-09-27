@@ -197,7 +197,17 @@ dez slots adicionais de baseline do Microsoft Project. Cada revisão guarda:
 - modos e recursos usados;
 - hora corrente;
 - motivo, aprovador e observações;
-- data/hora da aprovação.
+- data/hora da aprovação;
+- baseline formal que estava vigente antes da promoção;
+- makespan e janela da referência anterior;
+- Δ da revisão contra a baseline anterior;
+- Δ da revisão contra a Baseline 0.
+
+Novas revisões exigem **aprovador**. A aba **Governança** apresenta a cadeia
+`Original → Rev.1 → Rev.2...` e o histórico mostra a referência anterior,
+deltas, snapshot e contexto da aprovação. Revisões antigas permanecem legíveis;
+quando não possuem os novos campos de auditoria, a interface deriva a cadeia a
+partir da ordem histórica.
 
 Depois de uma revisão formal, o stability-aware rescheduling passa a comparar o
 trabalho futuro com a **baseline vigente**, enquanto as métricas gerenciais
