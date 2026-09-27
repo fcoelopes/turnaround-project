@@ -102,6 +102,26 @@ def test_scope_probability_changes_monte_carlo_project_scope():
     assert with_scope["task_activation_frequency"]["2"] == 1.0
 
 
+def test_duration_risk_accepts_explicit_most_likely_factor():
+    result = simulate_deadline_risk(
+        tasks=[
+            Task(id="1", name="Executar", duration_h=10),
+        ],
+        capacities={},
+        priority_rule="minimum_float",
+        deadline_h=20,
+        n=40,
+        optimistic_factor=0.80,
+        most_likely_factor=1.10,
+        pessimistic_factor=1.30,
+        seed=11,
+    )
+
+    assert len(result["samples"]) == 40
+    assert result["p50_h"] <= result["p80_h"] <= result["p90_h"]
+    assert result["scope_enabled"] is False
+
+
 def test_imported_conditional_columns_seed_planning_scope_risk():
     upload = _Upload(
         name="parada.csv",
