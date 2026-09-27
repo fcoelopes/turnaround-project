@@ -2575,12 +2575,14 @@ with operation_tab:
     baseline_history_rows = [
         {
             "Linha de base": "Original",
+            "Anterior": "—",
             "Makespan (h)": original_baseline_makespan,
             "Janela (h)": (
                 original_deadline
                 if original_deadline is not None
                 else "—"
             ),
+            "Δ vs anterior (h)": 0.0,
             "Δ vs original (h)": 0.0,
             "Aprovada em": (
                 approved_planning_baseline.approved_at.astimezone().strftime(
@@ -2588,6 +2590,12 @@ with operation_tab:
                 )
                 if approved_planning_baseline is not None
                 else "importação"
+            ),
+            "Aprovado por": (
+                approved_planning_baseline.approved_by
+                if approved_planning_baseline is not None
+                and approved_planning_baseline.approved_by
+                else "—"
             ),
             "Motivo": (
                 approved_planning_baseline.approval_reason
@@ -2599,37 +2607,62 @@ with operation_tab:
                     else "Baseline importado diretamente"
                 )
             ),
-            "Aprovado por": (
-                approved_planning_baseline.approved_by
+            "Snapshot": (
+                approved_planning_baseline.key[:12]
                 if approved_planning_baseline is not None
-                and approved_planning_baseline.approved_by
                 else "—"
             ),
+            "Observação": "—",
         }
     ]
-    baseline_history_rows.extend(
-        [
+    previous_label_for_history = "Original"
+    previous_makespan_for_history = original_baseline_makespan
+    previous_deadline_for_history = original_deadline
+    for revision in baseline_revisions:
+        previous_label = (
+            revision.previous_baseline_label
+            or previous_label_for_history
+        )
+        previous_makespan = (
+            float(revision.previous_makespan_h)
+            if revision.previous_makespan_h is not None
+            else float(previous_makespan_for_history)
+        )
+        delta_vs_previous = (
+            float(revision.delta_vs_previous_h)
+            if revision.delta_vs_previous_h is not None
+            else float(revision.makespan_h) - previous_makespan
+        )
+        delta_vs_original = (
+            float(revision.delta_vs_original_h)
+            if revision.delta_vs_original_h is not None
+            else float(revision.makespan_h) - original_baseline_makespan
+        )
+        baseline_history_rows.append(
             {
                 "Linha de base": revision.label,
+                "Anterior": previous_label,
                 "Makespan (h)": float(revision.makespan_h),
                 "Janela (h)": (
                     float(revision.deadline_h)
                     if revision.deadline_h is not None
                     else "—"
                 ),
-                "Δ vs original (h)": (
-                    float(revision.makespan_h)
-                    - original_baseline_makespan
-                ),
+                "Δ vs anterior (h)": delta_vs_previous,
+                "Δ vs original (h)": delta_vs_original,
                 "Aprovada em": revision.approved_at.astimezone().strftime(
                     "%d/%m/%Y %H:%M"
                 ),
-                "Motivo": revision.reason,
                 "Aprovado por": revision.approved_by or "—",
+                "Motivo": revision.reason,
+                "Snapshot": revision.snapshot_id,
+                "Observação": revision.notes or "—",
             }
-            for revision in baseline_revisions
-        ]
-    )
+        )
+        previous_label_for_history = revision.label
+        previous_makespan_for_history = float(revision.makespan_h)
+        previous_deadline_for_history = revision.deadline_h
+
     baseline_revisions_df = pd.DataFrame(baseline_history_rows)
 
     execution_state_report_df = pd.DataFrame(
@@ -3341,6 +3374,10 @@ with governance_tab:
             )
 
     st.markdown("#### Histórico formal")
+    governance_chain = " → ".join(
+        ["Original", *[revision.label for revision in baseline_revisions]]
+    )
+    st.caption(f"Cadeia de aprovação: {governance_chain}")
     st.dataframe(
         baseline_revisions_df,
         use_container_width=True,
@@ -3370,6 +3407,25 @@ with governance_tab:
                 "Use somente quando houver aprovação formal de uma nova referência "
                 "de compromisso. O forecast corrente, por si só, não cria baseline."
             )
+            p1, p2, p3, p4 = st.columns(4)
+            p1.metric(
+                "Referência anterior",
+                governing_baseline_label,
+                help="Baseline formal vigente antes desta promoção.",
+            )
+            p2.metric(
+                "Makespan anterior",
+                f"{governing_baseline_makespan:.1f} h",
+            )
+            p3.metric(
+                "Forecast a promover",
+                f"{result.schedule.makespan:.1f} h",
+                delta=f"{result.schedule.makespan - governing_baseline_makespan:+.1f} h",
+            )
+            p4.metric(
+                "Δ vs Original",
+                f"{result.schedule.makespan - original_baseline_makespan:+.1f} h",
+            )
             revision_name = st.text_input(
                 "Nome da revisão",
                 value=f"Rev.{next_revision_number} · {project_name}",
@@ -3386,8 +3442,9 @@ with governance_tab:
             rb1, rb2 = st.columns(2)
             with rb1:
                 revision_approved_by = st.text_input(
-                    "Aprovado por (opcional)",
+                    "Aprovado por",
                     key=f"baseline_revision_approver_{next_revision_number}",
+                    help="Obrigatório para manter a trilha formal de aprovação.",
                 )
             with rb2:
                 revision_deadline = st.number_input(
@@ -3419,6 +3476,7 @@ with governance_tab:
                     not confirm_revision
                     or not revision_name.strip()
                     or not revision_reason.strip()
+                    or not revision_approved_by.strip()
                 ),
                 use_container_width=True,
                 key=f"promote_baseline_revision_{next_revision_number}",
@@ -3432,6 +3490,14 @@ with governance_tab:
                     approved_by=revision_approved_by,
                     notes=revision_notes,
                     snapshot_id=report_snapshot_id,
+                    previous_baseline_label=governing_baseline_label,
+                    previous_makespan_h=float(governing_baseline_makespan),
+                    previous_deadline_h=(
+                        None
+                        if project.deadline is None
+                        else float(project.deadline)
+                    ),
+                    original_makespan_h=float(original_baseline_makespan),
                     current_time_h=float(current_time),
                     makespan_h=float(result.schedule.makespan),
                     deadline_h=float(revision_deadline),
