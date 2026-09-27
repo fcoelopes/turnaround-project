@@ -137,14 +137,27 @@ valor `INFERIDA`, a interface mostra um alerta e exige confirmação explícita
 antes de liberar a aprovação do baseline. A origem e os valores aprovados são
 persistidos junto com o snapshot e também aparecem no relatório gerencial.
 
+A aprovação da **Baseline 0** é formal. Antes de liberar o plano para execução,
+a aplicação exige:
+
+- nome do cenário;
+- aprovador;
+- motivo / observação da aprovação.
+
+A data/hora é registrada automaticamente. Esses metadados ficam persistidos
+junto do snapshot e aparecem no relatório gerencial.
+
 A aprovação grava no SQLite um snapshot imutável do cenário escolhido:
 
 - tarefas e precedências normalizadas;
-- capacidades aprovadas;
+- capacidades aprovadas e sua origem;
 - janela/deadline;
 - cronograma RCPSP escolhido, com início e término de cada atividade;
 - regra heurística vencedora;
-- P80 e probabilidade de cumprir a janela, quando disponíveis.
+- premissas Monte Carlo (nº de simulações, otimista, mais provável e pessimista);
+- probabilidades dos eventos de escopo;
+- P80 e probabilidade de cumprir a janela, quando disponíveis;
+- nome do cenário, aprovador, motivo e timestamp formal da Baseline 0.
 
 A página **Escopo e Replanejamento** oferece esse baseline aprovado como fonte
 preferencial. Quando o modelo avançado continua compatível com o plano-base, a
