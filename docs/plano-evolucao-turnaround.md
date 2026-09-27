@@ -563,11 +563,16 @@ Confirmação
 
 A lógica Rev.1…Rev.10 existente deve ser mantida.
 
-**TDS-11 implementado — aguardando revisão funcional:** a página avançada agora
-possui uma aba **Governança**. Baseline original, baseline vigente, forecast,
-deltas, janela, histórico de revisões e a promoção para Rev.n ficam reunidos
-nesse contexto. A aba Operação mantém impacto operacional e deixa de oferecer o
-controle formal de rebaseline.
+**TDS-11 implementado:** a página avançada agora possui uma aba **Governança**.
+Baseline original, baseline vigente, forecast, deltas, janela, histórico de
+revisões e a promoção para Rev.n ficam reunidos nesse contexto. A aba Operação
+mantém impacto operacional e deixa de oferecer o controle formal de rebaseline.
+
+**TDS-12 implementado — aguardando revisão funcional:** cada nova Rev.n passa a
+registrar qual baseline estava vigente antes da promoção, makespan/janela
+anteriores, Δ vs anterior, Δ vs Baseline 0, aprovador, snapshot e timestamp.
+O aprovador passa a ser obrigatório para novas revisões. O histórico e o PDF
+expõem a cadeia formal de aprovações; revisões antigas continuam compatíveis.
 
 ---
 
@@ -810,8 +815,8 @@ Depois disso avaliar:
 
 - [x] Formalizar Baseline 0.
 - [x] Criar aba Governança.
-- [ ] Mover rebaseline para Governança.
-- [ ] Melhorar rastreabilidade de aprovação.
+- [x] Mover rebaseline para Governança.
+- [x] Melhorar rastreabilidade de aprovação.
 - [ ] Remover Manual da navegação principal.
 
 ## Sprint 3 — Reorganização da execução
