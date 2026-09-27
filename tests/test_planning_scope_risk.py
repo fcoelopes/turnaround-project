@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from turnaround import ExecutionState, project_from_tasks, resolve_activation
 from turnaround.models import Link, Task
 from turnaround.planning_scope_risk import (
     PlanningScopeRisk,
+    apply_planning_scope_risks_to_project,
     extract_scope_risk_candidates,
     materialize_planning_scope,
 )
@@ -118,3 +120,29 @@ def test_imported_conditional_columns_seed_planning_scope_risk():
     assert risks[0].trigger_task_id == "1"
     assert risks[0].event_name == "damage_found"
     assert risks[0].probability == 0.20
+
+
+def test_planning_scope_risk_becomes_execution_condition_after_approval():
+    risk = PlanningScopeRisk(
+        task_id="2",
+        trigger_task_id="1",
+        event_name="damage_found",
+        probability=0.30,
+    )
+    project = project_from_tasks(_tasks(), {})
+    project = apply_planning_scope_risks_to_project(project, [risk])
+
+    before_event = resolve_activation(
+        project,
+        ExecutionState(current_time=0),
+    )
+    assert "2" not in before_event.active_ids
+
+    after_event = resolve_activation(
+        project,
+        ExecutionState(
+            current_time=2,
+            events={"1": ["damage_found"]},
+        ),
+    )
+    assert "2" in after_event.active_ids
