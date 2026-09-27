@@ -341,7 +341,7 @@ with config_risk:
     with risk_control_cols[2]:
         most_likely_pct = st.slider(
             "Mais provável (%)",
-            int(optimistic_pct),
+            -30,
             50,
             0,
             5,
@@ -350,18 +350,27 @@ with config_risk:
     with risk_control_cols[3]:
         pessimistic_pct = st.slider(
             "Pessimista (%)",
-            int(max(0, most_likely_pct)),
+            0,
             100,
-            max(30, int(max(0, most_likely_pct))),
+            30,
             5,
             key=f"pessimistic_{source_key}",
         )
 
-    st.caption(
-        f"Triangular: {100 + optimistic_pct:.0f}% / "
-        f"{100 + most_likely_pct:.0f}% / {100 + pessimistic_pct:.0f}% "
-        "da duração-base."
+    duration_config_error = not (
+        optimistic_pct <= most_likely_pct <= pessimistic_pct
     )
+    if duration_config_error:
+        st.error(
+            "A distribuição triangular deve respeitar: "
+            "otimista ≤ mais provável ≤ pessimista."
+        )
+    else:
+        st.caption(
+            f"Triangular: {100 + optimistic_pct:.0f}% / "
+            f"{100 + most_likely_pct:.0f}% / {100 + pessimistic_pct:.0f}% "
+            "da duração-base."
+        )
     st.divider()
     st.markdown("#### Ampliação probabilística de escopo")
     st.caption(
@@ -542,7 +551,7 @@ run = st.button(
     "▶ Gerar cenário factível",
     type="primary",
     use_container_width=True,
-    disabled=bool(scope_config_errors),
+    disabled=bool(scope_config_errors) or duration_config_error,
 )
 
 cached_result = st.session_state.get("planning_result")
