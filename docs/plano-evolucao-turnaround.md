@@ -354,10 +354,16 @@ Premissas de risco
 
 ### Critérios de aceite
 
-- [ ] Baseline 0 possui aprovador.
-- [ ] Baseline 0 possui timestamp.
-- [ ] Baseline 0 possui motivo/observação.
-- [ ] PDF consegue identificar formalmente a Baseline 0.
+- [x] Baseline 0 possui aprovador.
+- [x] Baseline 0 possui timestamp.
+- [x] Baseline 0 possui motivo/observação.
+- [x] PDF consegue identificar formalmente a Baseline 0.
+
+**TDS-10 implementado — aguardando revisão funcional:** a aprovação inicial agora
+exige nome do cenário, aprovador e motivo/observação; o timestamp é automático.
+Também são persistidas as premissas Monte Carlo, capacidades/origens, janela,
+P80 e P(cumprir janela). Baselines antigos permanecem legíveis por campos
+opcionais com defaults compatíveis.
 
 ---
 
@@ -796,7 +802,7 @@ Depois disso avaliar:
 
 ## Sprint 2 — Governança
 
-- [ ] Formalizar Baseline 0.
+- [x] Formalizar Baseline 0.
 - [ ] Criar aba Governança.
 - [ ] Mover rebaseline para Governança.
 - [ ] Melhorar rastreabilidade de aprovação.
