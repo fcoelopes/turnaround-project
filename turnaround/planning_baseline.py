@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from .advanced_models import TurnaroundProject
 from .models import Link, Task, TurnaroundResult
 from .mrcpsp import AdvancedScheduleResult, AdvancedScheduledTask
+from .planning_scope_risk import PlanningScopeRisk
 
 
 class PlanningLinkSnapshot(BaseModel):
@@ -103,6 +104,7 @@ class ApprovedPlanningBaseline(BaseModel):
     priority_rule: str
     risk_p80_h: float | None = None
     probability_meet_deadline: float | None = None
+    scope_risks: list[PlanningScopeRisk] = Field(default_factory=list)
     approved_at: datetime
 
     def to_tasks(self) -> list[Task]:
@@ -125,6 +127,7 @@ def _core_payload(
     schedule: list[PlanningScheduleItemSnapshot],
     makespan_h: float,
     priority_rule: str,
+    scope_risks: list[PlanningScopeRisk],
 ) -> dict:
     return {
         "project_name": project_name,
@@ -148,6 +151,10 @@ def _core_payload(
         ],
         "makespan_h": float(makespan_h),
         "priority_rule": priority_rule,
+        "scope_risks": [
+            item.model_dump(mode="json")
+            for item in scope_risks
+        ],
     }
 
 
@@ -161,6 +168,7 @@ def build_planning_baseline(
     tasks: list[Task],
     result: TurnaroundResult,
     risk: dict | None = None,
+    scope_risks: list[PlanningScopeRisk] | None = None,
 ) -> ApprovedPlanningBaseline:
     task_snapshots = [
         PlanningTaskSnapshot.from_task(task)
@@ -185,6 +193,7 @@ def build_planning_baseline(
         str(resource): float(quantity)
         for resource, quantity in capacities.items()
     }
+    scope_risks = list(scope_risks or [])
     core = _core_payload(
         project_name=project_name,
         hours_per_day=hours_per_day,
@@ -194,6 +203,7 @@ def build_planning_baseline(
         schedule=schedule_snapshots,
         makespan_h=float(result.makespan_h),
         priority_rule=result.priority_rule,
+        scope_risks=scope_risks,
     )
     key = hashlib.sha256(
         json.dumps(
@@ -230,6 +240,7 @@ def build_planning_baseline(
             or risk.get("probability_meet_deadline") is None
             else float(risk["probability_meet_deadline"])
         ),
+        scope_risks=scope_risks,
         approved_at=datetime.now(timezone.utc),
     )
 
