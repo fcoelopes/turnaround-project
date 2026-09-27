@@ -180,10 +180,13 @@ O sistema mantém três referências distintas:
 - **Forecast atual** — resultado mais recente do replanejamento;
 - **Baseline vigente** — baseline original ou a última revisão formalmente promovida.
 
-Na guia **Escopo e Replanejamento**, o usuário pode usar **Promover este
-replanejamento a nova linha de base** quando uma mudança de escopo, janela ou
-compromisso tiver sido formalmente aprovada. A revisão exige nome, motivo,
-janela aprovada e confirmação explícita; aprovador e observações são opcionais.
+Na guia **Escopo e Replanejamento**, a aba **Governança** concentra a leitura
+formal de **Baseline original**, **Baseline vigente**, **Forecast atual**,
+**Δ vs original**, **Δ vs vigente**, janela e histórico de revisões. É também o
+único lugar onde o usuário pode usar **Promover este replanejamento a nova linha
+de base** quando uma mudança de escopo, janela ou compromisso tiver sido
+formalmente aprovada. A revisão exige nome, motivo, janela aprovada e confirmação
+explícita; aprovador e observações são opcionais.
 
 As revisões são imutáveis e numeradas de `Rev.1` a `Rev.10`, acompanhando os
 dez slots adicionais de baseline do Microsoft Project. Cada revisão guarda:
