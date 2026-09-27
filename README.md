@@ -70,6 +70,19 @@ A página **Planejamento** não é mais um fluxo isolado. Depois de analisar
 capacidade, makespan, CPM e risco, o planejador pode usar **Aprovar como baseline
 da execução**.
 
+Antes dessa aprovação, as capacidades recebem uma origem explícita:
+
+- `PROJECT`: capacidade importada explicitamente do XML e mantida no cenário;
+- `INFORMADA`: capacidade alterada/informada pelo planejador para o cenário;
+- `INFERIDA`: fallback derivado das demandas das atividades quando o arquivo não
+  trouxe uma capacidade explícita.
+
+Capacidade `INFERIDA` pode ser usada para explorar cenários, mas não é tratada
+como disponibilidade operacional confirmada. Se o cenário ainda contiver algum
+valor `INFERIDA`, a interface mostra um alerta e exige confirmação explícita
+antes de liberar a aprovação do baseline. A origem e os valores aprovados são
+persistidos junto com o snapshot e também aparecem no relatório gerencial.
+
 A aprovação grava no SQLite um snapshot imutável do cenário escolhido:
 
 - tarefas e precedências normalizadas;
