@@ -90,8 +90,11 @@ Trocar **Gerar plano otimizado** por **Gerar cenário factível** ou **Gerar mel
 
 ### Critérios de aceite
 
-- [ ] UI não usa “ótimo/otimizado” como resultado garantido.
-- [ ] Relatório metodológico continua informando uso de RCPSP heurístico.
+- [x] UI não usa “ótimo/otimizado” como resultado garantido.
+- [x] Relatório metodológico continua informando uso de RCPSP heurístico.
+
+
+**Implementado:** TDS-3.
 
 ## P0.3 Reduzir a sidebar do Planejamento
 
@@ -761,7 +764,7 @@ Depois disso avaliar:
 ## Sprint 1 — UX e linguagem
 
 - [ ] Renomear horas/dia.
-- [ ] Renomear “Gerar plano otimizado”.
+- [x] Renomear “Gerar plano otimizado”.
 - [ ] Reduzir sidebar.
 - [ ] Mover Monte Carlo para Risco.
 - [ ] Mover capacidades para Recursos.
