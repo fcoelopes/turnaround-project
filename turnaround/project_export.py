@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
 from .advanced_models import ExecutionState, TurnaroundProject, TurnaroundTask
+from .baseline_revision import BaselineRevision
 from .mrcpsp import AdvancedScheduledTask
 
 
@@ -75,6 +76,33 @@ def _uid_map(tasks: list[TurnaroundTask]) -> dict[str, int]:
     return mapping
 
 
+def _append_baseline(
+    task_node: ET.Element,
+    *,
+    number: int,
+    start_h: float,
+    finish_h: float,
+    duration_h: float,
+    calendar_origin: datetime,
+    cost: float = 0.0,
+) -> None:
+    baseline = ET.SubElement(task_node, _tag("Baseline"))
+    _text(baseline, "Number", int(number))
+    _text(
+        baseline,
+        "Start",
+        _format_dt(calendar_origin + timedelta(hours=float(start_h))),
+    )
+    _text(
+        baseline,
+        "Finish",
+        _format_dt(calendar_origin + timedelta(hours=float(finish_h))),
+    )
+    _text(baseline, "Duration", _iso_duration(duration_h))
+    _text(baseline, "DurationFormat", 7)
+    _text(baseline, "Cost", float(cost))
+
+
 def _calendar(root: ET.Element) -> None:
     calendars = ET.SubElement(root, _tag("Calendars"))
     calendar = ET.SubElement(calendars, _tag("Calendar"))
@@ -105,6 +133,8 @@ def build_project_xml(
     dynamic_scope_ids: set[str] | None = None,
     activation_reasons: dict[str, str] | None = None,
     snapshot_id: str | None = None,
+    original_baseline_items: list[AdvancedScheduledTask] | None = None,
+    baseline_revisions: list[BaselineRevision] | None = None,
 ) -> bytes:
     """Build a Microsoft Project XML (MSPDI) for the current materialized plan.
 
@@ -117,6 +147,21 @@ def build_project_xml(
 
     dynamic_scope_ids = set(dynamic_scope_ids or set())
     activation_reasons = dict(activation_reasons or {})
+    baseline_revisions = sorted(
+        list(baseline_revisions or []),
+        key=lambda item: item.revision_number,
+    )
+    original_baseline_by_id = {
+        str(item.task_id): item
+        for item in (original_baseline_items or [])
+    }
+    revision_schedule_by_number = {
+        revision.revision_number: {
+            item.task_id: item
+            for item in revision.schedule
+        }
+        for revision in baseline_revisions
+    }
     schedule_by_id = {
         str(item.task_id): item
         for item in schedule_items
@@ -272,7 +317,41 @@ def build_project_xml(
             notes.append(f"Ativação: {activation_reasons[task.id]}")
         if snapshot_id:
             notes.append(f"Snapshot: {snapshot_id}")
+        if baseline_revisions:
+            notes.append(
+                f"Baseline vigente: Rev.{baseline_revisions[-1].revision_number}"
+            )
+        else:
+            notes.append("Baseline vigente: Original")
         _text(task_node, "Notes", "\n".join(notes))
+
+        original_item = original_baseline_by_id.get(task.id)
+        if original_item is not None:
+            _append_baseline(
+                task_node,
+                number=0,
+                start_h=float(original_item.start),
+                finish_h=float(original_item.finish),
+                duration_h=float(original_item.duration),
+                calendar_origin=calendar_origin,
+                cost=float(original_item.cost),
+            )
+
+        for revision in baseline_revisions:
+            revision_item = revision_schedule_by_number[
+                revision.revision_number
+            ].get(task.id)
+            if revision_item is None:
+                continue
+            _append_baseline(
+                task_node,
+                number=revision.revision_number,
+                start_h=float(revision_item.start_h),
+                finish_h=float(revision_item.finish_h),
+                duration_h=float(revision_item.duration_h),
+                calendar_origin=calendar_origin,
+                cost=float(revision_item.cost),
+            )
 
         for precedence in effective_task.precedences:
             predecessor_id = precedence.predecessor_id
