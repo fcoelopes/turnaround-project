@@ -599,6 +599,12 @@ class ExecutionStore:
                     "deadline_h": revision.deadline_h,
                     "approved_by": revision.approved_by,
                     "reason": revision.reason,
+                    "previous_baseline_label": revision.previous_baseline_label,
+                    "previous_makespan_h": revision.previous_makespan_h,
+                    "previous_deadline_h": revision.previous_deadline_h,
+                    "original_makespan_h": revision.original_makespan_h,
+                    "delta_vs_previous_h": revision.delta_vs_previous_h,
+                    "delta_vs_original_h": revision.delta_vs_original_h,
                 },
             )
 
