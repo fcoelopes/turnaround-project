@@ -30,6 +30,7 @@ from .planning_scope_risk import (
 from .planning_baseline import (
     ApprovedPlanningBaseline,
     PlanningLinkSnapshot,
+    PlanningRiskAssumptions,
     PlanningScheduleItemSnapshot,
     PlanningTaskSnapshot,
     approved_schedule_matches_project,
@@ -63,6 +64,7 @@ __all__ = [
     "ScopeRuleRow",
     "Person",
     "PlanningLinkSnapshot",
+    "PlanningRiskAssumptions",
     "PlanningScheduleItemSnapshot",
     "PlanningScopeRisk",
     "PlanningTaskSnapshot",
