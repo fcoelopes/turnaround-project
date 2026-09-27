@@ -13,8 +13,10 @@ from turnaround import (
     Person,
     Precedence,
     WorkforceProfile,
+    build_baseline_revision,
     upgrade_database,
 )
+from turnaround.mrcpsp import AdvancedScheduledTask
 
 
 def _database_url(tmp_path) -> str:
@@ -37,6 +39,7 @@ def test_alembic_creates_execution_schema_and_sqlite_pragmas(tmp_path):
         "execution_events",
         "workforce_profiles",
         "planning_baselines",
+        "baseline_revisions",
     }.issubset(tables)
 
     with store.engine.connect() as connection:
@@ -265,7 +268,7 @@ def test_upgrade_repairs_unversioned_initial_schema_without_deleting_data(tmp_pa
             text("SELECT project_name FROM execution_sessions WHERE id='recover-me'")
         ).scalar_one()
 
-    assert revision == "0004_approved_planning_baselines"
+    assert revision == "0005_baseline_revisions"
     assert preserved == "Parada interrompida"
 
 
@@ -286,7 +289,7 @@ def test_concurrent_upgrade_database_calls_are_serialized(tmp_path):
             text("SELECT version_num FROM alembic_version")
         ).scalars().all()
 
-    assert revisions == ["0004_approved_planning_baselines"]
+    assert revisions == ["0005_baseline_revisions"]
 
 
 
@@ -318,3 +321,113 @@ def test_workforce_profile_survives_store_restart(tmp_path):
     restored = second.load_workforce_profile()
 
     assert restored == profile
+
+
+def test_formal_baseline_revision_survives_store_restart(tmp_path):
+    url = _database_url(tmp_path)
+    upgrade_database(url)
+
+    first = ExecutionStore(url)
+    session = first.get_or_create_active_session(
+        project_key="baseline-revision-project",
+        project_name="Parada com rebaseline",
+    )
+
+    revision = build_baseline_revision(
+        session_id=session.id,
+        project_key=session.project_key,
+        revision_number=1,
+        name="Rev.1 · pós-inspeção",
+        reason="Ampliação formal do escopo após inspeção",
+        approved_by="Coordenação da parada",
+        notes="Janela revisada",
+        snapshot_id="snapshot-001",
+        current_time_h=12.0,
+        makespan_h=42.0,
+        deadline_h=48.0,
+        total_cost=1200.0,
+        schedule_items=[
+            AdvancedScheduledTask(
+                task_id="A",
+                task_name="Atividade A",
+                mode_name="base",
+                start=0.0,
+                finish=8.0,
+                duration=8.0,
+                resources={"Mecânica": 2.0},
+                cost=100.0,
+            ),
+            AdvancedScheduledTask(
+                task_id="DS-001",
+                task_name="Reparo descoberto",
+                mode_name="campo",
+                start=12.0,
+                finish=18.0,
+                duration=6.0,
+                resources={"Soldagem": 1.0},
+                cost=1100.0,
+            ),
+        ],
+        wbs_by_id={"A": "1.1", "DS-001": "DS.1"},
+    )
+
+    first.save_baseline_revision(revision)
+
+    second = ExecutionStore(url)
+    restored = second.list_baseline_revisions(session.id)
+    latest = second.latest_baseline_revision(session.id)
+    events = second.list_events(session.id)
+
+    assert restored == [revision]
+    assert latest == revision
+    assert latest.reference_start_times() == {
+        "A": 0.0,
+        "DS-001": 12.0,
+    }
+    assert second.next_baseline_revision_number(session.id) == 2
+    assert any(
+        event.event_type == "BASELINE_REVISION_APPROVED"
+        and event.payload["revision_number"] == 1
+        for event in events
+    )
+
+
+def test_formal_baseline_revision_is_immutable_per_number(tmp_path):
+    url = _database_url(tmp_path)
+    upgrade_database(url)
+    store = ExecutionStore(url)
+    session = store.get_or_create_active_session(
+        project_key="immutable-baseline",
+        project_name="Parada",
+    )
+
+    revision = build_baseline_revision(
+        session_id=session.id,
+        project_key=session.project_key,
+        revision_number=1,
+        name="Rev.1",
+        reason="Mudança aprovada",
+        snapshot_id="snap",
+        current_time_h=5.0,
+        makespan_h=20.0,
+        deadline_h=24.0,
+        total_cost=0.0,
+        schedule_items=[
+            AdvancedScheduledTask(
+                task_id="A",
+                task_name="A",
+                mode_name="base",
+                start=0.0,
+                finish=20.0,
+                duration=20.0,
+                resources={},
+                cost=0.0,
+            )
+        ],
+    )
+    store.save_baseline_revision(revision)
+
+    import pytest
+
+    with pytest.raises(ValueError, match="já existe"):
+        store.save_baseline_revision(revision)
