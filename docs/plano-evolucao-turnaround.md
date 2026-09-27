@@ -568,7 +568,7 @@ Baseline original, baseline vigente, forecast, deltas, janela, histórico de
 revisões e a promoção para Rev.n ficam reunidos nesse contexto. A aba Operação
 mantém impacto operacional e deixa de oferecer o controle formal de rebaseline.
 
-**TDS-12 implementado — aguardando revisão funcional:** cada nova Rev.n passa a
+**TDS-12 implementado e aprovado:** cada nova Rev.n passa a
 registrar qual baseline estava vigente antes da promoção, makespan/janela
 anteriores, Δ vs anterior, Δ vs Baseline 0, aprovador, snapshot e timestamp.
 O aprovador passa a ser obrigatório para novas revisões. O histórico e o PDF
@@ -583,6 +583,11 @@ expõem a cadeia formal de aprovações; revisões antigas continuam compatívei
 Substituir aba Manual por **? Ajuda** no header ou expander contextual.
 
 Objetivo: evitar consumir uma aba operacional com documentação.
+
+**TDS-13 implementado — aguardando revisão funcional:** a aba **Manual** foi
+removida da navegação principal. A ajuda essencial foi distribuída em expanders
+contextuais de **Operação**, **Configuração**, **Pessoas** e **Governança**. O
+manual técnico completo permanece em `docs/manual-escopo-condicional.md`.
 
 ---
 
@@ -803,12 +808,12 @@ Depois disso avaliar:
 
 ## Sprint 1 — UX e linguagem
 
-- [ ] Renomear horas/dia.
+- [x] Renomear horas/dia.
 - [x] Renomear “Gerar plano otimizado”.
-- [ ] Reduzir sidebar.
+- [x] Reduzir sidebar.
 - [x] Mover Monte Carlo para Risco.
-- [ ] Mover capacidades para Recursos.
-- [ ] Adicionar origem da capacidade.
+- [x] Mover capacidades para Recursos.
+- [x] Adicionar origem da capacidade.
 - [x] Implementar status geral baseado em risco.
 
 ## Sprint 2 — Governança
@@ -817,7 +822,7 @@ Depois disso avaliar:
 - [x] Criar aba Governança.
 - [x] Mover rebaseline para Governança.
 - [x] Melhorar rastreabilidade de aprovação.
-- [ ] Remover Manual da navegação principal.
+- [x] Remover Manual da navegação principal.
 
 ## Sprint 3 — Reorganização da execução
 
