@@ -259,6 +259,7 @@ def test_project_xml_export_writes_original_and_formal_baselines():
         revision_number=1,
         name="Rev.1",
         reason="Nova janela aprovada",
+        approved_by="Planejamento",
         snapshot_id="snap-rev1",
         current_time_h=2,
         makespan_h=6,
