@@ -848,9 +848,15 @@ def build_base_management_pdf(
             _p("Gargalos de recurso", s["h2"]),
             _dataframe_table(
                 resource_df,
-                ["Recurso", "Capacidade", "Pico", "Utilizacao_%"],
+                [
+                    "Recurso",
+                    "Origem",
+                    "Capacidade cenário",
+                    "Pico",
+                    "Utilizacao_%",
+                ],
                 max_rows=8,
-                widths=[65 * mm, 30 * mm, 28 * mm, 38 * mm],
+                widths=[48 * mm, 30 * mm, 34 * mm, 24 * mm, 34 * mm],
             ),
         ]
     )
