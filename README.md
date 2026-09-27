@@ -10,7 +10,7 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 4. Gera cronograma factível por recursos com um **RCPSP heurístico** (Serial Schedule Generation Scheme).
 5. Testa quatro regras de prioridade e escolhe o menor atraso/makespan.
 6. Mostra Gantt, gargalos, utilização dos recursos e penalidade de capacidade.
-7. Faz Monte Carlo triangular das durações e calcula P50/P80/P90 e probabilidade de cumprir a janela.
+7. Faz Monte Carlo combinado de **incerteza de duração + ampliação probabilística de escopo**, calculando P50/P80/P90, probabilidade de cumprir a janela e impacto incremental do escopo potencial.
 8. Exporta os dados técnicos para Excel.
 9. Gera um **relatório gerencial em PDF** com KPIs, gargalos, risco e cronograma.
 10. Permite **aprovar o cenário RCPSP como baseline de execução** e continuar na página avançada sem novo upload.
@@ -24,6 +24,45 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 A página principal mantém o MVP original: CPM + RCPSP heurístico + risco de prazo.
 É apropriada quando o escopo já é conhecido e cada atividade possui um único modo
 de execução.
+
+### Risco combinado no Planejamento
+
+A guia **Planejamento** distingue o escopo-base das atividades que podem entrar
+durante a parada. Atividades de escopo potencial podem ser associadas a:
+
+- atividade gatilho;
+- nome do evento;
+- probabilidade do evento no planejamento.
+
+Em cada iteração do Monte Carlo, o sistema:
+
+1. sorteia a ocorrência dos eventos de escopo;
+2. materializa somente as atividades potenciais cujos eventos ocorreram;
+3. sorteia as durações das atividades ativas por distribuição triangular;
+4. executa novamente o RCPSP com as mesmas capacidades;
+5. registra makespan, cumprimento da janela e impacto incremental do novo escopo.
+
+Eventos iguais (mesmo gatilho + nome) são sorteados uma única vez, mesmo quando
+ativam mais de uma atividade, evitando tratar uma mesma ocorrência física como
+eventos independentes.
+
+O sistema também executa um cenário pareado de **duração apenas** usando os
+mesmos fatores aleatórios. Isso permite separar:
+
+~~~text
+P80 combinado
+= incerteza de duração
++ risco probabilístico de ampliação do escopo
+~~~
+
+e reportar o impacto médio/P80 do escopo, além da frequência simulada de cada
+evento.
+
+CSV/Excel podem pré-cadastrar candidatos usando colunas opcionais como
+`Tipo_escopo`, `Gatilho_ID`, `Evento_sugerido` e `Probabilidade_%`.
+A probabilidade pertence ao planejamento; depois que o baseline é aprovado, a
+mesma relação gatilho/evento segue para **Escopo e Replanejamento**, onde a
+ativação passa a depender do evento realmente observado, não da probabilidade.
 
 ### Ponte Planejamento → Execução
 
