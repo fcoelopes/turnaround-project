@@ -26,6 +26,7 @@ from turnaround import (
 )
 from turnaround.io import load_schedule
 from turnaround.rcpsp import infer_capacities, optimize_turnaround
+from turnaround.planning_status import classify_planning_status
 from turnaround.report import build_base_management_pdf
 from turnaround.resource_governance import (
     inferred_capacity_resources,
@@ -966,6 +967,17 @@ with config_risk:
                 title="Exposição ao prazo.",
             )
 
+executive_status = classify_planning_status(
+    makespan_h=float(best.makespan_h),
+    deadline_h=None if deadline_h is None else float(deadline_h),
+    p80_h=None if not risk else float(risk["p80_h"]),
+    probability_meet_deadline=(
+        None
+        if not risk or risk.get("probability_meet_deadline") is None
+        else float(risk["probability_meet_deadline"])
+    ),
+)
+
 cand_df = pd.DataFrame(
     [
         {
@@ -1024,30 +1036,34 @@ with tab_exec:
         ),
     )
 
-    if deadline_h is None:
-        status(
-            "Defina uma janela-alvo para transformar a duração calculada em aderência ao prazo.",
-            tone="warn",
-            title="Prazo ainda não avaliado.",
-        )
-    elif best.makespan_h <= deadline_h:
-        status(
-            (
-                f"O plano determinístico utiliza {best.makespan_h:.1f} h "
-                f"de {deadline_h:.1f} h disponíveis."
-            ),
-            tone="ok",
-            title="Cronograma dentro da janela.",
-        )
-    else:
-        status(
-            (
-                f"O plano excede a janela em "
-                f"{best.makespan_h - deadline_h:.1f} h."
-            ),
-            tone="danger",
-            title="Ação gerencial necessária.",
-        )
+    st.markdown("#### Status executivo")
+    status_cols = st.columns(4)
+    status_cols[0].metric(
+        "Determinístico",
+        executive_status.deterministic,
+        help="Indica se o cronograma-base cabe na janela-alvo.",
+    )
+    status_cols[1].metric(
+        "P80",
+        executive_status.p80,
+        help="Indica se o percentil P80 do prazo cabe na janela-alvo.",
+    )
+    status_cols[2].metric(
+        "P(janela)",
+        executive_status.probability,
+        help="Compara a probabilidade simulada de cumprir a janela com o limiar de 80%.",
+    )
+    status_cols[3].metric(
+        "Risco",
+        executive_status.risk,
+        help="CONTROLADO somente quando P80 cabe na janela e P(janela) ≥ 80%.",
+    )
+
+    status(
+        executive_status.detail,
+        tone=executive_status.tone,
+        title=f"Status geral: {executive_status.overall}.",
+    )
 
     if scope_risks:
         st.caption(
