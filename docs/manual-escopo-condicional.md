@@ -2,6 +2,10 @@
 
 Este manual descreve o uso da página **Escopo e Replanejamento** do Turnaround Decision Support.
 
+> A interface não mantém mais uma aba **Manual**. A ajuda curta aparece dentro de
+> **Operação**, **Configuração**, **Pessoas** e **Governança**; este documento
+> permanece como referência técnica completa.
+
 A funcionalidade foi criada para tratar um problema típico de paradas de manutenção: o planejamento começa com um escopo conhecido, mas novas atividades podem surgir somente depois da abertura e inspeção do equipamento.
 
 ---
