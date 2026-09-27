@@ -7,6 +7,7 @@ from sqlalchemy import inspect, text
 from turnaround.persistence import Base, create_sqlite_engine
 
 from turnaround import (
+    BaselineRevision,
     DiscoveredTask,
     ExecutionMode,
     ExecutionStore,
@@ -483,3 +484,57 @@ def test_new_revision_requires_approver_for_governance(tmp_path):
                 )
             ],
         )
+
+
+
+def test_legacy_revision_without_audit_context_remains_readable(tmp_path):
+    url = _database_url(tmp_path)
+    upgrade_database(url)
+    store = ExecutionStore(url)
+    session = store.get_or_create_active_session(
+        project_key="legacy-revision",
+        project_name="Parada legado",
+    )
+
+    revision = build_baseline_revision(
+        session_id=session.id,
+        project_key=session.project_key,
+        revision_number=1,
+        name="Rev.1",
+        reason="Mudança aprovada",
+        approved_by="Coordenação",
+        snapshot_id="legacy-snap",
+        current_time_h=2.0,
+        makespan_h=10.0,
+        deadline_h=12.0,
+        total_cost=0.0,
+        schedule_items=[
+            AdvancedScheduledTask(
+                task_id="A",
+                task_name="A",
+                mode_name="base",
+                start=0.0,
+                finish=10.0,
+                duration=10.0,
+                resources={},
+                cost=0.0,
+            )
+        ],
+    )
+    payload = revision.model_dump(mode="json")
+    for field in (
+        "previous_baseline_label",
+        "previous_makespan_h",
+        "previous_deadline_h",
+        "original_makespan_h",
+        "delta_vs_previous_h",
+        "delta_vs_original_h",
+    ):
+        payload.pop(field, None)
+
+    restored = BaselineRevision.model_validate(payload)
+
+    assert restored.previous_baseline_label is None
+    assert restored.previous_makespan_h is None
+    assert restored.delta_vs_previous_h is None
+    assert restored.delta_vs_original_h is None
