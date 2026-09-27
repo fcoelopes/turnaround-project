@@ -387,6 +387,19 @@ Nesta primeira versão a habilidade é binária (possui/não possui). Níveis de
 proficiência, produtividade, aprendizagem e calendários individuais são
 extensões futuras e não são inferidos pelo scheduler.
 
+### Ajuda contextual na página avançada
+
+A página **Escopo e Replanejamento** não possui mais uma aba exclusiva de manual.
+A orientação essencial aparece no próprio contexto:
+
+- **Operação**: fluxo de achados, eventos, decisões humanas e DS-*;
+- **Configuração**: `conditional`, XOR/OR/AND, `human` x `event` e rotas;
+- **Pessoas**: roster, habilidades e restrição multi-skill;
+- **Governança**: Baseline 0, baseline vigente, forecast e rebaseline.
+
+O manual técnico completo continua em
+`docs/manual-escopo-condicional.md` para consulta detalhada.
+
 ### Dynamic scope discovery
 
 O framework diferencia dois tipos de mudança de escopo durante a parada:
