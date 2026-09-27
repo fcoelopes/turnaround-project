@@ -91,10 +91,20 @@ class PlanningScheduleItemSnapshot(BaseModel):
     wbs: str | None = None
 
 
+class PlanningRiskAssumptions(BaseModel):
+    simulations: int = Field(ge=1)
+    optimistic_pct: float
+    most_likely_pct: float
+    pessimistic_pct: float
+
+
 class ApprovedPlanningBaseline(BaseModel):
     key: str = Field(min_length=64, max_length=64)
     project_name: str
     source_name: str
+    scenario_name: str | None = None
+    approved_by: str | None = None
+    approval_reason: str | None = None
     hours_per_day: int = Field(ge=1, le=24)
     deadline_h: float | None = Field(default=None, gt=0)
     capacities: dict[str, float]
@@ -106,6 +116,7 @@ class ApprovedPlanningBaseline(BaseModel):
     priority_rule: str
     risk_p80_h: float | None = None
     probability_meet_deadline: float | None = None
+    risk_assumptions: PlanningRiskAssumptions | None = None
     scope_risks: list[PlanningScopeRisk] = Field(default_factory=list)
     approved_at: datetime
 
@@ -130,6 +141,7 @@ def _core_payload(
     schedule: list[PlanningScheduleItemSnapshot],
     makespan_h: float,
     priority_rule: str,
+    risk_assumptions: PlanningRiskAssumptions | None,
     scope_risks: list[PlanningScopeRisk],
 ) -> dict:
     return {
@@ -158,6 +170,11 @@ def _core_payload(
         ],
         "makespan_h": float(makespan_h),
         "priority_rule": priority_rule,
+        "risk_assumptions": (
+            None
+            if risk_assumptions is None
+            else risk_assumptions.model_dump(mode="json")
+        ),
         "scope_risks": [
             item.model_dump(mode="json")
             for item in scope_risks
@@ -177,7 +194,11 @@ def build_planning_baseline(
     tasks: list[Task],
     result: TurnaroundResult,
     risk: dict | None = None,
+    risk_assumptions: PlanningRiskAssumptions | dict | None = None,
     scope_risks: list[PlanningScopeRisk] | None = None,
+    scenario_name: str | None = None,
+    approved_by: str | None = None,
+    approval_reason: str | None = None,
 ) -> ApprovedPlanningBaseline:
     task_snapshots = [
         PlanningTaskSnapshot.from_task(task)
@@ -203,6 +224,11 @@ def build_planning_baseline(
         for resource, quantity in capacities.items()
     }
     scope_risks = list(scope_risks or [])
+    normalized_risk_assumptions = (
+        None
+        if risk_assumptions is None
+        else PlanningRiskAssumptions.model_validate(risk_assumptions)
+    )
     normalized_capacity_origins = {
         str(resource): str(origin)
         for resource, origin in (capacity_origins or {}).items()
@@ -217,6 +243,7 @@ def build_planning_baseline(
         schedule=schedule_snapshots,
         makespan_h=float(result.makespan_h),
         priority_rule=result.priority_rule,
+        risk_assumptions=normalized_risk_assumptions,
         scope_risks=scope_risks,
     )
     key = hashlib.sha256(
@@ -232,6 +259,9 @@ def build_planning_baseline(
         key=key,
         project_name=project_name,
         source_name=source_name,
+        scenario_name=(scenario_name.strip() if scenario_name else None),
+        approved_by=(approved_by.strip() if approved_by else None),
+        approval_reason=(approval_reason.strip() if approval_reason else None),
         hours_per_day=int(hours_per_day),
         deadline_h=(
             None
@@ -256,6 +286,7 @@ def build_planning_baseline(
             or risk.get("probability_meet_deadline") is None
             else float(risk["probability_meet_deadline"])
         ),
+        risk_assumptions=normalized_risk_assumptions,
         scope_risks=scope_risks,
         approved_at=datetime.now(timezone.utc),
     )
