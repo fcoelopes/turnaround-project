@@ -315,7 +315,11 @@ with config_resources:
 
 with config_risk:
     st.markdown("#### Incerteza de duração")
-    risk_control_cols = st.columns(3)
+    st.caption(
+        "Configure a distribuição triangular usada em cada iteração do Monte Carlo. "
+        "Os percentuais são variações sobre a duração-base."
+    )
+    risk_control_cols = st.columns(4)
     with risk_control_cols[0]:
         simulations = st.slider(
             "Simulações Monte Carlo",
@@ -327,26 +331,36 @@ with config_risk:
         )
     with risk_control_cols[1]:
         optimistic_pct = st.slider(
-            "Cenário otimista (%)",
-            -30,
+            "Otimista (%)",
+            -50,
             0,
             -10,
             5,
             key=f"optimistic_{source_key}",
         )
     with risk_control_cols[2]:
-        pessimistic_pct = st.slider(
-            "Cenário pessimista (%)",
+        most_likely_pct = st.slider(
+            "Mais provável (%)",
+            int(optimistic_pct),
+            50,
             0,
+            5,
+            key=f"most_likely_{source_key}",
+        )
+    with risk_control_cols[3]:
+        pessimistic_pct = st.slider(
+            "Pessimista (%)",
+            int(max(0, most_likely_pct)),
             100,
-            30,
+            max(30, int(max(0, most_likely_pct))),
             5,
             key=f"pessimistic_{source_key}",
         )
 
     st.caption(
-        "A duração mais provável permanece em 100% da duração-base; "
-        "os controles definem os limites da distribuição triangular."
+        f"Triangular: {100 + optimistic_pct:.0f}% / "
+        f"{100 + most_likely_pct:.0f}% / {100 + pessimistic_pct:.0f}% "
+        "da duração-base."
     )
     st.divider()
     st.markdown("#### Ampliação probabilística de escopo")
@@ -511,6 +525,7 @@ planning_signature = hashlib.sha256(
             "capacity_origins": capacity_origins,
             "simulations": int(simulations),
             "optimistic_pct": int(optimistic_pct),
+            "most_likely_pct": int(most_likely_pct),
             "pessimistic_pct": int(pessimistic_pct),
             "scope_risks": [
                 item.model_dump(mode="json")
@@ -564,7 +579,7 @@ if run:
                 deadline_h=deadline_h,
                 n=int(simulations),
                 optimistic_factor=1 + optimistic_pct / 100,
-                most_likely_factor=1.0,
+                most_likely_factor=1 + most_likely_pct / 100,
                 pessimistic_factor=1 + pessimistic_pct / 100,
                 scope_risks=scope_risks,
             )
@@ -593,9 +608,10 @@ comparison = cached_result["comparison"]
 risk = cached_result["risk"]
 risk_error = cached_result.get("risk_error")
 if risk_error:
-    st.warning(
-        f"A simulação de risco não pôde ser concluída: {risk_error}"
-    )
+    with config_risk:
+        st.warning(
+            f"A simulação de risco não pôde ser concluída: {risk_error}"
+        )
 
 schedule_df = schedule_dataframe(best, int(hours_per_day))
 crit_df = criticality_dataframe(base_tasks)
@@ -797,6 +813,150 @@ with config_resources:
                 title="Recurso mais pressionado.",
             )
 
+with config_risk:
+    st.divider()
+    st.markdown("#### Resultado da simulação")
+
+    if not risk:
+        st.info("A simulação de risco não está disponível para este cenário.")
+    else:
+        risk_cols = st.columns(5)
+        risk_cols[0].metric(
+            "Média",
+            f"{risk['mean_h'] / hours_per_day:.2f} d",
+            help="Média das durações finais observadas nas simulações.",
+        )
+        risk_cols[1].metric(
+            "P50",
+            f"{risk['p50_h'] / hours_per_day:.2f} d",
+            help="50% das simulações terminaram até este prazo.",
+        )
+        risk_cols[2].metric(
+            "P80",
+            f"{risk['p80_h'] / hours_per_day:.2f} d",
+            help="80% das simulações terminaram até este prazo.",
+        )
+        risk_cols[3].metric(
+            "P90",
+            f"{risk['p90_h'] / hours_per_day:.2f} d",
+            help="90% das simulações terminaram até este prazo.",
+        )
+        risk_cols[4].metric(
+            "P(cumprir janela)",
+            (
+                "—"
+                if risk.get("probability_meet_deadline") is None
+                else f"{risk['probability_meet_deadline'] * 100:.1f}%"
+            ),
+            help=(
+                "Percentual de simulações cujo makespan ficou dentro "
+                "da janela configurada."
+            ),
+        )
+
+        hist_df = pd.DataFrame(
+            {
+                "Makespan_dias": [
+                    value / hours_per_day
+                    for value in risk["samples"]
+                ]
+            }
+        )
+        fig3 = px.histogram(
+            hist_df,
+            x="Makespan_dias",
+            nbins=30,
+            title="Distribuição simulada da duração da parada",
+        )
+        fig3.update_layout(
+            xaxis_title="Duração da parada (dias)",
+            yaxis_title="Frequência",
+            margin=dict(l=15, r=15, t=55, b=15),
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+
+        if risk.get("scope_enabled"):
+            st.markdown("#### Decomposição duração × escopo")
+            decomposition_cols = st.columns(4)
+            decomposition_cols[0].metric(
+                "P80 somente duração",
+                f"{risk['duration_only_p80_h'] / hours_per_day:.2f} d",
+            )
+            decomposition_cols[1].metric(
+                "P80 combinado",
+                f"{risk['p80_h'] / hours_per_day:.2f} d",
+            )
+            decomposition_cols[2].metric(
+                "Impacto médio do escopo",
+                f"{risk['mean_scope_impact_h']:.1f} h",
+            )
+            decomposition_cols[3].metric(
+                "P80 impacto do escopo",
+                f"{risk['p80_scope_impact_h']:.1f} h",
+            )
+            st.caption(
+                f"Escopo adicional apareceu em "
+                f"{risk['probability_any_scope_simulated'] * 100:.1f}% das simulações."
+            )
+
+            scope_event_rows = []
+            for event in risk.get("scope_events", []):
+                scope_event_rows.append(
+                    {
+                        "Gatilho": task_label_by_id.get(
+                            event["trigger_task_id"],
+                            event["trigger_task_id"],
+                        ),
+                        "Evento": event["event_name"],
+                        "Atividades ativadas": ", ".join(
+                            task_label_by_id.get(task_id, task_id)
+                            for task_id in event["task_ids"]
+                        ),
+                        "Probabilidade": (
+                            f"{event['probability_configured'] * 100:.1f}%"
+                        ),
+                        "Freq. simulada": (
+                            f"{event['frequency_simulated'] * 100:.1f}%"
+                        ),
+                        "Impacto marginal médio (h)": (
+                            None
+                            if event["marginal_impact_h"] is None
+                            else round(event["marginal_impact_h"], 1)
+                        ),
+                    }
+                )
+
+            if scope_event_rows:
+                scope_driver_df = pd.DataFrame(scope_event_rows).sort_values(
+                    "Impacto marginal médio (h)",
+                    ascending=False,
+                    na_position="last",
+                )
+                st.markdown("##### Direcionadores de risco de escopo")
+                st.caption(
+                    "Ordenação pelo impacto marginal médio observado nas simulações; "
+                    "serve como apoio à análise, não como decisão técnica automática."
+                )
+                st.dataframe(
+                    scope_driver_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+        if deadline_h and risk.get("probability_meet_deadline") is not None:
+            probability = risk["probability_meet_deadline"]
+            tone = "ok" if probability >= 0.8 else "warn"
+            status(
+                (
+                    f"A probabilidade simulada de cumprir a janela é "
+                    f"{probability * 100:.1f}%."
+                ),
+                tone=tone,
+                title="Exposição ao prazo.",
+            )
+
 cand_df = pd.DataFrame(
     [
         {
@@ -818,11 +978,10 @@ section(
     "Prazo, restrição de recursos e risco primeiro; detalhes técnicos ficam recolhidos.",
 )
 
-tab_exec, tab_schedule, tab_risk, tab_export = st.tabs(
+tab_exec, tab_schedule, tab_export = st.tabs(
     [
         "Decisão",
         "Cronograma",
-        "Risco",
         "Relatório",
     ]
 )
@@ -1091,126 +1250,6 @@ with tab_schedule:
             use_container_width=True,
             hide_index=True,
         )
-
-with tab_risk:
-    if not risk:
-        st.info("A simulação de risco não está disponível para este cenário.")
-    else:
-        risk_cols = st.columns(5)
-        risk_cols[0].metric(
-            "Média",
-            f"{risk['mean_h'] / hours_per_day:.2f} d",
-            help="Média das durações finais observadas nas simulações.",
-        )
-        risk_cols[1].metric(
-            "P50",
-            f"{risk['p50_h'] / hours_per_day:.2f} d",
-            help="50% das simulações terminaram até este prazo.",
-        )
-        risk_cols[2].metric(
-            "P80",
-            f"{risk['p80_h'] / hours_per_day:.2f} d",
-            help="80% das simulações terminaram até este prazo.",
-        )
-        risk_cols[3].metric(
-            "P90",
-            f"{risk['p90_h'] / hours_per_day:.2f} d",
-            help="90% das simulações terminaram até este prazo.",
-        )
-        risk_cols[4].metric(
-            "P(cumprir janela)",
-            (
-                "—"
-                if risk.get("probability_meet_deadline") is None
-                else f"{risk['probability_meet_deadline'] * 100:.1f}%"
-            ),
-            help=(
-                "Percentual de simulações cujo makespan ficou dentro "
-                "da janela configurada."
-            ),
-        )
-
-        hist_df = pd.DataFrame(
-            {
-                "Makespan_dias": [
-                    value / hours_per_day
-                    for value in risk["samples"]
-                ]
-            }
-        )
-        fig3 = px.histogram(
-            hist_df,
-            x="Makespan_dias",
-            nbins=30,
-            title="Distribuição simulada da duração da parada",
-        )
-        fig3.update_layout(
-            xaxis_title="Duração da parada (dias)",
-            yaxis_title="Frequência",
-            margin=dict(l=15, r=15, t=55, b=15),
-            paper_bgcolor="white",
-            plot_bgcolor="white",
-        )
-        st.plotly_chart(fig3, use_container_width=True)
-
-        if risk.get("scope_enabled"):
-            st.markdown("#### Exposição à ampliação de escopo")
-            st.caption(
-                (
-                    f"Escopo adicional apareceu em "
-                    f"{risk['probability_any_scope_simulated'] * 100:.1f}% das simulações. "
-                    f"Impacto médio incremental: {risk['mean_scope_impact_h']:.1f} h · "
-                    f"P80 do impacto de escopo: {risk['p80_scope_impact_h']:.1f} h. "
-                    f"P80 apenas com incerteza de duração: "
-                    f"{risk['duration_only_p80_h'] / hours_per_day:.2f} d → "
-                    f"P80 combinado: {risk['p80_h'] / hours_per_day:.2f} d."
-                )
-            )
-
-            scope_event_rows = []
-            for event in risk.get("scope_events", []):
-                scope_event_rows.append(
-                    {
-                        "Gatilho": task_label_by_id.get(
-                            event["trigger_task_id"],
-                            event["trigger_task_id"],
-                        ),
-                        "Evento": event["event_name"],
-                        "Atividades ativadas": ", ".join(
-                            task_label_by_id.get(task_id, task_id)
-                            for task_id in event["task_ids"]
-                        ),
-                        "Prob. configurada": (
-                            f"{event['probability_configured'] * 100:.1f}%"
-                        ),
-                        "Freq. simulada": (
-                            f"{event['frequency_simulated'] * 100:.1f}%"
-                        ),
-                        "Impacto marginal médio (h)": (
-                            None
-                            if event["marginal_impact_h"] is None
-                            else round(event["marginal_impact_h"], 1)
-                        ),
-                    }
-                )
-            if scope_event_rows:
-                st.dataframe(
-                    pd.DataFrame(scope_event_rows),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-        if deadline_h and risk.get("probability_meet_deadline") is not None:
-            probability = risk["probability_meet_deadline"]
-            tone = "ok" if probability >= 0.8 else "warn"
-            status(
-                (
-                    f"A probabilidade simulada de cumprir a janela é "
-                    f"{probability * 100:.1f}%."
-                ),
-                tone=tone,
-                title="Exposição ao prazo.",
-            )
 
 with tab_export:
     st.markdown("#### Relatório gerencial")
