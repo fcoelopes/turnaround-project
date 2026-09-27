@@ -75,6 +75,12 @@ class BaselineRevision(BaseModel):
     approved_by: str | None = None
     notes: str | None = None
     snapshot_id: str
+    previous_baseline_label: str | None = None
+    previous_makespan_h: float | None = Field(default=None, gt=0)
+    previous_deadline_h: float | None = Field(default=None, gt=0)
+    original_makespan_h: float | None = Field(default=None, gt=0)
+    delta_vs_previous_h: float | None = None
+    delta_vs_original_h: float | None = None
     current_time_h: float = Field(ge=0)
     makespan_h: float = Field(gt=0)
     deadline_h: float | None = Field(default=None, gt=0)
@@ -115,6 +121,10 @@ def build_baseline_revision(
     wbs_by_id: dict[str, str | None] | None = None,
     approved_by: str | None = None,
     notes: str | None = None,
+    previous_baseline_label: str | None = None,
+    previous_makespan_h: float | None = None,
+    previous_deadline_h: float | None = None,
+    original_makespan_h: float | None = None,
 ) -> BaselineRevision:
     name = name.strip()
     reason = reason.strip()
@@ -122,6 +132,21 @@ def build_baseline_revision(
         raise ValueError("A revisão exige um nome.")
     if not reason:
         raise ValueError("A revisão exige um motivo de aprovação.")
+    approved_by_value = approved_by.strip() if approved_by and approved_by.strip() else None
+    if not approved_by_value:
+        raise ValueError("A revisão exige a identificação do aprovador.")
+
+    normalized_previous_makespan = (
+        None
+        if previous_makespan_h is None
+        else float(previous_makespan_h)
+    )
+    normalized_original_makespan = (
+        None
+        if original_makespan_h is None
+        else float(original_makespan_h)
+    )
+    normalized_makespan = float(makespan_h)
 
     wbs_by_id = wbs_by_id or {}
     return BaselineRevision(
@@ -130,11 +155,33 @@ def build_baseline_revision(
         revision_number=int(revision_number),
         name=name,
         reason=reason,
-        approved_by=approved_by.strip() if approved_by and approved_by.strip() else None,
+        approved_by=approved_by_value,
         notes=notes.strip() if notes and notes.strip() else None,
         snapshot_id=snapshot_id,
+        previous_baseline_label=(
+            previous_baseline_label.strip()
+            if previous_baseline_label and previous_baseline_label.strip()
+            else None
+        ),
+        previous_makespan_h=normalized_previous_makespan,
+        previous_deadline_h=(
+            None
+            if previous_deadline_h is None
+            else float(previous_deadline_h)
+        ),
+        original_makespan_h=normalized_original_makespan,
+        delta_vs_previous_h=(
+            None
+            if normalized_previous_makespan is None
+            else normalized_makespan - normalized_previous_makespan
+        ),
+        delta_vs_original_h=(
+            None
+            if normalized_original_makespan is None
+            else normalized_makespan - normalized_original_makespan
+        ),
         current_time_h=float(current_time_h),
-        makespan_h=float(makespan_h),
+        makespan_h=normalized_makespan,
         deadline_h=None if deadline_h is None else float(deadline_h),
         total_cost=float(total_cost),
         schedule=[
