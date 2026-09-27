@@ -88,12 +88,34 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
             }
         ]
     )
+    baseline_history_df = pd.DataFrame(
+        [
+            {
+                "Linha de base": "Original",
+                "Makespan (h)": 17.0,
+                "Janela (h)": 24.0,
+                "Δ vs original (h)": 0.0,
+                "Aprovada em": "26/09/2026 18:00",
+                "Motivo": "Plano original",
+            },
+            {
+                "Linha de base": "Rev.1",
+                "Makespan (h)": 23.0,
+                "Janela (h)": 26.0,
+                "Δ vs original (h)": 6.0,
+                "Aprovada em": "26/09/2026 19:00",
+                "Motivo": "Novo escopo aprovado",
+            },
+        ]
+    )
 
     result = report.build_conditional_management_pdf(
         project_name="Turnaround teste",
         baseline_makespan=17.0,
         current_makespan=27.0,
         deadline=24.0,
+        governing_baseline_makespan=23.0,
+        governing_baseline_label="Rev.1",
         current_time=7.0,
         total_cost=1000.0,
         new_scope_count=1,
@@ -112,6 +134,7 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
         resource_scenario_df=resource_df,
         execution_state_df=execution_df,
         dynamic_scope_df=dynamic_df,
+        baseline_revisions_df=baseline_history_df,
     )
 
     assert result == b"snapshot-pdf"
@@ -135,11 +158,13 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
     ]
     assert metric_cards
     metrics = dict(metric_cards[0].metrics)
-    assert metrics["Baseline"] == "17.0 h"
-    assert metrics["Reprogramado"] == "27.0 h"
-    assert metrics["Impacto"] == "+10.0 h"
+    assert metrics["Baseline original"] == "17.0 h"
+    assert metrics["Baseline vigente"] == "23.0 h · Rev.1"
+    assert metrics["Forecast atual"] == "27.0 h"
+    assert metrics["Δ vs original"] == "+10.0 h"
+    assert metrics["Δ vs vigente"] == "+4.0 h"
     assert metrics["Excesso da janela"] == "3.0 h"
-    assert len(metrics) == 4
+    assert len(metrics) == 6
 
     table_text = []
     for item in story:
@@ -153,3 +178,5 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
     assert "Soldador" in table_text
     assert "1.0" in table_text
     assert "Reparo descoberto" in table_text
+    assert "Rev.1" in table_text
+    assert "Novo escopo aprovado" in table_text
