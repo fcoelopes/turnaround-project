@@ -185,8 +185,8 @@ formal de **Baseline original**, **Baseline vigente**, **Forecast atual**,
 **Δ vs original**, **Δ vs vigente**, janela e histórico de revisões. É também o
 único lugar onde o usuário pode usar **Promover este replanejamento a nova linha
 de base** quando uma mudança de escopo, janela ou compromisso tiver sido
-formalmente aprovada. A revisão exige nome, motivo, janela aprovada e confirmação
-explícita; aprovador e observações são opcionais.
+formalmente aprovada. A revisão exige nome, motivo, aprovador, janela aprovada
+e confirmação explícita; a observação complementar permanece opcional.
 
 As revisões são imutáveis e numeradas de `Rev.1` a `Rev.10`, acompanhando os
 dez slots adicionais de baseline do Microsoft Project. Cada revisão guarda:
