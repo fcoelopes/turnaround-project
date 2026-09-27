@@ -314,9 +314,15 @@ STATUS GERAL: RISCO DE PRAZO
 
 ### Critérios de aceite
 
-- [ ] O status geral considera P80 e/ou probabilidade da janela.
-- [ ] O gerente não recebe mensagem “dentro da janela” quando o risco é elevado.
-- [ ] Critério de cor/status é documentado.
+- [x] O status geral considera P80 e/ou probabilidade da janela.
+- [x] O gerente não recebe mensagem “dentro da janela” quando o risco é elevado.
+- [x] Critério de cor/status é documentado.
+
+**TDS-8 implementado — aguardando revisão funcional:** a interface e o relatório
+separam status determinístico, P80, P(janela), risco probabilístico e status
+geral. O risco é controlado somente quando P80 cabe na janela e
+P(cumprir janela) ≥ 80%. Cenários sem deadline e cenários sem simulação recebem
+estado explícito e não aparecem como verdes.
 
 ---
 
@@ -786,7 +792,7 @@ Depois disso avaliar:
 - [x] Mover Monte Carlo para Risco.
 - [ ] Mover capacidades para Recursos.
 - [ ] Adicionar origem da capacidade.
-- [ ] Implementar status geral baseado em risco.
+- [x] Implementar status geral baseado em risco.
 
 ## Sprint 2 — Governança
 
