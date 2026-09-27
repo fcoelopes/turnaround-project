@@ -16,7 +16,14 @@ from turnaround.analysis import (
     schedule_dataframe,
     tasks_dataframe,
 )
-from turnaround import ExecutionStore, build_planning_baseline, upgrade_database
+from turnaround import (
+    ExecutionStore,
+    PlanningScopeRisk,
+    build_planning_baseline,
+    extract_scope_risk_candidates,
+    materialize_planning_scope,
+    upgrade_database,
+)
 from turnaround.io import load_schedule
 from turnaround.rcpsp import infer_capacities, optimize_turnaround
 from turnaround.report import build_base_management_pdf
@@ -133,6 +140,15 @@ except Exception as exc:
 
 st.caption(f"{project_name} · {len(tasks)} atividades carregadas")
 
+try:
+    imported_scope_risks = extract_scope_risk_candidates(uploaded)
+except Exception as exc:
+    imported_scope_risks = []
+    st.warning(
+        "Metadados opcionais de risco de escopo não puderam ser lidos: "
+        f"{exc}"
+    )
+
 with st.expander("Atividades normalizadas", expanded=False):
     st.dataframe(
         tasks_dataframe(tasks),
@@ -168,6 +184,153 @@ else:
                     )
                 )
 
+source_key = hashlib.sha256(uploaded.getvalue()).hexdigest()[:12]
+task_by_id = {str(task.id): task for task in tasks}
+task_label_by_id = {
+    str(task.id): f"{task.id} · {task.name}"
+    for task in tasks
+}
+task_id_by_label = {
+    label: task_id
+    for task_id, label in task_label_by_id.items()
+}
+imported_scope_by_task = {
+    item.task_id: item
+    for item in imported_scope_risks
+    if item.task_id in task_by_id
+}
+
+with st.expander(
+    "Incerteza de ampliação de escopo · planejamento",
+    expanded=bool(imported_scope_by_task),
+):
+    st.caption(
+        "Use esta seção para trabalhos que ainda não pertencem ao escopo-base, "
+        "mas podem entrar se um evento ocorrer. A probabilidade é usada somente "
+        "no planejamento Monte Carlo; na execução, o evento observado continua "
+        "sendo lançado em Escopo e Replanejamento."
+    )
+
+    default_potential_ids = list(imported_scope_by_task)
+    selected_scope_ids = st.multiselect(
+        "Atividades de escopo potencial",
+        options=list(task_label_by_id),
+        default=[
+            task_id
+            for task_id in default_potential_ids
+            if task_id in task_label_by_id
+        ],
+        format_func=lambda task_id: task_label_by_id[task_id],
+        key=f"planning_scope_ids_{source_key}",
+        help=(
+            "Essas atividades ficam fora do plano-base determinístico e entram "
+            "nas simulações conforme a probabilidade do evento."
+        ),
+    )
+
+    scope_rows = []
+    for task_id in selected_scope_ids:
+        imported = imported_scope_by_task.get(task_id)
+        trigger_id = imported.trigger_task_id if imported else ""
+        scope_rows.append(
+            {
+                "ID": task_id,
+                "Atividade": task_by_id[task_id].name,
+                "Gatilho": (
+                    task_label_by_id.get(trigger_id, "")
+                    if trigger_id
+                    else ""
+                ),
+                "Evento": imported.event_name if imported else "",
+                "Probabilidade_%": (
+                    round(float(imported.probability) * 100, 2)
+                    if imported
+                    else 0.0
+                ),
+            }
+        )
+
+    scope_risk_df = pd.DataFrame(
+        scope_rows,
+        columns=[
+            "ID",
+            "Atividade",
+            "Gatilho",
+            "Evento",
+            "Probabilidade_%",
+        ],
+    )
+    edited_scope_risk_df = st.data_editor(
+        scope_risk_df,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key=f"planning_scope_editor_{source_key}",
+        disabled=["ID", "Atividade"],
+        column_config={
+            "ID": st.column_config.TextColumn("ID"),
+            "Atividade": st.column_config.TextColumn("Atividade"),
+            "Gatilho": st.column_config.SelectboxColumn(
+                "Gatilho",
+                options=["", *task_label_by_id.values()],
+                help="Atividade cuja inspeção/checagem pode revelar o novo escopo.",
+            ),
+            "Evento": st.column_config.TextColumn(
+                "Evento",
+                help="Ex.: bearing_damage, nozzle_crack, calibration_failed.",
+            ),
+            "Probabilidade_%": st.column_config.NumberColumn(
+                "Probabilidade_%",
+                min_value=0.0,
+                max_value=100.0,
+                step=1.0,
+                format="%.1f",
+            ),
+        },
+    )
+
+scope_risks: list[PlanningScopeRisk] = []
+scope_config_errors: list[str] = []
+for _, row in edited_scope_risk_df.iterrows():
+    task_id = str(row["ID"]).strip()
+    trigger_label = str(row["Gatilho"]).strip()
+    event_name = str(row["Evento"]).strip()
+    probability_pct = float(row["Probabilidade_%"] or 0.0)
+
+    trigger_id = task_id_by_label.get(trigger_label, "")
+    if not trigger_id:
+        scope_config_errors.append(
+            f"{task_label_by_id.get(task_id, task_id)}: informe o gatilho."
+        )
+        continue
+    if not event_name:
+        scope_config_errors.append(
+            f"{task_label_by_id.get(task_id, task_id)}: informe o evento."
+        )
+        continue
+
+    try:
+        scope_risks.append(
+            PlanningScopeRisk(
+                task_id=task_id,
+                trigger_task_id=trigger_id,
+                event_name=event_name,
+                probability=probability_pct / 100.0,
+            )
+        )
+    except ValueError as exc:
+        scope_config_errors.append(str(exc))
+
+if scope_config_errors:
+    for message in scope_config_errors:
+        st.error(message)
+
+base_tasks = materialize_planning_scope(
+    tasks,
+    scope_risks,
+    active_scope_task_ids=set(),
+)
+
 planning_signature = hashlib.sha256(
     json.dumps(
         {
@@ -180,6 +343,10 @@ planning_signature = hashlib.sha256(
             "simulations": int(simulations),
             "optimistic_pct": int(optimistic_pct),
             "pessimistic_pct": int(pessimistic_pct),
+            "scope_risks": [
+                item.model_dump(mode="json")
+                for item in scope_risks
+            ],
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -191,24 +358,25 @@ run = st.button(
     "▶ Gerar plano otimizado",
     type="primary",
     use_container_width=True,
+    disabled=bool(scope_config_errors),
 )
 
 cached_result = st.session_state.get("planning_result")
 if run:
     try:
         best, candidates = optimize_turnaround(
-            tasks,
+            base_tasks,
             capacities,
             deadline_h=deadline_h,
         )
-        comparison = compare_baseline(tasks, best)
+        comparison = compare_baseline(base_tasks, best)
     except Exception as exc:
         st.session_state.pop("planning_result", None)
         st.error(f"Não foi possível gerar um cronograma factível: {exc}")
         st.stop()
 
     risk_error = None
-    with st.spinner("Simulando incerteza de duração..."):
+    with st.spinner("Simulando duração + ampliação probabilística de escopo..."):
         try:
             risk = simulate_deadline_risk(
                 tasks,
@@ -219,6 +387,7 @@ if run:
                 optimistic_factor=1 + optimistic_pct / 100,
                 most_likely_factor=1.0,
                 pessimistic_factor=1 + pessimistic_pct / 100,
+                scope_risks=scope_risks,
             )
         except Exception as exc:
             risk = None
@@ -250,7 +419,7 @@ if risk_error:
     )
 
 schedule_df = schedule_dataframe(best, int(hours_per_day))
-crit_df = criticality_dataframe(tasks)
+crit_df = criticality_dataframe(base_tasks)
 
 # Consolida RCPSP e CPM na mesma visão. O cronograma factível continua vindo
 # do solver; ES/EF/LS/LF/folga são métricas da rede de precedências.
@@ -556,6 +725,7 @@ with tab_exec:
         tasks=tasks,
         result=best,
         risk=risk,
+        scope_risks=scope_risks,
     )
     approved_baseline = execution_store.load_planning_baseline(
         approval_candidate.key
@@ -750,6 +920,53 @@ with tab_risk:
             plot_bgcolor="white",
         )
         st.plotly_chart(fig3, use_container_width=True)
+
+        if risk.get("scope_enabled"):
+            st.markdown("#### Exposição à ampliação de escopo")
+            st.caption(
+                (
+                    f"Escopo adicional apareceu em "
+                    f"{risk['probability_any_scope_simulated'] * 100:.1f}% das simulações. "
+                    f"Impacto médio incremental: {risk['mean_scope_impact_h']:.1f} h · "
+                    f"P80 do impacto de escopo: {risk['p80_scope_impact_h']:.1f} h. "
+                    f"P80 apenas com incerteza de duração: "
+                    f"{risk['duration_only_p80_h'] / hours_per_day:.2f} d → "
+                    f"P80 combinado: {risk['p80_h'] / hours_per_day:.2f} d."
+                )
+            )
+
+            scope_event_rows = []
+            for event in risk.get("scope_events", []):
+                scope_event_rows.append(
+                    {
+                        "Gatilho": task_label_by_id.get(
+                            event["trigger_task_id"],
+                            event["trigger_task_id"],
+                        ),
+                        "Evento": event["event_name"],
+                        "Atividades ativadas": ", ".join(
+                            task_label_by_id.get(task_id, task_id)
+                            for task_id in event["task_ids"]
+                        ),
+                        "Prob. configurada": (
+                            f"{event['probability_configured'] * 100:.1f}%"
+                        ),
+                        "Freq. simulada": (
+                            f"{event['frequency_simulated'] * 100:.1f}%"
+                        ),
+                        "Impacto marginal médio (h)": (
+                            None
+                            if event["marginal_impact_h"] is None
+                            else round(event["marginal_impact_h"], 1)
+                        ),
+                    }
+                )
+            if scope_event_rows:
+                st.dataframe(
+                    pd.DataFrame(scope_event_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
         if deadline_h and risk.get("probability_meet_deadline") is not None:
             probability = risk["probability_meet_deadline"]
