@@ -519,6 +519,7 @@ O arquivo `sample_data/cronograma_exemplo.csv` pode ser usado imediatamente.
 - O motor é heurístico, não prova ótimo global.
 - A persistência operacional usa SQLite, adequada ao deploy atual em uma única VPS; concorrência multiusuário intensa exigirá evolução para Postgres.
 - Ainda não há calendário por turno, folga de refeição, indisponibilidade individual ou overtime.
+- O parâmetro de horas/dia é apenas um fator de conversão de prazo e indicadores; não representa jornada ou turno no scheduler.
 - O CPM exibido é uma aproximação de folga para vínculos complexos; o agendador respeita FS/SS/FF/SF e lag na programação.
 - Recursos do Excel/CSV usam demanda unitária por padrão; a coluna `Demandas` permite sobrescrever.
 - Não lê `.mpp` nativo. XML é preferido porque evita dependência Java/MPXJ.
