@@ -51,6 +51,53 @@ Cada cenário aprovado recebe um fingerprint SHA-256 determinístico. Reaprovar 
 mesmo cenário atualiza o snapshot em vez de criar duplicatas; alterar tarefas,
 capacidades, deadline ou o cronograma produz uma nova identidade de baseline.
 
+### Replanejamento x rebaseline formal
+
+Um replanejamento não cria automaticamente uma nova linha de base.
+
+O sistema mantém três referências distintas:
+
+- **Baseline original** — cenário aprovado na guia Planejamento; permanece imutável;
+- **Forecast atual** — resultado mais recente do replanejamento;
+- **Baseline vigente** — baseline original ou a última revisão formalmente promovida.
+
+Na guia **Escopo e Replanejamento**, o usuário pode usar **Promover este
+replanejamento a nova linha de base** quando uma mudança de escopo, janela ou
+compromisso tiver sido formalmente aprovada. A revisão exige nome, motivo,
+janela aprovada e confirmação explícita; aprovador e observações são opcionais.
+
+As revisões são imutáveis e numeradas de `Rev.1` a `Rev.10`, acompanhando os
+dez slots adicionais de baseline do Microsoft Project. Cada revisão guarda:
+
+- snapshot de origem;
+- cronograma materializado;
+- makespan e deadline aprovados;
+- modos e recursos usados;
+- hora corrente;
+- motivo, aprovador e observações;
+- data/hora da aprovação.
+
+Depois de uma revisão formal, o stability-aware rescheduling passa a comparar o
+trabalho futuro com a **baseline vigente**, enquanto as métricas gerenciais
+continuam preservando também a comparação contra a **baseline original**.
+
+Exemplo:
+
+~~~text
+Baseline original    88 h
+Baseline Rev.1      102 h
+Forecast atual      106 h
+
+Δ vs original       +18 h
+Δ vs Rev.1           +4 h
+Mudança formalizada +14 h
+~~~
+
+O histórico completo continua no SQLite; o XML exportado para o Microsoft
+Project grava a referência original como `Baseline` (`Number=0`) e as revisões
+formais como `Baseline1` … `Baseline10`, quando a atividade fizer parte
+daquela revisão.
+
 ### Scope discovery — MRCPSP + escopo condicional
 
 A página **Escopo e Replanejamento** acrescenta a dinâmica típica de turnaround:
@@ -203,6 +250,7 @@ PRAGMA synchronous=NORMAL
 A camada SQLAlchemy persiste:
 
 - baselines RCPSP aprovados na guia Planejamento;
+- revisões formais de baseline (Rev.1 a Rev.10);
 - sessões de execução por baseline;
 - hora corrente da parada;
 - eventos/achados observados;
