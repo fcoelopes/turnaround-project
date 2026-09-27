@@ -1170,70 +1170,156 @@ with tab_exec:
         tasks=tasks,
         result=best,
         risk=risk,
+        risk_assumptions={
+            "simulations": int(simulations),
+            "optimistic_pct": float(optimistic_pct),
+            "most_likely_pct": float(most_likely_pct),
+            "pessimistic_pct": float(pessimistic_pct),
+        },
         scope_risks=scope_risks,
     )
     approved_baseline = execution_store.load_planning_baseline(
         approval_candidate.key
+    )
+    baseline_formal = bool(
+        approved_baseline
+        and approved_baseline.scenario_name
+        and approved_baseline.approved_by
+        and approved_baseline.approval_reason
     )
 
     if not capacity_validation_ok:
         status(
             (
                 "Revise as capacidades marcadas como INFERIDA em Recursos e "
-                "confirme explicitamente a validação antes de aprovar o baseline."
+                "confirme explicitamente a validação antes de aprovar a Baseline 0."
             ),
             tone="warn",
             title="Aprovação bloqueada por capacidade não validada.",
         )
-    elif approved_baseline is None:
-        status(
-            "Este cenário ainda é apenas uma análise de planejamento.",
-            tone="warn",
-            title="Baseline ainda não aprovado.",
-        )
-    else:
+    elif baseline_formal:
         st.session_state["execution_baseline_key"] = approved_baseline.key
         st.session_state["advanced_baseline_source"] = "Baseline aprovado"
         status(
             (
-                f"Baseline aprovado · {approved_baseline.makespan_h:.1f} h · "
+                f"{approved_baseline.scenario_name} · "
+                f"{approved_baseline.makespan_h:.1f} h · "
                 f"{len(approved_baseline.schedule)} atividades · "
                 f"ID {approved_baseline.key[:12]}."
             ),
             tone="ok",
-            title="Pronto para execução.",
+            title="Baseline 0 formalmente aprovada.",
         )
+        approval_cols = st.columns(3)
+        approval_cols[0].metric(
+            "Aprovado por",
+            approved_baseline.approved_by,
+        )
+        approval_cols[1].metric(
+            "Aprovada em",
+            approved_baseline.approved_at.isoformat(timespec="minutes"),
+        )
+        approval_cols[2].metric(
+            "Janela aprovada",
+            (
+                "sem deadline"
+                if approved_baseline.deadline_h is None
+                else f"{approved_baseline.deadline_h / hours_per_day:.2f} d"
+            ),
+        )
+        st.caption(
+            f"Motivo / observação: {approved_baseline.approval_reason}"
+        )
+    else:
+        if approved_baseline is not None:
+            status(
+                (
+                    "Este snapshot foi criado antes da governança formal da "
+                    "Baseline 0. Preencha os dados abaixo para formalizá-lo."
+                ),
+                tone="warn",
+                title="Baseline legado requer formalização.",
+            )
+        else:
+            status(
+                "Este cenário ainda é apenas uma análise de planejamento.",
+                tone="warn",
+                title="Baseline 0 ainda não aprovada.",
+            )
 
-    if st.button(
-        (
-            "Reaprovar este baseline"
-            if approved_baseline is not None
-            else "✓ Aprovar como baseline da execução"
-        ),
-        type="primary",
-        use_container_width=True,
-        disabled=not capacity_validation_ok,
-        key=f"approve_baseline_{approval_candidate.key[:12]}",
-    ):
-        approved_baseline = execution_store.save_planning_baseline(
-            approval_candidate
+        st.markdown("##### Aprovação formal da Baseline 0")
+        st.caption(
+            "Nome, aprovador e motivo ficam persistidos com o snapshot. "
+            "A data/hora da aprovação é registrada automaticamente."
         )
-        st.session_state["execution_baseline_key"] = approved_baseline.key
-        st.session_state["advanced_baseline_source"] = "Baseline aprovado"
-        st.session_state["planning_approval_notice"] = approved_baseline.key
-        st.rerun()
+        with st.form(
+            key=f"baseline0_approval_{approval_candidate.key[:12]}",
+            clear_on_submit=False,
+        ):
+            scenario_name = st.text_input(
+                "Nome do cenário",
+                value=f"{project_name} · Baseline 0",
+            )
+            approved_by = st.text_input(
+                "Aprovado por",
+                placeholder="Nome ou identificação do responsável",
+            )
+            approval_reason = st.text_area(
+                "Motivo / observação da aprovação",
+                placeholder=(
+                    "Ex.: cenário validado na reunião de congelamento do escopo "
+                    "e liberado para execução."
+                ),
+            )
+            approve_submitted = st.form_submit_button(
+                "✓ Aprovar formalmente a Baseline 0",
+                type="primary",
+                use_container_width=True,
+                disabled=not capacity_validation_ok,
+            )
+
+        if approve_submitted:
+            missing_fields = []
+            if not scenario_name.strip():
+                missing_fields.append("nome do cenário")
+            if not approved_by.strip():
+                missing_fields.append("aprovador")
+            if not approval_reason.strip():
+                missing_fields.append("motivo / observação")
+
+            if missing_fields:
+                st.error(
+                    "Preencha os campos obrigatórios: "
+                    + ", ".join(missing_fields)
+                    + "."
+                )
+            else:
+                formal_candidate = approval_candidate.model_copy(
+                    update={
+                        "scenario_name": scenario_name.strip(),
+                        "approved_by": approved_by.strip(),
+                        "approval_reason": approval_reason.strip(),
+                    }
+                )
+                approved_baseline = execution_store.save_planning_baseline(
+                    formal_candidate
+                )
+                st.session_state["execution_baseline_key"] = approved_baseline.key
+                st.session_state["advanced_baseline_source"] = "Baseline aprovado"
+                st.session_state["planning_approval_notice"] = approved_baseline.key
+                st.rerun()
 
     if (
         st.session_state.get("planning_approval_notice")
         == approval_candidate.key
     ):
         st.success(
-            "Baseline persistido. Escopo e Replanejamento já pode continuar "
-            "a partir deste plano sem novo upload."
+            "Baseline 0 formalmente aprovada e persistida. "
+            "Escopo e Replanejamento já pode continuar a partir deste plano."
         )
         st.session_state.pop("planning_approval_notice", None)
 
-    if approved_baseline is not None:
+    if baseline_formal:
         st.page_link(
             "pages/2_Escopo_e_Replanejamento.py",
             label="Abrir Escopo e Replanejamento",
