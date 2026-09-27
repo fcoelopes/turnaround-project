@@ -98,6 +98,8 @@ class ApprovedPlanningBaseline(BaseModel):
     hours_per_day: int = Field(ge=1, le=24)
     deadline_h: float | None = Field(default=None, gt=0)
     capacities: dict[str, float]
+    capacity_origins: dict[str, str] = Field(default_factory=dict)
+    capacities_validated: bool = False
     tasks: list[PlanningTaskSnapshot]
     schedule: list[PlanningScheduleItemSnapshot]
     makespan_h: float = Field(gt=0)
@@ -123,6 +125,7 @@ def _core_payload(
     hours_per_day: int,
     deadline_h: float | None,
     capacities: dict[str, float],
+    capacity_origins: dict[str, str],
     tasks: list[PlanningTaskSnapshot],
     schedule: list[PlanningScheduleItemSnapshot],
     makespan_h: float,
@@ -140,6 +143,10 @@ def _core_payload(
         "capacities": {
             str(key): float(value)
             for key, value in sorted(capacities.items())
+        },
+        "capacity_origins": {
+            str(key): str(value)
+            for key, value in sorted(capacity_origins.items())
         },
         "tasks": [
             item.model_dump(mode="json")
@@ -165,6 +172,8 @@ def build_planning_baseline(
     hours_per_day: int,
     deadline_h: float | None,
     capacities: dict[str, int | float],
+    capacity_origins: dict[str, str] | None = None,
+    capacities_validated: bool = False,
     tasks: list[Task],
     result: TurnaroundResult,
     risk: dict | None = None,
@@ -194,11 +203,16 @@ def build_planning_baseline(
         for resource, quantity in capacities.items()
     }
     scope_risks = list(scope_risks or [])
+    normalized_capacity_origins = {
+        str(resource): str(origin)
+        for resource, origin in (capacity_origins or {}).items()
+    }
     core = _core_payload(
         project_name=project_name,
         hours_per_day=hours_per_day,
         deadline_h=deadline_h,
         capacities=normalized_capacities,
+        capacity_origins=normalized_capacity_origins,
         tasks=task_snapshots,
         schedule=schedule_snapshots,
         makespan_h=float(result.makespan_h),
@@ -225,6 +239,8 @@ def build_planning_baseline(
             else float(deadline_h)
         ),
         capacities=normalized_capacities,
+        capacity_origins=normalized_capacity_origins,
+        capacities_validated=bool(capacities_validated),
         tasks=task_snapshots,
         schedule=schedule_snapshots,
         makespan_h=float(result.makespan_h),
