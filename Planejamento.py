@@ -208,7 +208,8 @@ with st.expander(
         "Use esta seção para trabalhos que ainda não pertencem ao escopo-base, "
         "mas podem entrar se um evento ocorrer. A probabilidade é usada somente "
         "no planejamento Monte Carlo; na execução, o evento observado continua "
-        "sendo lançado em Escopo e Replanejamento."
+        "sendo lançado em Escopo e Replanejamento. Eventos distintos são tratados "
+        "como independentes nesta versão; o mesmo gatilho+evento é sorteado uma única vez."
     )
 
     default_potential_ids = list(imported_scope_by_task)
@@ -321,8 +322,28 @@ for _, row in edited_scope_risk_df.iterrows():
     except ValueError as exc:
         scope_config_errors.append(str(exc))
 
+event_probability_by_key: dict[tuple[str, str], float] = {}
+potential_task_ids = {item.task_id for item in scope_risks}
+for item in scope_risks:
+    if item.trigger_task_id in potential_task_ids:
+        scope_config_errors.append(
+            f"{task_label_by_id.get(item.task_id, item.task_id)}: "
+            "o gatilho deve pertencer ao escopo-base, não ao escopo potencial."
+        )
+    previous_probability = event_probability_by_key.get(item.event_key)
+    if (
+        previous_probability is not None
+        and abs(previous_probability - item.probability) > 1e-9
+    ):
+        scope_config_errors.append(
+            f"Evento {item.event_name} no gatilho "
+            f"{task_label_by_id.get(item.trigger_task_id, item.trigger_task_id)} "
+            "aparece com probabilidades diferentes."
+        )
+    event_probability_by_key[item.event_key] = item.probability
+
 if scope_config_errors:
-    for message in scope_config_errors:
+    for message in dict.fromkeys(scope_config_errors):
         st.error(message)
 
 base_tasks = materialize_planning_scope(
@@ -592,8 +613,14 @@ tab_exec, tab_schedule, tab_resources, tab_risk, tab_export = st.tabs(
 with tab_exec:
     metric_cols = st.columns(4)
     metric_cols[0].metric(
-        "Makespan",
+        "Makespan base" if scope_risks else "Makespan",
         f"{best.makespan_h / hours_per_day:.2f} d",
+        help=(
+            "Cronograma determinístico do escopo-base; atividades potenciais "
+            "entram apenas na análise probabilística."
+            if scope_risks
+            else None
+        ),
     )
     metric_cols[1].metric(
         "Penalidade de recursos",
@@ -637,6 +664,13 @@ with tab_exec:
             title="Ação gerencial necessária.",
         )
 
+    if scope_risks:
+        st.caption(
+            f"{len(scope_risks)} atividade(s) estão tratadas como escopo potencial "
+            "e, por isso, não aparecem no Gantt determinístico abaixo. Elas são "
+            "materializadas nas simulações conforme os eventos de risco."
+        )
+
     if use_calendar_axis:
         st.caption(
             "A ordem vertical preserva o cronograma importado. "
@@ -678,9 +712,17 @@ with tab_exec:
         hover_name="Atividade",
         hover_data=gantt_hover,
         title=(
-            "Cronograma factível · calendário"
+            (
+                "Cronograma factível · escopo-base · calendário"
+                if scope_risks
+                else "Cronograma factível · calendário"
+            )
             if use_calendar_axis
-            else "Cronograma factível"
+            else (
+                "Cronograma factível · escopo-base"
+                if scope_risks
+                else "Cronograma factível"
+            )
         ),
     )
     fig.update_yaxes(
