@@ -76,6 +76,48 @@ A probabilidade pertence ao planejamento; depois que o baseline é aprovado, a
 mesma relação gatilho/evento segue para **Escopo e Replanejamento**, onde a
 ativação passa a depender do evento realmente observado, não da probabilidade.
 
+### Status executivo baseado em risco
+
+A leitura gerencial separa três coisas que não devem ser confundidas:
+
+- **Determinístico**: verifica se o cronograma-base cabe na janela;
+- **Risco probabilístico**: é considerado controlado somente quando o **P80 cabe
+  na janela** e **P(cumprir janela) ≥ 80%**;
+- **Status geral**: combina as duas leituras e nunca fica verde apenas porque o
+  cronograma determinístico cabe no prazo.
+
+Exemplo:
+
+~~~text
+Determinístico: DENTRO
+P80: FORA
+P(janela): 42%
+
+Status geral: RISCO DE PRAZO
+~~~
+
+A classificação usada na interface e no PDF é:
+
+~~~text
+sem janela
+→ JANELA NÃO DEFINIDA
+
+determinístico fora da janela
+→ FORA DA JANELA
+
+determinístico dentro + risco ausente
+→ RISCO NÃO AVALIADO
+
+determinístico dentro + (P80 fora OU P(janela) < 80%)
+→ RISCO DE PRAZO
+
+determinístico dentro + P80 dentro + P(janela) ≥ 80%
+→ DENTRO COM CONFIANÇA P80
+~~~
+
+O limiar de 80% é coerente com a leitura gerencial por P80 e funciona como
+critério explícito de confiança, não como decisão automática de aprovação.
+
 ### Ponte Planejamento → Execução
 
 A página **Planejamento** não é mais um fluxo isolado. Depois de analisar
