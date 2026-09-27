@@ -72,6 +72,10 @@ def test_base_management_pdf_is_valid_binary():
         criticality_df=criticality_df,
         resource_df=resource_df,
         risk=risk,
+        baseline_scenario_name="Baseline congelada",
+        baseline_approved_by="Planejamento",
+        baseline_approved_at="2026-09-27T19:40+00:00",
+        baseline_approval_reason="Cenário liberado para execução.",
     )
 
     assert pdf.startswith(b"%PDF")
