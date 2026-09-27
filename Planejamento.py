@@ -27,6 +27,10 @@ from turnaround import (
 from turnaround.io import load_schedule
 from turnaround.rcpsp import infer_capacities, optimize_turnaround
 from turnaround.report import build_base_management_pdf
+from turnaround.resource_governance import (
+    inferred_capacity_resources,
+    resolve_capacity_origins,
+)
 from turnaround.risk import simulate_deadline_risk
 from turnaround.ui import app_header, apply_app_style, section, status, workflow_strip
 
@@ -187,11 +191,14 @@ section(
 )
 config_resources, config_risk = st.tabs(["Recursos", "Risco"])
 
-capacity_origin = {
+base_capacity_origin = {
     resource: ("PROJECT" if resource in xml_caps else "INFERIDA")
     for resource in resources
 }
 capacities: dict[str, int] = {}
+capacity_origins: dict[str, str] = {}
+inferred_resources: list[str] = []
+capacity_validation_ok = True
 with config_resources:
     st.markdown("#### Capacidade do cenário")
     if not resources:
@@ -210,7 +217,7 @@ with config_resources:
                 {
                     "Recurso": resource,
                     "Capacidade-base": int(base_caps.get(resource, 0)),
-                    "Origem": capacity_origin[resource],
+                    "Origem": base_capacity_origin[resource],
                     "Capacidade cenário": int(base_caps.get(resource, 0)),
                 }
                 for resource in resources
@@ -250,6 +257,61 @@ with config_resources:
             str(row["Recurso"]): int(row["Capacidade cenário"])
             for _, row in edited_capacity_df.iterrows()
         }
+
+        capacity_origins = resolve_capacity_origins(
+            base_capacities=base_caps,
+            scenario_capacities=capacities,
+            project_resources=set(xml_caps),
+        )
+        inferred_resources = inferred_capacity_resources(capacity_origins)
+
+        governance_df = pd.DataFrame(
+            [
+                {
+                    "Recurso": resource,
+                    "Capacidade cenário": capacities[resource],
+                    "Origem": capacity_origins[resource],
+                    "Validação": (
+                        "requer confirmação"
+                        if capacity_origins[resource] == "INFERIDA"
+                        else "validada pela origem"
+                    ),
+                }
+                for resource in resources
+            ]
+        )
+        st.markdown("##### Governança das capacidades")
+        st.dataframe(
+            governance_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if inferred_resources:
+            status(
+                (
+                    "As capacidades a seguir foram inferidas a partir das demandas "
+                    "das atividades e ainda não representam disponibilidade operacional "
+                    "confirmada: "
+                    + ", ".join(inferred_resources)
+                    + "."
+                ),
+                tone="warn",
+                title="Capacidades inferidas exigem validação.",
+            )
+            confirm_inferred_capacities = st.checkbox(
+                "Confirmo que revisei e aceito as capacidades inferidas deste cenário",
+                key=f"confirm_inferred_capacities_{source_key}",
+                help=(
+                    "Esta confirmação é obrigatória para aprovar o baseline. "
+                    "Você também pode editar a capacidade; nesse caso a origem passa "
+                    "a ser INFORMADA."
+                ),
+            )
+        else:
+            confirm_inferred_capacities = True
+
+        capacity_validation_ok = bool(confirm_inferred_capacities)
 
 with config_risk:
     st.markdown("#### Incerteza de duração")
@@ -446,6 +508,7 @@ planning_signature = hashlib.sha256(
             "hours_per_day": int(hours_per_day),
             "deadline_h": deadline_h,
             "capacities": capacities,
+            "capacity_origins": capacity_origins,
             "simulations": int(simulations),
             "optimistic_pct": int(optimistic_pct),
             "pessimistic_pct": int(pessimistic_pct),
@@ -662,7 +725,7 @@ if resources:
             {
                 "Recurso": resource,
                 "Capacidade-base": int(base_caps.get(resource, 0)),
-                "Origem": capacity_origin[resource],
+                "Origem": capacity_origins[resource],
                 "Capacidade cenário": capacities[resource],
                 "Capacidade": capacities[resource],
                 "Pico": best.resource_peak.get(resource, 0),
@@ -918,6 +981,8 @@ with tab_exec:
             else float(deadline_h)
         ),
         capacities=capacities,
+        capacity_origins=capacity_origins,
+        capacities_validated=capacity_validation_ok,
         tasks=tasks,
         result=best,
         risk=risk,
@@ -927,7 +992,16 @@ with tab_exec:
         approval_candidate.key
     )
 
-    if approved_baseline is None:
+    if not capacity_validation_ok:
+        status(
+            (
+                "Revise as capacidades marcadas como INFERIDA em Recursos e "
+                "confirme explicitamente a validação antes de aprovar o baseline."
+            ),
+            tone="warn",
+            title="Aprovação bloqueada por capacidade não validada.",
+        )
+    elif approved_baseline is None:
         status(
             "Este cenário ainda é apenas uma análise de planejamento.",
             tone="warn",
@@ -954,6 +1028,7 @@ with tab_exec:
         ),
         type="primary",
         use_container_width=True,
+        disabled=not capacity_validation_ok,
         key=f"approve_baseline_{approval_candidate.key[:12]}",
     ):
         approved_baseline = execution_store.save_planning_baseline(
