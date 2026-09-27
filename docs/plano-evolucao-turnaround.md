@@ -563,6 +563,12 @@ Confirmação
 
 A lógica Rev.1…Rev.10 existente deve ser mantida.
 
+**TDS-11 implementado — aguardando revisão funcional:** a página avançada agora
+possui uma aba **Governança**. Baseline original, baseline vigente, forecast,
+deltas, janela, histórico de revisões e a promoção para Rev.n ficam reunidos
+nesse contexto. A aba Operação mantém impacto operacional e deixa de oferecer o
+controle formal de rebaseline.
+
 ---
 
 # 15. Manual e ajuda
@@ -803,7 +809,7 @@ Depois disso avaliar:
 ## Sprint 2 — Governança
 
 - [x] Formalizar Baseline 0.
-- [ ] Criar aba Governança.
+- [x] Criar aba Governança.
 - [ ] Mover rebaseline para Governança.
 - [ ] Melhorar rastreabilidade de aprovação.
 - [ ] Remover Manual da navegação principal.
