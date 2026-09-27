@@ -24,6 +24,7 @@ from turnaround import (
     approved_schedule_matches_project,
     approved_schedule_to_advanced,
     apply_scope_config,
+    build_baseline_revision,
     assign_people_to_skills,
     apply_scope_rule_rows,
     discover_resource_catalog,
@@ -1122,6 +1123,24 @@ execution_session = execution_store.get_or_create_active_session(
     project_key=project_key,
     project_name=project_name,
 )
+baseline_revisions = execution_store.list_baseline_revisions(
+    execution_session.id
+)
+governing_baseline_revision = (
+    baseline_revisions[-1]
+    if baseline_revisions
+    else None
+)
+original_deadline = (
+    approved_planning_baseline.deadline_h
+    if approved_planning_baseline is not None
+    else planned_project.deadline
+)
+if governing_baseline_revision is not None:
+    planned_project = planned_project.model_copy(
+        update={"deadline": governing_baseline_revision.deadline_h}
+    )
+
 discovered_tasks = execution_store.load_discovered_tasks(
     execution_session.id
 )
@@ -1129,7 +1148,8 @@ discovered_tasks = execution_store.load_discovered_tasks(
 with config_tab:
     st.caption(
         f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
-        f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s)"
+        f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s) · "
+        f"{len(baseline_revisions)} rebaseline(s) formal(is)"
     )
 
     with st.expander("Sessão de execução persistida", expanded=False):
@@ -1514,6 +1534,25 @@ if scenario_baseline is None:
 # comparada contra os horários aprovados no Planejamento.
 baseline = base_baseline or scenario_baseline
 
+original_baseline_makespan = (
+    float(approved_planning_baseline.makespan_h)
+    if approved_planning_baseline is not None
+    else float(baseline.makespan)
+)
+governing_baseline_makespan = (
+    float(governing_baseline_revision.makespan_h)
+    if governing_baseline_revision is not None
+    else original_baseline_makespan
+)
+governing_baseline_label = (
+    governing_baseline_revision.label
+    if governing_baseline_revision is not None
+    else "Original"
+)
+formalized_baseline_change = (
+    governing_baseline_makespan - original_baseline_makespan
+)
+
 with operation_tab:
     st.markdown("### Acompanhar a execução")
     st.caption(
@@ -1551,13 +1590,32 @@ with operation_tab:
             title="Baseline de recursos incompleto.",
         )
 
+    if governing_baseline_revision is not None:
+        status(
+            (
+                f"A referência formal vigente é {governing_baseline_revision.label} · "
+                f"{governing_baseline_revision.makespan_h:.1f} h"
+                + (
+                    f" · janela {governing_baseline_revision.deadline_h:.1f} h."
+                    if governing_baseline_revision.deadline_h is not None
+                    else " · sem deadline formal."
+                )
+            ),
+            tone="ok",
+            title="Rebaseline formal em vigor.",
+        )
+
     section(
         "2",
         "Onde estamos na parada",
         "Informe a hora corrente; atividades concluídas ou em andamento ficam congeladas no replanejamento.",
     )
 
-    if approved_planning_baseline is not None:
+    if governing_baseline_revision is not None:
+        reference_start_times = (
+            governing_baseline_revision.reference_start_times()
+        )
+    elif approved_planning_baseline is not None:
         approved_reference_start_times = (
             approved_planning_baseline.reference_start_times()
         )
@@ -1586,8 +1644,13 @@ with operation_tab:
         key=f"current_time_{execution_session.id[:8]}",
     )
 
+    execution_reference_items = (
+        governing_baseline_revision.schedule_items()
+        if governing_baseline_revision is not None
+        else baseline.tasks
+    )
     executions: dict[str, TaskExecution] = {}
-    for item in baseline.tasks:
+    for item in execution_reference_items:
         if item.finish <= current_time + 1e-9:
             executions[item.task_id] = TaskExecution(
                 status="completed",
@@ -2508,15 +2571,87 @@ with operation_tab:
         ).encode("utf-8")
     ).hexdigest()[:12]
 
+    baseline_history_rows = [
+        {
+            "Linha de base": "Original",
+            "Makespan (h)": original_baseline_makespan,
+            "Janela (h)": (
+                original_deadline
+                if original_deadline is not None
+                else "—"
+            ),
+            "Δ vs original (h)": 0.0,
+            "Aprovada em": (
+                approved_planning_baseline.approved_at.astimezone().strftime(
+                    "%d/%m/%Y %H:%M"
+                )
+                if approved_planning_baseline is not None
+                else "importação"
+            ),
+            "Motivo": (
+                "Plano aprovado na guia Planejamento"
+                if approved_planning_baseline is not None
+                else "Baseline importado diretamente"
+            ),
+            "Aprovado por": "—",
+        }
+    ]
+    baseline_history_rows.extend(
+        [
+            {
+                "Linha de base": revision.label,
+                "Makespan (h)": float(revision.makespan_h),
+                "Janela (h)": (
+                    float(revision.deadline_h)
+                    if revision.deadline_h is not None
+                    else "—"
+                ),
+                "Δ vs original (h)": (
+                    float(revision.makespan_h)
+                    - original_baseline_makespan
+                ),
+                "Aprovada em": revision.approved_at.astimezone().strftime(
+                    "%d/%m/%Y %H:%M"
+                ),
+                "Motivo": revision.reason,
+                "Aprovado por": revision.approved_by or "—",
+            }
+            for revision in baseline_revisions
+        ]
+    )
+    baseline_revisions_df = pd.DataFrame(baseline_history_rows)
+
     execution_state_report_df = pd.DataFrame(
         [
             {"Parâmetro": "Snapshot", "Valor": report_snapshot_id},
             {"Parâmetro": "Sessão", "Valor": execution_session.id},
             {"Parâmetro": "Hora corrente", "Valor": f"{current_time:.1f} h"},
-            {"Parâmetro": "Makespan baseline", "Valor": f"{baseline.makespan:.1f} h"},
+            {
+                "Parâmetro": "Baseline original",
+                "Valor": f"{original_baseline_makespan:.1f} h",
+            },
+            {
+                "Parâmetro": "Baseline vigente",
+                "Valor": (
+                    f"{governing_baseline_label} · "
+                    f"{governing_baseline_makespan:.1f} h"
+                ),
+            },
             {
                 "Parâmetro": "Makespan reprogramado",
                 "Valor": f"{result.schedule.makespan:.1f} h",
+            },
+            {
+                "Parâmetro": "Δ vs original",
+                "Valor": (
+                    f"{result.schedule.makespan - original_baseline_makespan:+.1f} h"
+                ),
+            },
+            {
+                "Parâmetro": "Δ vs vigente",
+                "Valor": (
+                    f"{result.schedule.makespan - governing_baseline_makespan:+.1f} h"
+                ),
             },
             {"Parâmetro": "Atraso", "Valor": f"{result.schedule.tardiness:.1f} h"},
             {"Parâmetro": "Peso estabilidade λ", "Valor": f"{stability_weight:.1f}"},
@@ -2714,7 +2849,12 @@ with operation_tab:
     )
 
     with tab_exec:
-        impact_hours = result.schedule.makespan - baseline.makespan
+        impact_vs_original = (
+            result.schedule.makespan - original_baseline_makespan
+        )
+        impact_vs_governing = (
+            result.schedule.makespan - governing_baseline_makespan
+        )
         if project.deadline is None:
             window_title = "Janela"
             window_value = "sem deadline"
@@ -2726,8 +2866,11 @@ with operation_tab:
             window_value = f"{result.schedule.makespan - project.deadline:.1f} h"
 
         r1, r2, r3, r4 = st.columns(4)
-        r1.metric("Makespan atual", f"{result.schedule.makespan:.1f} h")
-        r2.metric("Impacto vs baseline", f"{impact_hours:+.1f} h")
+        r1.metric("Forecast atual", f"{result.schedule.makespan:.1f} h")
+        r2.metric(
+            f"Δ vs {governing_baseline_label}",
+            f"{impact_vs_governing:+.1f} h",
+        )
         r3.metric(window_title, window_value)
         r4.metric(
             "Novo escopo ativo",
@@ -2736,6 +2879,24 @@ with operation_tab:
                 f"{len(dynamic_scope_ids)} dinâmico(s)"
                 if dynamic_scope_ids
                 else None
+            ),
+        )
+
+        b1, b2, b3 = st.columns(3)
+        b1.metric(
+            "Baseline original",
+            f"{original_baseline_makespan:.1f} h",
+        )
+        b2.metric(
+            "Δ vs original",
+            f"{impact_vs_original:+.1f} h",
+        )
+        b3.metric(
+            "Mudança já formalizada",
+            f"{formalized_baseline_change:+.1f} h",
+            help=(
+                "Diferença entre a baseline vigente e a baseline original. "
+                "É a parcela da mudança já aceita por rebaseline formal."
             ),
         )
 
@@ -2783,6 +2944,114 @@ with operation_tab:
                 ),
                 tone="danger",
                 title="Intervenção gerencial necessária.",
+            )
+
+        with st.expander(
+            "Promover este replanejamento a nova linha de base",
+            expanded=False,
+        ):
+            next_revision_number = (
+                execution_store.next_baseline_revision_number(
+                    execution_session.id
+                )
+            )
+            if next_revision_number is None:
+                st.warning(
+                    "Esta sessão já possui Rev.1 até Rev.10. O Microsoft Project "
+                    "suporta dez linhas de base adicionais além da Baseline original."
+                )
+            else:
+                st.caption(
+                    "Use somente quando houver aprovação formal de uma nova referência "
+                    "de compromisso. O replanejamento corrente, por si só, não cria baseline."
+                )
+                revision_name = st.text_input(
+                    "Nome da revisão",
+                    value=f"Rev.{next_revision_number} · {project_name}",
+                    key=f"baseline_revision_name_{next_revision_number}",
+                )
+                revision_reason = st.text_area(
+                    "Motivo da revisão",
+                    placeholder=(
+                        "Ex.: ampliação de escopo após inspeção do V-101 "
+                        "e nova janela aprovada."
+                    ),
+                    key=f"baseline_revision_reason_{next_revision_number}",
+                )
+                rb1, rb2 = st.columns(2)
+                with rb1:
+                    revision_approved_by = st.text_input(
+                        "Aprovado por (opcional)",
+                        key=f"baseline_revision_approver_{next_revision_number}",
+                    )
+                with rb2:
+                    revision_deadline = st.number_input(
+                        "Janela aprovada da revisão (h)",
+                        min_value=0.5,
+                        value=float(
+                            project.deadline
+                            if project.deadline is not None
+                            else result.schedule.makespan
+                        ),
+                        step=0.5,
+                        key=f"baseline_revision_deadline_{next_revision_number}",
+                    )
+                revision_notes = st.text_area(
+                    "Observação (opcional)",
+                    key=f"baseline_revision_notes_{next_revision_number}",
+                )
+                confirm_revision = st.checkbox(
+                    (
+                        f"Confirmo que este snapshot deve se tornar a "
+                        f"Baseline Rev.{next_revision_number}"
+                    ),
+                    key=f"confirm_baseline_revision_{next_revision_number}",
+                )
+                if st.button(
+                    f"Promover para Baseline Rev.{next_revision_number}",
+                    type="primary",
+                    disabled=(
+                        not confirm_revision
+                        or not revision_name.strip()
+                        or not revision_reason.strip()
+                    ),
+                    use_container_width=True,
+                    key=f"promote_baseline_revision_{next_revision_number}",
+                ):
+                    revision = build_baseline_revision(
+                        session_id=execution_session.id,
+                        project_key=project_key,
+                        revision_number=next_revision_number,
+                        name=revision_name,
+                        reason=revision_reason,
+                        approved_by=revision_approved_by,
+                        notes=revision_notes,
+                        snapshot_id=report_snapshot_id,
+                        current_time_h=float(current_time),
+                        makespan_h=float(result.schedule.makespan),
+                        deadline_h=float(revision_deadline),
+                        total_cost=float(result.schedule.total_cost),
+                        schedule_items=all_items,
+                        wbs_by_id=wbs_by_id,
+                    )
+                    execution_store.save_baseline_revision(revision)
+                    st.session_state[
+                        "baseline_revision_notice"
+                    ] = revision.label
+                    st.rerun()
+
+                if baseline_revisions:
+                    st.markdown("##### Histórico formal")
+                    st.dataframe(
+                        baseline_revisions_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+        if st.session_state.get("baseline_revision_notice"):
+            st.success(
+                f"{st.session_state.pop('baseline_revision_notice')} passou a ser "
+                "a baseline vigente para métricas, estabilidade e exportação ao Project."
             )
 
         active_change_names = [
@@ -2930,8 +3199,10 @@ with operation_tab:
 
         pdf_bytes = build_conditional_management_pdf(
             project_name=project_name,
-            baseline_makespan=float(baseline.makespan),
+            baseline_makespan=original_baseline_makespan,
             current_makespan=float(result.schedule.makespan),
+            governing_baseline_makespan=governing_baseline_makespan,
+            governing_baseline_label=governing_baseline_label,
             deadline=(
                 None
                 if project.deadline is None
@@ -2955,6 +3226,7 @@ with operation_tab:
             resource_scenario_df=resource_scenario_df,
             execution_state_df=execution_state_report_df,
             dynamic_scope_df=dynamic_scope_report_df,
+            baseline_revisions_df=baseline_revisions_df,
         )
 
         st.info(
@@ -3020,6 +3292,8 @@ with operation_tab:
             dynamic_scope_ids=set(dynamic_scope_ids),
             activation_reasons=result.activation.reasons,
             snapshot_id=report_snapshot_id,
+            original_baseline_items=list(baseline.tasks),
+            baseline_revisions=baseline_revisions,
         )
 
         st.download_button(
