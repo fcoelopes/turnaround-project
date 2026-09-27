@@ -694,25 +694,37 @@ with tab_risk:
     if not risk:
         st.info("A simulação de risco não está disponível para este cenário.")
     else:
-        risk_cols = st.columns(4)
+        risk_cols = st.columns(5)
         risk_cols[0].metric(
-            "P50",
-            f"{risk['p50_h'] / hours_per_day:.2f} d",
+            "Média",
+            f"{risk['mean_h'] / hours_per_day:.2f} d",
+            help="Média das durações finais observadas nas simulações.",
         )
         risk_cols[1].metric(
-            "P80",
-            f"{risk['p80_h'] / hours_per_day:.2f} d",
+            "P50",
+            f"{risk['p50_h'] / hours_per_day:.2f} d",
+            help="50% das simulações terminaram até este prazo.",
         )
         risk_cols[2].metric(
-            "P90",
-            f"{risk['p90_h'] / hours_per_day:.2f} d",
+            "P80",
+            f"{risk['p80_h'] / hours_per_day:.2f} d",
+            help="80% das simulações terminaram até este prazo.",
         )
         risk_cols[3].metric(
+            "P90",
+            f"{risk['p90_h'] / hours_per_day:.2f} d",
+            help="90% das simulações terminaram até este prazo.",
+        )
+        risk_cols[4].metric(
             "P(cumprir janela)",
             (
                 "—"
                 if risk.get("probability_meet_deadline") is None
                 else f"{risk['probability_meet_deadline'] * 100:.1f}%"
+            ),
+            help=(
+                "Percentual de simulações cujo makespan ficou dentro "
+                "da janela configurada."
             ),
         )
 
@@ -738,11 +750,6 @@ with tab_risk:
             plot_bgcolor="white",
         )
         st.plotly_chart(fig3, use_container_width=True)
-
-        with st.expander("Estatística descritiva", expanded=False):
-            s1, s2 = st.columns(2)
-            s1.metric("Média", f"{risk['mean_h'] / hours_per_day:.2f} d")
-            s2.metric("Desvio", f"{risk['std_h'] / hours_per_day:.2f} d")
 
         if deadline_h and risk.get("probability_meet_deadline") is not None:
             probability = risk["probability_meet_deadline"]
