@@ -66,18 +66,23 @@ workflow_strip(
 with st.sidebar:
     st.markdown("### Parâmetros da parada")
     hours_per_day = st.number_input(
-        "Horas por dia de parada",
+        "Horas consideradas por dia para conversão de prazo",
         min_value=1,
         max_value=24,
         value=8,
         step=1,
+        help=(
+            "Converte horas em dias para indicadores e janela. "
+            "Não representa calendário real de turnos; o scheduler atual "
+            "continua trabalhando em horas contínuas."
+        ),
     )
     deadline_days = st.number_input(
         "Janela-alvo (dias)",
         min_value=0.0,
         value=0.0,
         step=0.5,
-        help="0 = sem deadline. O prazo é convertido em horas usando as horas/dia acima.",
+        help="0 = sem deadline. O prazo é convertido em horas usando o fator de conversão acima.",
     )
     deadline_h = (
         int(round(deadline_days * hours_per_day))
