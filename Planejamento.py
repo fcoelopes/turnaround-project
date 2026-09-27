@@ -252,12 +252,31 @@ if risk_error:
 schedule_df = schedule_dataframe(best, int(hours_per_day))
 crit_df = criticality_dataframe(tasks)
 
+# Consolida RCPSP e CPM na mesma visão. O cronograma factível continua vindo
+# do solver; ES/EF/LS/LF/folga são métricas da rede de precedências.
+schedule_df["ID"] = schedule_df["ID"].astype(str)
+cpm_view_df = crit_df[
+    ["ID", "ES", "EF", "LS", "LF", "Float_h", "Critical"]
+].copy()
+cpm_view_df["ID"] = cpm_view_df["ID"].astype(str)
+schedule_df = schedule_df.merge(
+    cpm_view_df,
+    on="ID",
+    how="left",
+    validate="one_to_one",
+)
+schedule_df = schedule_df.rename(
+    columns={
+        "Float_h": "Folga_h",
+        "Critical": "Crítica_CPM",
+    }
+)
+
 # O solver pode devolver as atividades em ordem de execução. Para leitura gerencial,
 # preservamos a ordem estrutural do cronograma importado (Project/Excel/CSV).
 project_order = {str(task.id): index for index, task in enumerate(tasks)}
 schedule_df["_Ordem"] = (
     schedule_df["ID"]
-    .astype(str)
     .map(project_order)
     .fillna(len(project_order))
     .astype(int)
@@ -268,12 +287,15 @@ schedule_df = schedule_df.sort_values(
 ).reset_index(drop=True)
 
 critical_ids = set(
-    crit_df.loc[crit_df["Critical"].fillna(False), "ID"].astype(str)
+    schedule_df.loc[
+        schedule_df["Crítica_CPM"].fillna(False),
+        "ID",
+    ].astype(str)
 )
-schedule_df["Criticidade"] = schedule_df["ID"].astype(str).map(
-    lambda task_id: (
+schedule_df["Criticidade"] = schedule_df["Crítica_CPM"].fillna(False).map(
+    lambda is_critical: (
         "Caminho crítico CPM"
-        if task_id in critical_ids
+        if bool(is_critical)
         else "Não crítica"
     )
 )
@@ -319,10 +341,35 @@ else:
     gantt_x_end = "Fim_h"
     gantt_xaxis_title = "Horas desde o início da parada"
 
-schedule_view_df = schedule_df.drop(
-    columns=["_Ordem", "Rótulo"],
-    errors="ignore",
-)
+schedule_view_columns = [
+    "ID",
+    "Atividade",
+    "WBS",
+    "Inicio_h",
+    "Fim_h",
+    "Duracao_h",
+    "Inicio_dia",
+    "Fim_dia",
+    "ES",
+    "EF",
+    "LS",
+    "LF",
+    "Folga_h",
+    "Criticidade",
+    "Recursos",
+]
+if use_calendar_axis:
+    schedule_view_columns.extend(
+        ["Início calendário", "Término calendário"]
+    )
+
+schedule_view_df = schedule_df[
+    [
+        column
+        for column in schedule_view_columns
+        if column in schedule_df.columns
+    ]
+].copy()
 
 if resources:
     util_df = pd.DataFrame(
@@ -571,17 +618,24 @@ with tab_exec:
 
 with tab_schedule:
     st.markdown("#### Cronograma completo")
+    st.caption(
+        "Cronograma factível por recursos e métricas CPM consolidados na mesma visão. "
+        "ES/EF/LS/LF e Folga_h vêm da rede de precedências; Início/Fim vêm do RCPSP."
+    )
     st.dataframe(
         schedule_view_df,
         use_container_width=True,
         hide_index=True,
-    )
-
-    st.markdown("#### Caminho e folga")
-    st.dataframe(
-        crit_df,
-        use_container_width=True,
-        hide_index=True,
+        column_config={
+            "Folga_h": st.column_config.NumberColumn(
+                "Folga_h",
+                format="%.1f",
+            ),
+            "Criticidade": st.column_config.TextColumn(
+                "Criticidade",
+                help="Folga total zero no CPM da rede de precedências.",
+            ),
+        },
     )
 
     with st.expander("Diagnóstico do heurístico", expanded=False):
@@ -738,11 +792,6 @@ with tab_export:
                 writer,
                 index=False,
                 sheet_name="Cronograma Otimizado",
-            )
-            crit_df.to_excel(
-                writer,
-                index=False,
-                sheet_name="CPM",
             )
             if resources:
                 util_df.to_excel(
