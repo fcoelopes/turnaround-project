@@ -142,9 +142,14 @@ Capacidade inferida não deve parecer validada.
 
 Antes de aprovar baseline:
 
-- [ ] todas as capacidades usadas no cenário devem estar confirmadas;
-- [ ] capacidades inferidas devem aparecer com alerta;
-- [ ] baseline não deve ser aprovado silenciosamente com capacidade não validada.
+- [x] todas as capacidades usadas no cenário devem estar confirmadas;
+- [x] capacidades inferidas devem aparecer com alerta;
+- [x] baseline não deve ser aprovado silenciosamente com capacidade não validada.
+
+**TDS-6 implementado — aguardando revisão funcional:** a origem efetiva é
+classificada como `PROJECT`, `INFORMADA` ou `INFERIDA`; capacidades inferidas
+exigem confirmação explícita antes da aprovação; origem e validação são
+persistidas no baseline e a origem aparece no relatório gerencial.
 
 ## P1.2 Sensibilidade de recursos
 
