@@ -813,6 +813,24 @@ def build_base_management_pdf(
             f"P80={risk['p80_h'] / hours_per_day:.2f} d e "
             f"P90={risk['p90_h'] / hours_per_day:.2f} d."
         )
+        if risk.get("scope_enabled"):
+            insights.append(
+                (
+                    f"Escopo adicional apareceu em "
+                    f"{risk['probability_any_scope_simulated'] * 100:.1f}% "
+                    f"das simulações, com impacto médio incremental de "
+                    f"{risk['mean_scope_impact_h']:.1f} h e P80 do impacto "
+                    f"de {risk['p80_scope_impact_h']:.1f} h."
+                )
+            )
+            insights.append(
+                (
+                    f"O P80 somente com incerteza de duração seria "
+                    f"{risk['duration_only_p80_h'] / hours_per_day:.2f} d; "
+                    f"com duração + ampliação probabilística de escopo, "
+                    f"o P80 passa a {risk['p80_h'] / hours_per_day:.2f} d."
+                )
+            )
     if resource_df is not None and not resource_df.empty:
         top = resource_df.sort_values("Utilizacao_%", ascending=False).iloc[0]
         insights.append(
@@ -831,9 +849,40 @@ def build_base_management_pdf(
                 max_rows=8,
                 widths=[65 * mm, 30 * mm, 28 * mm, 38 * mm],
             ),
-            _p("Atividades críticas / menor folga", s["h2"]),
         ]
     )
+
+    if risk and risk.get("scope_enabled") and risk.get("scope_events"):
+        scope_event_df = pd.DataFrame(
+            [
+                {
+                    "Gatilho": item["trigger_task_id"],
+                    "Evento": item["event_name"],
+                    "Atividades": ", ".join(item["task_ids"]),
+                    "Prob.": f"{item['probability_configured'] * 100:.1f}%",
+                    "Freq.": f"{item['frequency_simulated'] * 100:.1f}%",
+                    "Impacto h": (
+                        "—"
+                        if item["marginal_impact_h"] is None
+                        else f"{item['marginal_impact_h']:.1f}"
+                    ),
+                }
+                for item in risk["scope_events"]
+            ]
+        )
+        story.extend(
+            [
+                _p("Risco de ampliação de escopo", s["h2"]),
+                _dataframe_table(
+                    scope_event_df,
+                    ["Gatilho", "Evento", "Atividades", "Prob.", "Freq.", "Impacto h"],
+                    max_rows=12,
+                    widths=[20 * mm, 38 * mm, 50 * mm, 20 * mm, 20 * mm, 23 * mm],
+                ),
+            ]
+        )
+
+    story.append(_p("Atividades críticas / menor folga", s["h2"]))
 
     crit = criticality_df.copy()
     if not crit.empty and "Critical" in crit.columns:
@@ -884,9 +933,11 @@ def build_base_management_pdf(
             ),
             Spacer(1, 4 * mm),
             _p(
-                "Nota metodológica: o cronograma-base usa SSGS/RCPSP heurístico; "
-                "a simulação de risco perturba as durações por distribuição triangular. "
-                "O relatório não representa prova de ótimo global.",
+                "Nota metodológica: o cronograma-base usa SSGS/RCPSP heurístico. "
+                "A simulação de risco perturba durações por distribuição triangular e, "
+                "quando configurado, sorteia eventos Bernoulli de ampliação de escopo antes "
+                "de materializar o projeto de cada iteração. O relatório não representa "
+                "prova de ótimo global.",
                 s["muted"],
             ),
         ]
