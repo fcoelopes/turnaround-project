@@ -187,6 +187,10 @@ section(
 )
 config_resources, config_risk = st.tabs(["Recursos", "Risco"])
 
+capacity_origin = {
+    resource: ("PROJECT" if resource in xml_caps else "INFERIDA")
+    for resource in resources
+}
 capacities: dict[str, int] = {}
 with config_resources:
     st.markdown("#### Capacidade do cenário")
@@ -197,22 +201,55 @@ with config_resources:
         )
     else:
         st.caption(
-            "Ajuste somente as capacidades que representam o cenário "
-            "que você deseja avaliar."
+            "Edite a capacidade do cenário aqui. Capacidade-base e origem "
+            "são referências de leitura; a validação formal das capacidades "
+            "será tratada na etapa de governança."
         )
-        capacity_columns = st.columns(min(3, len(resources)))
-        for idx, resource in enumerate(resources):
-            default = max(1, int(base_caps.get(resource, 1)))
-            with capacity_columns[idx % len(capacity_columns)]:
-                capacities[resource] = int(
-                    st.number_input(
-                        resource,
-                        min_value=1,
-                        value=default,
-                        step=1,
-                        key=f"cap_{source_key}_{idx}",
-                    )
-                )
+        capacity_input_df = pd.DataFrame(
+            [
+                {
+                    "Recurso": resource,
+                    "Capacidade-base": int(base_caps.get(resource, 0)),
+                    "Origem": capacity_origin[resource],
+                    "Capacidade cenário": int(base_caps.get(resource, 0)),
+                }
+                for resource in resources
+            ]
+        )
+        edited_capacity_df = st.data_editor(
+            capacity_input_df,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            key=f"resource_capacity_editor_{source_key}",
+            disabled=["Recurso", "Capacidade-base", "Origem"],
+            column_config={
+                "Recurso": st.column_config.TextColumn("Recurso"),
+                "Capacidade-base": st.column_config.NumberColumn(
+                    "Capacidade-base",
+                    min_value=0,
+                    step=1,
+                ),
+                "Origem": st.column_config.TextColumn(
+                    "Origem",
+                    help=(
+                        "PROJECT quando a capacidade veio explicitamente do XML; "
+                        "INFERIDA quando foi derivada das demandas das atividades."
+                    ),
+                ),
+                "Capacidade cenário": st.column_config.NumberColumn(
+                    "Capacidade cenário",
+                    min_value=1,
+                    step=1,
+                    required=True,
+                    help="Capacidade que será usada no cenário RCPSP.",
+                ),
+            },
+        )
+        capacities = {
+            str(row["Recurso"]): int(row["Capacidade cenário"])
+            for _, row in edited_capacity_df.iterrows()
+        }
 
 with config_risk:
     st.markdown("#### Incerteza de duração")
@@ -431,6 +468,16 @@ run = st.button(
 )
 
 cached_result = st.session_state.get("planning_result")
+scenario_changed = bool(
+    cached_result
+    and cached_result.get("signature") != planning_signature
+)
+if scenario_changed and not run:
+    st.info(
+        "As premissas do cenário foram alteradas. "
+        "O resultado anterior foi invalidado; gere o cenário novamente."
+    )
+
 if run:
     try:
         best, candidates = optimize_turnaround(
@@ -614,6 +661,9 @@ if resources:
         [
             {
                 "Recurso": resource,
+                "Capacidade-base": int(base_caps.get(resource, 0)),
+                "Origem": capacity_origin[resource],
+                "Capacidade cenário": capacities[resource],
                 "Capacidade": capacities[resource],
                 "Pico": best.resource_peak.get(resource, 0),
                 "Utilizacao_%": round(
@@ -626,6 +676,63 @@ if resources:
     ).sort_values("Utilizacao_%", ascending=False)
 else:
     util_df = pd.DataFrame()
+
+with config_resources:
+    if resources:
+        st.divider()
+        st.markdown("#### Resultado do cenário")
+        st.caption(
+            "Capacidade, pico e utilização permanecem no mesmo contexto "
+            "em que o cenário de recursos foi configurado."
+        )
+        st.dataframe(
+            util_df[
+                [
+                    "Recurso",
+                    "Capacidade-base",
+                    "Origem",
+                    "Capacidade cenário",
+                    "Pico",
+                    "Utilizacao_%",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Utilizacao_%": st.column_config.NumberColumn(
+                    "Utilização (%)",
+                    format="%.1f",
+                ),
+            },
+        )
+
+        profile = resource_profile(best)
+        if not profile.empty:
+            fig2 = px.area(
+                profile,
+                x="Hora",
+                y="Uso",
+                color="Recurso",
+                title="Perfil de utilização de recursos",
+            )
+            fig2.update_layout(
+                margin=dict(l=15, r=15, t=55, b=15),
+                paper_bgcolor="white",
+                plot_bgcolor="white",
+                legend_title_text="",
+            )
+            st.plotly_chart(fig2, use_container_width=True)
+
+        if not util_df.empty:
+            bottleneck = util_df.iloc[0]
+            status(
+                (
+                    f"{bottleneck['Recurso']} apresenta a maior utilização média "
+                    f"({float(bottleneck['Utilizacao_%']):.1f}%)."
+                ),
+                tone="warn",
+                title="Recurso mais pressionado.",
+            )
 
 cand_df = pd.DataFrame(
     [
@@ -648,11 +755,10 @@ section(
     "Prazo, restrição de recursos e risco primeiro; detalhes técnicos ficam recolhidos.",
 )
 
-tab_exec, tab_schedule, tab_resources, tab_risk, tab_export = st.tabs(
+tab_exec, tab_schedule, tab_risk, tab_export = st.tabs(
     [
         "Decisão",
         "Cronograma",
-        "Recursos",
         "Risco",
         "Relatório",
     ]
@@ -910,45 +1016,6 @@ with tab_schedule:
             use_container_width=True,
             hide_index=True,
         )
-
-with tab_resources:
-    if resources:
-        profile = resource_profile(best)
-        if not profile.empty:
-            fig2 = px.area(
-                profile,
-                x="Hora",
-                y="Uso",
-                color="Recurso",
-                title="Perfil de utilização de recursos",
-            )
-            fig2.update_layout(
-                margin=dict(l=15, r=15, t=55, b=15),
-                paper_bgcolor="white",
-                plot_bgcolor="white",
-                legend_title_text="",
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-
-        with st.expander("Detalhes de utilização", expanded=False):
-            st.dataframe(
-                util_df,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        if not util_df.empty:
-            bottleneck = util_df.iloc[0]
-            status(
-                (
-                    f"{bottleneck['Recurso']} apresenta a maior utilização média "
-                    f"({float(bottleneck['Utilizacao_%']):.1f}%)."
-                ),
-                tone="warn",
-                title="Recurso mais pressionado.",
-            )
-    else:
-        st.info("Sem recursos atribuídos, não há perfil de capacidade a avaliar.")
 
 with tab_risk:
     if not risk:
