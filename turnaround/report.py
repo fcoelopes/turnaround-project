@@ -22,6 +22,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from .planning_status import classify_planning_status
+
 INK = colors.HexColor("#132238")
 MUTED = colors.HexColor("#607086")
 ACCENT = colors.HexColor("#0F766E")
@@ -751,21 +753,24 @@ def build_base_management_pdf(
         Spacer(1, 3 * mm),
     ]
 
-    if deadline_h is None:
-        tone = "warn"
-        status_text = "Janela-alvo não definida. O relatório apresenta duração e risco sem avaliação de aderência ao prazo."
-    elif makespan_h <= deadline_h:
-        tone = "good"
-        status_text = (
-            f"Cronograma determinístico do escopo-base dentro da janela: {makespan_h:.1f} h "
-            f"para um limite de {deadline_h:.1f} h."
-        )
-    else:
-        tone = "danger"
-        status_text = (
-            f"Cronograma determinístico do escopo-base excede a janela em {makespan_h - deadline_h:.1f} h "
-            f"({makespan_h:.1f} h planejadas para {deadline_h:.1f} h disponíveis)."
-        )
+    executive_status = classify_planning_status(
+        makespan_h=float(makespan_h),
+        deadline_h=None if deadline_h is None else float(deadline_h),
+        p80_h=None if not risk else float(risk["p80_h"]),
+        probability_meet_deadline=(
+            None
+            if not risk or risk.get("probability_meet_deadline") is None
+            else float(risk["probability_meet_deadline"])
+        ),
+    )
+    tone = "good" if executive_status.tone == "ok" else executive_status.tone
+    status_text = (
+        f"{executive_status.overall}. "
+        f"Determinístico: {executive_status.deterministic}; "
+        f"P80: {executive_status.p80}; "
+        f"P(janela): {executive_status.probability}. "
+        f"{executive_status.detail}"
+    )
     story.extend([_status_box(status_text, tone), Spacer(1, 4 * mm)])
 
     p80 = "-"
@@ -783,6 +788,11 @@ def build_base_management_pdf(
                         "Makespan base" if risk and risk.get("scope_enabled") else "Makespan",
                         f"{makespan_h / hours_per_day:.2f} d",
                     ),
+                    ("P80", p80),
+                    ("P(cumprir janela)", probability),
+                    ("Determinístico", executive_status.deterministic),
+                    ("Risco probabilístico", executive_status.risk),
+                    ("Status geral", executive_status.overall),
                     (
                         "CPM sem recursos",
                         f"{comparison['unconstrained_makespan_h'] / hours_per_day:.2f} d",
@@ -791,12 +801,13 @@ def build_base_management_pdf(
                         "Penalidade recursos",
                         f"{comparison['resource_penalty_h']:.1f} h",
                     ),
-                    ("P80", p80),
-                    ("P(cumprir janela)", probability),
-                    ("Regra SSGS", priority_rule.replace("_", " ")),
                 ]
             ),
             _p("Leitura executiva", s["h2"]),
+            _p(
+                f"Regra SSGS selecionada: {priority_rule.replace('_', ' ')}.",
+                s["muted"],
+            ),
         ]
     )
 
