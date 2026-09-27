@@ -77,9 +77,12 @@ Ainda não representa calendário real de turnos.
 
 ### Critérios de aceite
 
-- [ ] Nenhuma mensagem da interface sugere que já existe calendário por turno.
-- [ ] Relatórios deixam claro que a conversão é apenas temporal.
-- [ ] README e manual usam a mesma terminologia.
+- [x] Nenhuma mensagem da interface sugere que já existe calendário por turno.
+- [x] Relatórios deixam claro que a conversão é apenas temporal.
+- [x] README e manual usam a mesma terminologia.
+
+
+**Implementado:** TDS-2.
 
 ## P0.2 Renomear o botão de otimização
 
