@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from turnaround import ExecutionState, project_from_tasks, resolve_activation
+from turnaround import ExecutionState, TaskExecution, project_from_tasks, resolve_activation
 from turnaround.models import Link, Task
 from turnaround.planning_scope_risk import (
     PlanningScopeRisk,
@@ -143,6 +143,14 @@ def test_planning_scope_risk_becomes_execution_condition_after_approval():
         ExecutionState(
             current_time=2,
             events={"1": ["damage_found"]},
+            executions={
+                "1": TaskExecution(
+                    status="completed",
+                    start=0,
+                    finish=2,
+                    mode_name="base",
+                )
+            },
         ),
     )
     assert "2" in after_event.active_ids
