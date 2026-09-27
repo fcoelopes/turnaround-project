@@ -217,7 +217,7 @@ with config_resources:
                 {
                     "Recurso": resource,
                     "Capacidade-base": int(base_caps.get(resource, 0)),
-                    "Origem": base_capacity_origin[resource],
+                    "Origem-base": base_capacity_origin[resource],
                     "Capacidade cenário": int(base_caps.get(resource, 0)),
                 }
                 for resource in resources
@@ -229,7 +229,7 @@ with config_resources:
             hide_index=True,
             num_rows="fixed",
             key=f"resource_capacity_editor_{source_key}",
-            disabled=["Recurso", "Capacidade-base", "Origem"],
+            disabled=["Recurso", "Capacidade-base", "Origem-base"],
             column_config={
                 "Recurso": st.column_config.TextColumn("Recurso"),
                 "Capacidade-base": st.column_config.NumberColumn(
@@ -237,11 +237,11 @@ with config_resources:
                     min_value=0,
                     step=1,
                 ),
-                "Origem": st.column_config.TextColumn(
-                    "Origem",
+                "Origem-base": st.column_config.TextColumn(
+                    "Origem-base",
                     help=(
-                        "PROJECT quando a capacidade veio explicitamente do XML; "
-                        "INFERIDA quando foi derivada das demandas das atividades."
+                        "Origem da referência inicial. A tabela de governança abaixo "
+                        "mostra a origem efetiva do cenário após qualquer edição."
                     ),
                 ),
                 "Capacidade cenário": st.column_config.NumberColumn(
