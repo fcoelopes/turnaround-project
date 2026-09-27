@@ -3388,6 +3388,128 @@ with governance_tab:
         f"{formalized_baseline_change:+.1f} h."
     )
 
+    if baseline_revisions:
+        with st.expander("Auditar uma revisão", expanded=False):
+            audit_revision_number = st.selectbox(
+                "Revisão",
+                options=[revision.revision_number for revision in baseline_revisions],
+                format_func=lambda number: f"Rev.{number}",
+                key=f"governance_revision_audit_{execution_session.id[:8]}",
+            )
+            audit_revision = next(
+                revision
+                for revision in baseline_revisions
+                if revision.revision_number == audit_revision_number
+            )
+            audit_index = next(
+                index
+                for index, revision in enumerate(baseline_revisions)
+                if revision.revision_number == audit_revision_number
+            )
+            fallback_previous_revision = (
+                baseline_revisions[audit_index - 1]
+                if audit_index > 0
+                else None
+            )
+            audit_previous_label = (
+                audit_revision.previous_baseline_label
+                or (
+                    fallback_previous_revision.label
+                    if fallback_previous_revision is not None
+                    else "Original"
+                )
+            )
+            audit_previous_makespan = (
+                float(audit_revision.previous_makespan_h)
+                if audit_revision.previous_makespan_h is not None
+                else (
+                    float(fallback_previous_revision.makespan_h)
+                    if fallback_previous_revision is not None
+                    else float(original_baseline_makespan)
+                )
+            )
+            audit_previous_deadline = (
+                audit_revision.previous_deadline_h
+                if audit_revision.previous_deadline_h is not None
+                else (
+                    fallback_previous_revision.deadline_h
+                    if fallback_previous_revision is not None
+                    else original_deadline
+                )
+            )
+            audit_delta_previous = (
+                float(audit_revision.delta_vs_previous_h)
+                if audit_revision.delta_vs_previous_h is not None
+                else float(audit_revision.makespan_h) - audit_previous_makespan
+            )
+            audit_delta_original = (
+                float(audit_revision.delta_vs_original_h)
+                if audit_revision.delta_vs_original_h is not None
+                else float(audit_revision.makespan_h) - original_baseline_makespan
+            )
+
+            a1, a2, a3, a4 = st.columns(4)
+            a1.metric("Anterior", audit_previous_label)
+            a2.metric(
+                "Makespan anterior",
+                f"{audit_previous_makespan:.1f} h",
+            )
+            a3.metric(
+                "Makespan aprovado",
+                f"{audit_revision.makespan_h:.1f} h",
+                delta=f"{audit_delta_previous:+.1f} h",
+            )
+            a4.metric(
+                "Δ vs Original",
+                f"{audit_delta_original:+.1f} h",
+            )
+
+            audit_rows = [
+                {
+                    "Campo": "Janela anterior",
+                    "Valor": (
+                        f"{float(audit_previous_deadline):.1f} h"
+                        if audit_previous_deadline is not None
+                        else "—"
+                    ),
+                },
+                {
+                    "Campo": "Nova janela aprovada",
+                    "Valor": (
+                        f"{float(audit_revision.deadline_h):.1f} h"
+                        if audit_revision.deadline_h is not None
+                        else "—"
+                    ),
+                },
+                {
+                    "Campo": "Aprovado por",
+                    "Valor": audit_revision.approved_by or "—",
+                },
+                {
+                    "Campo": "Aprovada em",
+                    "Valor": audit_revision.approved_at.astimezone().strftime(
+                        "%d/%m/%Y %H:%M"
+                    ),
+                },
+                {
+                    "Campo": "Snapshot promovido",
+                    "Valor": audit_revision.snapshot_id,
+                },
+                {
+                    "Campo": "Motivo",
+                    "Valor": audit_revision.reason,
+                },
+                {
+                    "Campo": "Observação",
+                    "Valor": audit_revision.notes or "—",
+                },
+            ]
+            st.dataframe(
+                pd.DataFrame(audit_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+
     with st.expander(
         "Promover este replanejamento a nova linha de base",
         expanded=False,
