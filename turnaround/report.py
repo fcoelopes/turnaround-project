@@ -741,6 +741,10 @@ def build_base_management_pdf(
     criticality_df: pd.DataFrame,
     resource_df: pd.DataFrame | None,
     risk: dict | None,
+    baseline_scenario_name: str | None = None,
+    baseline_approved_by: str | None = None,
+    baseline_approved_at: str | None = None,
+    baseline_approval_reason: str | None = None,
 ) -> bytes:
     s = _styles()
     story: list = [
@@ -752,6 +756,45 @@ def build_base_management_pdf(
         ),
         Spacer(1, 3 * mm),
     ]
+
+    if (
+        baseline_scenario_name
+        and baseline_approved_by
+        and baseline_approved_at
+    ):
+        story.extend(
+            [
+                _p("BASELINE 0 APROVADA", s["h2"]),
+                _metric_table(
+                    [
+                        ("Cenário", baseline_scenario_name),
+                        ("Aprovado por", baseline_approved_by),
+                        ("Aprovada em", baseline_approved_at),
+                    ]
+                ),
+                *(
+                    [
+                        _p(
+                            f"Motivo / observação: {baseline_approval_reason}",
+                            s["body"],
+                        )
+                    ]
+                    if baseline_approval_reason
+                    else []
+                ),
+                Spacer(1, 3 * mm),
+            ]
+        )
+    else:
+        story.extend(
+            [
+                _p(
+                    "Documento de análise: a Baseline 0 ainda não possui aprovação formal registrada.",
+                    s["muted"],
+                ),
+                Spacer(1, 3 * mm),
+            ]
+        )
 
     executive_status = classify_planning_status(
         makespan_h=float(makespan_h),
