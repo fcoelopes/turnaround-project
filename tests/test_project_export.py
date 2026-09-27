@@ -12,6 +12,7 @@ from turnaround import (
     TriggerCondition,
     TurnaroundProject,
     TurnaroundTask,
+    build_baseline_revision,
 )
 from turnaround.io import project_xml_to_tasks
 from turnaround.mrcpsp import AdvancedScheduledTask
@@ -226,4 +227,100 @@ def test_project_xml_export_preserves_replanned_dates():
 
     assert task is not None
     assert task.findtext("p:Start", namespaces=ns) == "2026-10-06T11:00:00"
+    assert task.findtext("p:Finish", namespaces=ns) == "2026-10-06T13:00:00"
+
+
+def test_project_xml_export_writes_original_and_formal_baselines():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="A",
+                project_uid="1001",
+                name="Atividade A",
+                modes=[ExecutionMode(name="base", duration=5)],
+            )
+        ],
+        capacities={},
+    )
+
+    original = AdvancedScheduledTask(
+        task_id="A",
+        task_name="Atividade A",
+        mode_name="base",
+        start=0,
+        finish=5,
+        duration=5,
+        resources={},
+        cost=0,
+    )
+    revision = build_baseline_revision(
+        session_id="session-1",
+        project_key="project-key",
+        revision_number=1,
+        name="Rev.1",
+        reason="Nova janela aprovada",
+        snapshot_id="snap-rev1",
+        current_time_h=2,
+        makespan_h=6,
+        deadline_h=8,
+        total_cost=0,
+        schedule_items=[
+            AdvancedScheduledTask(
+                task_id="A",
+                task_name="Atividade A",
+                mode_name="base",
+                start=1,
+                finish=6,
+                duration=5,
+                resources={},
+                cost=0,
+            )
+        ],
+    )
+    current = AdvancedScheduledTask(
+        task_id="A",
+        task_name="Atividade A",
+        mode_name="base",
+        start=2,
+        finish=7,
+        duration=5,
+        resources={},
+        cost=0,
+    )
+
+    xml_bytes = build_project_xml(
+        project_name="Parada",
+        project=project,
+        active_task_ids={"A"},
+        schedule_items=[current],
+        state=ExecutionState(current_time=2),
+        calendar_origin=datetime(2026, 10, 6, 6, 0),
+        original_baseline_items=[original],
+        baseline_revisions=[revision],
+    )
+
+    root = ET.fromstring(xml_bytes)
+    ns = {"p": "http://schemas.microsoft.com/project"}
+    task = root.find(".//p:Tasks/p:Task", ns)
+    assert task is not None
+
+    baselines = task.findall("p:Baseline", ns)
+    assert len(baselines) == 2
+
+    values = {
+        int(item.findtext("p:Number", namespaces=ns)): (
+            item.findtext("p:Start", namespaces=ns),
+            item.findtext("p:Finish", namespaces=ns),
+        )
+        for item in baselines
+    }
+    assert values[0] == (
+        "2026-10-06T06:00:00",
+        "2026-10-06T11:00:00",
+    )
+    assert values[1] == (
+        "2026-10-06T07:00:00",
+        "2026-10-06T12:00:00",
+    )
+    assert task.findtext("p:Start", namespaces=ns) == "2026-10-06T08:00:00"
     assert task.findtext("p:Finish", namespaces=ns) == "2026-10-06T13:00:00"
