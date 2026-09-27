@@ -381,7 +381,7 @@ planning_signature = hashlib.sha256(
 ).hexdigest()
 
 run = st.button(
-    "▶ Gerar plano otimizado",
+    "▶ Gerar cenário factível",
     type="primary",
     use_container_width=True,
     disabled=bool(scope_config_errors),
@@ -1062,7 +1062,7 @@ with tab_export:
             schedule_view_df.to_excel(
                 writer,
                 index=False,
-                sheet_name="Cronograma Otimizado",
+                sheet_name="Cronograma Factível",
             )
             if resources:
                 util_df.to_excel(
