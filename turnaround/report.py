@@ -900,6 +900,8 @@ def build_conditional_management_pdf(
     baseline_makespan: float,
     current_makespan: float,
     deadline: float | None,
+    governing_baseline_makespan: float | None = None,
+    governing_baseline_label: str | None = None,
     current_time: float,
     total_cost: float,
     new_scope_count: int,
@@ -918,9 +920,18 @@ def build_conditional_management_pdf(
     resource_scenario_df: pd.DataFrame | None = None,
     execution_state_df: pd.DataFrame | None = None,
     dynamic_scope_df: pd.DataFrame | None = None,
+    baseline_revisions_df: pd.DataFrame | None = None,
 ) -> bytes:
     s = _styles()
     delta = current_makespan - baseline_makespan
+    governing_makespan = (
+        float(governing_baseline_makespan)
+        if governing_baseline_makespan is not None
+        else float(baseline_makespan)
+    )
+    governing_label = governing_baseline_label or "Original"
+    delta_vs_governing = current_makespan - governing_makespan
+    formalized_delta = governing_makespan - baseline_makespan
 
     if deadline is None:
         tone = "warn"
@@ -1033,9 +1044,11 @@ def build_conditional_management_pdf(
         Spacer(1, 4 * mm),
         _metric_table(
             [
-                ("Baseline", f"{baseline_makespan:.1f} h"),
-                ("Reprogramado", f"{current_makespan:.1f} h"),
-                ("Impacto", f"{delta:+.1f} h"),
+                ("Baseline original", f"{baseline_makespan:.1f} h"),
+                ("Baseline vigente", f"{governing_makespan:.1f} h · {governing_label}"),
+                ("Forecast atual", f"{current_makespan:.1f} h"),
+                ("Δ vs original", f"{delta:+.1f} h"),
+                ("Δ vs vigente", f"{delta_vs_governing:+.1f} h"),
                 window_metric,
             ]
         ),
@@ -1046,6 +1059,15 @@ def build_conditional_management_pdf(
                 f"Dessas, {dynamic_scope_count} foram criadas durante a execução. "
                 f"O replanejamento deslocou {stability_compared_tasks} atividade(s) já planejadas, "
                 f"somando {total_start_deviation:.1f} h de mudança de início."
+            ),
+            s["body"],
+        ),
+        _p(
+            (
+                f"Desde a baseline original, o forecast acumula {delta:+.1f} h. "
+                f"A baseline vigente ({governing_label}) incorporou formalmente "
+                f"{formalized_delta:+.1f} h em relação ao plano original; "
+                f"restam {delta_vs_governing:+.1f} h de desvio contra a referência vigente."
             ),
             s["body"],
         ),
@@ -1119,6 +1141,35 @@ def build_conditional_management_pdf(
                 ),
             ]
             if dynamic_scope_df is not None and not dynamic_scope_df.empty
+            else []
+        ),
+        *(
+            [
+                Spacer(1, 4 * mm),
+                _p("Histórico de linhas de base", s["h2"]),
+                _dataframe_table(
+                    baseline_revisions_df,
+                    [
+                        "Linha de base",
+                        "Makespan (h)",
+                        "Janela (h)",
+                        "Δ vs original (h)",
+                        "Aprovada em",
+                        "Motivo",
+                    ],
+                    max_rows=10,
+                    widths=[
+                        24 * mm,
+                        24 * mm,
+                        24 * mm,
+                        28 * mm,
+                        34 * mm,
+                        48 * mm,
+                    ],
+                ),
+            ]
+            if baseline_revisions_df is not None
+            and not baseline_revisions_df.empty
             else []
         ),
         Spacer(1, 4 * mm),
