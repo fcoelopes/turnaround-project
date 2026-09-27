@@ -209,6 +209,10 @@ P(cumprir janela)
 
 Histograma e resumo de ampliação de escopo.
 
+**TDS-7 implementado — aguardando revisão funcional:** configuração e resultado
+foram consolidados na mesma aba **Risco**, incluindo o parâmetro mais provável
+da distribuição triangular.
+
 ## P1.4 Mostrar decomposição do risco
 
 Mostrar explicitamente:
@@ -235,6 +239,10 @@ Criar tabela:
 |---|---:|---:|---:|
 
 Objetivo: responder **qual evento está mais puxando o P80**.
+
+**TDS-7 implementado — aguardando revisão funcional:** a aba Risco exibe P80
+somente duração, P80 combinado, impacto médio/P80 do escopo e uma tabela de
+direcionadores ordenada pelo impacto marginal médio observado.
 
 ## P1.6 Documentar independência de eventos
 
@@ -775,7 +783,7 @@ Depois disso avaliar:
 - [ ] Renomear horas/dia.
 - [x] Renomear “Gerar plano otimizado”.
 - [ ] Reduzir sidebar.
-- [ ] Mover Monte Carlo para Risco.
+- [x] Mover Monte Carlo para Risco.
 - [ ] Mover capacidades para Recursos.
 - [ ] Adicionar origem da capacidade.
 - [ ] Implementar status geral baseado em risco.
