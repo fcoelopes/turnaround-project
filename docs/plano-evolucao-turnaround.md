@@ -126,6 +126,10 @@ A aba deve mostrar:
 | Recurso | Capacidade-base | Origem | Capacidade cenário | Pico | Utilização |
 |---|---:|---|---:|---:|---:|
 
+**TDS-5 implementado — aguardando revisão funcional:** edição de capacidade, leitura de capacidade-base/origem/cenário, pico e utilização foram centralizadas em **Recursos**. Alterar uma premissa invalida o resultado anterior e exige novo cálculo.
+
+**TDS-6 permanece responsável pela governança:** confirmação explícita, alerta de capacidade inferida e bloqueio da aprovação de baseline enquanto houver capacidade não validada.
+
 Cada recurso deve receber uma origem explícita:
 
 ```text
