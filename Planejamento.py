@@ -1380,6 +1380,26 @@ with tab_export:
         criticality_df=crit_df,
         resource_df=util_df,
         risk=risk,
+        baseline_scenario_name=(
+            approved_baseline.scenario_name
+            if baseline_formal and approved_baseline is not None
+            else None
+        ),
+        baseline_approved_by=(
+            approved_baseline.approved_by
+            if baseline_formal and approved_baseline is not None
+            else None
+        ),
+        baseline_approved_at=(
+            approved_baseline.approved_at.isoformat(timespec="minutes")
+            if baseline_formal and approved_baseline is not None
+            else None
+        ),
+        baseline_approval_reason=(
+            approved_baseline.approval_reason
+            if baseline_formal and approved_baseline is not None
+            else None
+        ),
     )
 
     st.download_button(
