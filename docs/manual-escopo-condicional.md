@@ -47,7 +47,36 @@ Avaliação de prazo, recursos e custo
 
 ---
 
-## 2. Conceito do cenário “Kinder Ovo”
+## 2. Replanejamento e revisão formal da linha de base
+
+O cronograma pode ser replanejado quantas vezes forem necessárias sem alterar a
+linha de base formal.
+
+A página distingue:
+
+- **Baseline original**: plano aprovado antes da execução;
+- **Baseline vigente**: original ou última `Rev.n` formalmente aprovada;
+- **Forecast atual**: cronograma produzido pelo estado corrente da parada.
+
+Use **Promover este replanejamento a nova linha de base** somente quando a
+mudança de compromisso tiver sido aprovada. A promoção registra uma revisão
+imutável, de `Rev.1` a `Rev.10`, com motivo, janela aprovada, snapshot,
+cronograma, makespan e metadados de aprovação.
+
+Depois da promoção, o replanejamento passa a usar os horários da revisão como
+referência de estabilidade. A baseline original não é apagada: o relatório
+continua mostrando simultaneamente **Δ vs original** e **Δ vs vigente**.
+
+No Microsoft Project XML exportado:
+
+- `Baseline` / `Number=0` representa o plano original;
+- `Baseline1` … `Baseline10` representam as revisões formais;
+- `Start` e `Finish` representam o forecast operacional mais recente;
+- `ActualStart` e `ActualFinish` representam o que já foi executado.
+
+---
+
+## 3. Conceito do cenário “Kinder Ovo”
 
 O cenário demonstrativo representa uma bomba P-101.
 
@@ -76,7 +105,7 @@ O nome **Kinder Ovo** representa exatamente essa dinâmica: parte do escopo só 
 
 ---
 
-## 3. Tipos de atividade
+## 4. Tipos de atividade
 
 O sistema trabalha com três tipos principais.
 
@@ -101,7 +130,7 @@ Executar uma atividade oportunística selecionada pelo usuário
 
 ---
 
-## 4. Entrada do baseline e regras
+## 5. Entrada do baseline e regras
 
 O caminho preferencial é aprovar o cenário na guia **Planejamento**. Esse
 snapshot é persistido no SQLite com tarefas, precedências, capacidades,
@@ -111,7 +140,7 @@ deadline e horários RCPSP. Ao abrir **Escopo e Replanejamento**, selecione
 Quando a execução não passou pela guia Planejamento, o XML continua disponível
 como entrada direta.
 
-### 4.1 Microsoft Project XML
+### 5.1 Microsoft Project XML
 
 O XML contém a estrutura principal do cronograma:
 
@@ -131,7 +160,7 @@ arquivo. O formato recomendado é XML exportado pelo Microsoft Project.
 Quando a origem for **Baseline aprovado**, o mesmo modelo normalizado já foi
 persistido pela guia Planejamento e o upload não é necessário.
 
-### 4.2 JSON de regras de escopo
+### 5.2 JSON de regras de escopo
 
 O JSON adiciona informações que não pertencem naturalmente ao cronograma tradicional:
 
