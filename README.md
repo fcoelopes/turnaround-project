@@ -27,6 +27,18 @@ de execução.
 
 ### Risco combinado no Planejamento
 
+A aba **Risco** é o único contexto de configuração e leitura das incertezas no
+Planejamento. No mesmo lugar ficam:
+
+- número de simulações Monte Carlo;
+- parâmetros otimista, mais provável e pessimista da distribuição triangular;
+- atividades de escopo potencial, gatilhos, eventos e probabilidades;
+- Média, P50, P80, P90 e probabilidade de cumprir a janela;
+- histograma do makespan;
+- decomposição **P80 somente duração × P80 duração + escopo**;
+- impacto médio/P80 da ampliação de escopo;
+- direcionadores de risco ordenados pelo impacto marginal médio.
+
 A guia **Planejamento** distingue o escopo-base das atividades que podem entrar
 durante a parada. Atividades de escopo potencial podem ser associadas a:
 
