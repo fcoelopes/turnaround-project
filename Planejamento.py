@@ -64,7 +64,7 @@ workflow_strip(
 )
 
 with st.sidebar:
-    st.markdown("### Parâmetros da parada")
+    st.markdown("### Premissas globais")
     hours_per_day = st.number_input(
         "Horas consideradas por dia para conversão de prazo",
         min_value=1,
@@ -89,12 +89,10 @@ with st.sidebar:
         if deadline_days > 0
         else None
     )
-
-    st.divider()
-    st.markdown("### Incerteza de duração")
-    simulations = st.slider("Simulações Monte Carlo", 50, 1000, 300, 50)
-    optimistic_pct = st.slider("Cenário otimista (%)", -30, 0, -10, 5)
-    pessimistic_pct = st.slider("Cenário pessimista (%)", 0, 100, 30, 5)
+    st.caption(
+        "Capacidades de recursos e premissas de risco são configuradas "
+        "no corpo da página, no contexto correspondente."
+    )
 
 section(
     "1",
@@ -166,29 +164,6 @@ for resource, quantity in xml_caps.items():
     base_caps[resource] = max(base_caps.get(resource, 0), quantity)
 
 resources = sorted(base_caps)
-if not resources:
-    st.warning(
-        "O arquivo não possui recursos atribuídos. "
-        "O modelo calcula precedências sem restrição de capacidade."
-    )
-    capacities = {}
-else:
-    capacities = {}
-    with st.sidebar:
-        with st.expander("Capacidades de recursos", expanded=True):
-            st.caption("Altere somente o que representa o cenário que você quer testar.")
-            for idx, resource in enumerate(resources):
-                default = max(1, int(base_caps.get(resource, 1)))
-                capacities[resource] = int(
-                    st.number_input(
-                        resource,
-                        min_value=1,
-                        value=default,
-                        step=1,
-                        key=f"cap_{idx}",
-                    )
-                )
-
 source_key = hashlib.sha256(uploaded.getvalue()).hexdigest()[:12]
 task_by_id = {str(task.id): task for task in tasks}
 task_label_by_id = {
@@ -205,10 +180,77 @@ imported_scope_by_task = {
     if item.task_id in task_by_id
 }
 
-with st.expander(
-    "Incerteza de ampliação de escopo · planejamento",
-    expanded=bool(imported_scope_by_task),
-):
+section(
+    "2",
+    "Configurar cenário",
+    "Capacidade em Recursos; incertezas de duração e escopo em Risco.",
+)
+config_resources, config_risk = st.tabs(["Recursos", "Risco"])
+
+capacities: dict[str, int] = {}
+with config_resources:
+    st.markdown("#### Capacidade do cenário")
+    if not resources:
+        st.info(
+            "O arquivo não possui recursos atribuídos. "
+            "O modelo calcula precedências sem restrição de capacidade."
+        )
+    else:
+        st.caption(
+            "Ajuste somente as capacidades que representam o cenário "
+            "que você deseja avaliar."
+        )
+        capacity_columns = st.columns(min(3, len(resources)))
+        for idx, resource in enumerate(resources):
+            default = max(1, int(base_caps.get(resource, 1)))
+            with capacity_columns[idx % len(capacity_columns)]:
+                capacities[resource] = int(
+                    st.number_input(
+                        resource,
+                        min_value=1,
+                        value=default,
+                        step=1,
+                        key=f"cap_{source_key}_{idx}",
+                    )
+                )
+
+with config_risk:
+    st.markdown("#### Incerteza de duração")
+    risk_control_cols = st.columns(3)
+    with risk_control_cols[0]:
+        simulations = st.slider(
+            "Simulações Monte Carlo",
+            50,
+            1000,
+            300,
+            50,
+            key=f"simulations_{source_key}",
+        )
+    with risk_control_cols[1]:
+        optimistic_pct = st.slider(
+            "Cenário otimista (%)",
+            -30,
+            0,
+            -10,
+            5,
+            key=f"optimistic_{source_key}",
+        )
+    with risk_control_cols[2]:
+        pessimistic_pct = st.slider(
+            "Cenário pessimista (%)",
+            0,
+            100,
+            30,
+            5,
+            key=f"pessimistic_{source_key}",
+        )
+
+    st.caption(
+        "A duração mais provável permanece em 100% da duração-base; "
+        "os controles definem os limites da distribuição triangular."
+    )
+    st.divider()
+    st.markdown("#### Ampliação probabilística de escopo")
     st.caption(
         "Use esta seção para trabalhos que ainda não pertencem ao escopo-base, "
         "mas podem entrar se um evento ocorrer. A probabilidade é usada somente "
@@ -348,8 +390,9 @@ for item in scope_risks:
     event_probability_by_key[item.event_key] = item.probability
 
 if scope_config_errors:
-    for message in dict.fromkeys(scope_config_errors):
-        st.error(message)
+    with config_risk:
+        for message in dict.fromkeys(scope_config_errors):
+            st.error(message)
 
 base_tasks = materialize_planning_scope(
     tasks,
@@ -600,7 +643,7 @@ cand_df = pd.DataFrame(
 ).sort_values(["Atraso_h", "Makespan_h"])
 
 section(
-    "2",
+    "3",
     "Leitura para decisão",
     "Prazo, restrição de recursos e risco primeiro; detalhes técnicos ficam recolhidos.",
 )
