@@ -31,6 +31,7 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from .advanced_models import DiscoveredTask
+from .baseline_revision import BaselineRevision
 from .planning_baseline import ApprovedPlanningBaseline
 from .scope_rules import ScopeRuleRow
 from .workforce import WorkforceProfile
@@ -344,6 +345,33 @@ class PlanningBaselineRecord(Base):
     )
 
 
+class BaselineRevisionRecord(Base):
+    __tablename__ = "baseline_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "revision_number",
+            name="uq_baseline_revision_session_number",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("execution_sessions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    project_key: Mapped[str] = mapped_column(String(64), index=True)
+    revision_number: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(255))
+    reason: Mapped[str] = mapped_column(Text)
+    approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    snapshot_id: Mapped[str] = mapped_column(String(64))
+    makespan_h: Mapped[float] = mapped_column(Float)
+    deadline_h: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ExecutionEventRecord(Base):
     __tablename__ = "execution_events"
 
@@ -518,6 +546,104 @@ class ExecutionStore:
                 )
                 for record in records
             ]
+
+    def save_baseline_revision(
+        self,
+        revision: BaselineRevision,
+    ) -> BaselineRevision:
+        with self.SessionLocal.begin() as db:
+            session = self._require_session(db, revision.session_id)
+            if session.project_key != revision.project_key:
+                raise ValueError(
+                    "A revisão não pertence ao baseline desta sessão."
+                )
+
+            existing = db.scalar(
+                select(BaselineRevisionRecord).where(
+                    BaselineRevisionRecord.session_id == revision.session_id,
+                    BaselineRevisionRecord.revision_number == revision.revision_number,
+                )
+            )
+            if existing is not None:
+                raise ValueError(
+                    f"Baseline Rev.{revision.revision_number} já existe nesta sessão."
+                )
+
+            record = BaselineRevisionRecord(
+                session_id=revision.session_id,
+                project_key=revision.project_key,
+                revision_number=int(revision.revision_number),
+                name=revision.name,
+                reason=revision.reason,
+                approved_by=revision.approved_by,
+                snapshot_id=revision.snapshot_id,
+                makespan_h=float(revision.makespan_h),
+                deadline_h=(
+                    None
+                    if revision.deadline_h is None
+                    else float(revision.deadline_h)
+                ),
+                payload_json=revision.model_dump_json(),
+                created_at=revision.approved_at,
+            )
+            db.add(record)
+            self._append_event(
+                db,
+                session_id=revision.session_id,
+                event_type="BASELINE_REVISION_APPROVED",
+                payload={
+                    "revision_number": int(revision.revision_number),
+                    "name": revision.name,
+                    "snapshot_id": revision.snapshot_id,
+                    "makespan_h": float(revision.makespan_h),
+                    "deadline_h": revision.deadline_h,
+                    "approved_by": revision.approved_by,
+                    "reason": revision.reason,
+                },
+            )
+
+        return revision
+
+    def list_baseline_revisions(
+        self,
+        session_id: str,
+    ) -> list[BaselineRevision]:
+        with self.SessionLocal() as db:
+            rows = db.scalars(
+                select(BaselineRevisionRecord)
+                .where(BaselineRevisionRecord.session_id == session_id)
+                .order_by(BaselineRevisionRecord.revision_number)
+            ).all()
+            return [
+                BaselineRevision.model_validate_json(row.payload_json)
+                for row in rows
+            ]
+
+    def latest_baseline_revision(
+        self,
+        session_id: str,
+    ) -> BaselineRevision | None:
+        with self.SessionLocal() as db:
+            row = db.scalar(
+                select(BaselineRevisionRecord)
+                .where(BaselineRevisionRecord.session_id == session_id)
+                .order_by(BaselineRevisionRecord.revision_number.desc())
+                .limit(1)
+            )
+            if row is None:
+                return None
+            return BaselineRevision.model_validate_json(row.payload_json)
+
+    def next_baseline_revision_number(
+        self,
+        session_id: str,
+    ) -> int | None:
+        latest = self.latest_baseline_revision(session_id)
+        if latest is None:
+            return 1
+        if latest.revision_number >= 10:
+            return None
+        return int(latest.revision_number) + 1
 
     def load_workforce_profile(
         self,
