@@ -915,7 +915,7 @@ def build_base_management_pdf(
         [
             PageBreak(),
             _p("CRONOGRAMA", s["kicker"]),
-            _p("Cronograma otimizado", s["title"]),
+            _p("Cronograma factível por recursos", s["title"]),
             _p(
                 "Visão temporal das frentes de trabalho; atividades críticas aparecem em destaque.",
                 s["muted"],
