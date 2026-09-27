@@ -24,6 +24,7 @@ from turnaround import (
     approved_schedule_matches_project,
     approved_schedule_to_advanced,
     apply_scope_config,
+    apply_planning_scope_risks_to_project,
     build_baseline_revision,
     assign_people_to_skills,
     apply_scope_rule_rows,
@@ -694,6 +695,11 @@ def load_project(store: ExecutionStore):
             else None
         ),
     )
+    if approved_baseline is not None and approved_baseline.scope_risks:
+        project = apply_planning_scope_risks_to_project(
+            project,
+            approved_baseline.scope_risks,
+        )
 
     with st.expander(
         "Importar regras existentes por JSON (opcional)",
@@ -812,7 +818,12 @@ with config_tab:
         for index, condition in enumerate(task.activation.conditions, start=1):
             inherited_rule_rows.append(
                 {
-                    "Origem": "JSON / sidecar",
+                    "Origem": (
+                        "Planejamento"
+                        if approved_planning_baseline is not None
+                        and approved_planning_baseline.scope_risks
+                        else "JSON / sidecar"
+                    ),
                     "Regra": f"activation:{task.id}:{index}",
                     "Tipo": "conditional",
                     "Alvo / membros": f"{task.id} · {task.name}",
@@ -825,7 +836,12 @@ with config_tab:
     for group in base_planned_project.logical_groups:
         inherited_rule_rows.append(
             {
-                "Origem": "JSON / sidecar",
+                "Origem": (
+                        "Planejamento"
+                        if approved_planning_baseline is not None
+                        and approved_planning_baseline.scope_risks
+                        else "JSON / sidecar"
+                    ),
                 "Regra": group.id,
                 "Tipo": group.operator,
                 "Alvo / membros": "; ".join(group.member_task_ids),
