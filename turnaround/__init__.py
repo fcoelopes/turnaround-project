@@ -21,6 +21,12 @@ from .advanced_models import (
     TurnaroundTask,
 )
 from .io import load_schedule
+from .planning_scope_risk import (
+    PlanningScopeRisk,
+    apply_planning_scope_risks_to_project,
+    extract_scope_risk_candidates,
+    materialize_planning_scope,
+)
 from .planning_baseline import (
     ApprovedPlanningBaseline,
     PlanningLinkSnapshot,
@@ -58,6 +64,7 @@ __all__ = [
     "Person",
     "PlanningLinkSnapshot",
     "PlanningScheduleItemSnapshot",
+    "PlanningScopeRisk",
     "PlanningTaskSnapshot",
     "WorkforceProfile",
     "ExecutionState",
@@ -72,6 +79,7 @@ __all__ = [
     "analyze_effective_criticality",
     "approved_schedule_matches_project",
     "approved_schedule_to_advanced",
+    "apply_planning_scope_risks_to_project",
     "apply_scope_config",
     "apply_scope_rule_rows",
     "assign_people_to_skills",
@@ -81,9 +89,11 @@ __all__ = [
     "discover_resource_catalog",
     "effective_capacities",
     "evaluate_scope_decisions",
+    "extract_scope_risk_candidates",
     "infer_capacities",
     "load_schedule",
     "materialize_dynamic_scope",
+    "materialize_planning_scope",
     "next_discovered_task_id",
     "optimize_turnaround",
     "project_from_tasks",
