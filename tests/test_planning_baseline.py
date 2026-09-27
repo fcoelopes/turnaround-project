@@ -78,6 +78,8 @@ def test_approved_planning_baseline_survives_store_restart(tmp_path):
         hours_per_day=8,
         deadline_h=12,
         capacities={"Mecânica": 2},
+        capacity_origins={"Mecânica": "PROJECT"},
+        capacities_validated=True,
         tasks=tasks,
         result=result,
         risk={
@@ -97,6 +99,8 @@ def test_approved_planning_baseline_survives_store_restart(tmp_path):
     assert restored.key == saved.key
     assert restored.project_name == "Parada teste"
     assert restored.capacities == {"Mecânica": 2.0}
+    assert restored.capacity_origins == {"Mecânica": "PROJECT"}
+    assert restored.capacities_validated is True
     assert restored.reference_start_times() == {"1": 0.0, "2": 4.0}
     assert [task.id for task in restored.to_tasks()] == ["1", "2"]
     assert len(listed) == 1
