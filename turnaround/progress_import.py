@@ -4,6 +4,7 @@ import io
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Iterable, Literal
 
 import pandas as pd
@@ -20,6 +21,8 @@ class ImportedProgressRow:
     name: str | None
     percent_complete: float | None
     status: ProgressStatus
+    actual_start_h: float | None = None
+    actual_finish_h: float | None = None
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,8 @@ class ReconciledProgressRow:
     percent_complete: float | None
     status: ProgressStatus
     source_reference: str
+    actual_start_h: float | None = None
+    actual_finish_h: float | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +64,37 @@ _PROGRESS_ALIASES = {
         "progresso",
     ],
     "status": ["status", "estado", "situacao", "situação"],
+    "actual_start": [
+        "actual start",
+        "inicio real",
+        "início real",
+        "data inicio real",
+        "data início real",
+    ],
+    "actual_finish": [
+        "actual finish",
+        "termino real",
+        "término real",
+        "fim real",
+        "data termino real",
+        "data término real",
+    ],
+    "actual_start_h": [
+        "actual start h",
+        "actual start (h)",
+        "inicio real h",
+        "início real h",
+        "h+ inicio",
+        "h+ início",
+    ],
+    "actual_finish_h": [
+        "actual finish h",
+        "actual finish (h)",
+        "termino real h",
+        "término real h",
+        "h+ termino",
+        "h+ término",
+    ],
 }
 
 
@@ -88,6 +124,91 @@ def _pick_column(columns: Iterable[object], key: str) -> object | None:
         if candidate is not None:
             return candidate
     return None
+
+
+def _parse_h_plus(value: object) -> float | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    number = float(text.replace(",", "."))
+    if number < 0:
+        raise ValueError("H+ real deve ser >= 0")
+    return float(number)
+
+
+def _parse_actual_datetime(
+    value: object,
+    calendar_origin: datetime | None,
+) -> float | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    text = str(value).strip()
+    if not text or text.upper() in {"NA", "N/A", "NONE"}:
+        return None
+    if calendar_origin is None:
+        raise ValueError(
+            "Actual Start/Finish em data/hora exigem origem temporal do projeto; "
+            "use colunas H+ quando a origem não estiver disponível."
+        )
+
+    actual = pd.Timestamp(pd.to_datetime(text, errors="raise"))
+    origin = pd.Timestamp(calendar_origin)
+
+    if actual.tzinfo is not None and origin.tzinfo is not None:
+        actual = actual.tz_convert(origin.tzinfo)
+    elif actual.tzinfo is not None and origin.tzinfo is None:
+        actual = actual.tz_localize(None)
+    elif actual.tzinfo is None and origin.tzinfo is not None:
+        origin = origin.tz_localize(None)
+
+    value_h = (actual - origin).total_seconds() / 3600.0
+    if value_h < -1e-9:
+        raise ValueError(
+            f"Actual em {actual} ocorre antes da origem da parada {origin}."
+        )
+    return max(0.0, float(value_h))
+
+
+def _resolve_actual_h(
+    *,
+    direct_h: object,
+    datetime_value: object,
+    calendar_origin: datetime | None,
+    label: str,
+) -> float | None:
+    direct = _parse_h_plus(direct_h)
+    derived = _parse_actual_datetime(datetime_value, calendar_origin)
+    if direct is not None and derived is not None and abs(direct - derived) > 1 / 60:
+        raise ValueError(
+            f"{label}: H+ informado ({direct:g}) diverge da data/hora "
+            f"convertida ({derived:g}) em mais de 1 minuto."
+        )
+    return direct if direct is not None else derived
+
+
+def _validate_actuals(
+    status: ProgressStatus,
+    actual_start_h: float | None,
+    actual_finish_h: float | None,
+) -> None:
+    if actual_finish_h is not None and actual_start_h is None:
+        raise ValueError("Actual Finish exige Actual Start.")
+    if (
+        actual_start_h is not None
+        and actual_finish_h is not None
+        and actual_finish_h < actual_start_h - 1e-9
+    ):
+        raise ValueError("Actual Finish deve ser >= Actual Start.")
+    if status == "not_started" and (
+        actual_start_h is not None or actual_finish_h is not None
+    ):
+        raise ValueError("Atividade não iniciada não pode possuir Actual Start/Finish.")
+    if status == "in_progress" and actual_finish_h is not None:
+        raise ValueError("Atividade em andamento não pode possuir Actual Finish.")
+    if status == "completed" and actual_start_h is None and actual_finish_h is not None:
+        raise ValueError("Atividade concluída exige Actual Start antes de Actual Finish.")
 
 
 def _clean_reference(value: object) -> str | None:
@@ -173,12 +294,19 @@ def _normalize_status(value: object, percent: float | None) -> ProgressStatus:
     return status
 
 
-def _rows_from_dataframe(df: pd.DataFrame) -> list[ImportedProgressRow]:
+def _rows_from_dataframe(
+    df: pd.DataFrame,
+    calendar_origin: datetime | None = None,
+) -> list[ImportedProgressRow]:
     id_col = _pick_column(df.columns, "id")
     uid_col = _pick_column(df.columns, "uid")
     name_col = _pick_column(df.columns, "name")
     percent_col = _pick_column(df.columns, "percent")
     status_col = _pick_column(df.columns, "status")
+    actual_start_col = _pick_column(df.columns, "actual_start")
+    actual_finish_col = _pick_column(df.columns, "actual_finish")
+    actual_start_h_col = _pick_column(df.columns, "actual_start_h")
+    actual_finish_h_col = _pick_column(df.columns, "actual_finish_h")
 
     if id_col is None and uid_col is None:
         raise ValueError(
@@ -201,6 +329,39 @@ def _rows_from_dataframe(df: pd.DataFrame) -> list[ImportedProgressRow]:
                 row[status_col] if status_col is not None else None,
                 percent,
             )
+            actual_start_h = _resolve_actual_h(
+                direct_h=(
+                    row[actual_start_h_col]
+                    if actual_start_h_col is not None
+                    else None
+                ),
+                datetime_value=(
+                    row[actual_start_col]
+                    if actual_start_col is not None
+                    else None
+                ),
+                calendar_origin=calendar_origin,
+                label="Actual Start",
+            )
+            actual_finish_h = _resolve_actual_h(
+                direct_h=(
+                    row[actual_finish_h_col]
+                    if actual_finish_h_col is not None
+                    else None
+                ),
+                datetime_value=(
+                    row[actual_finish_col]
+                    if actual_finish_col is not None
+                    else None
+                ),
+                calendar_origin=calendar_origin,
+                label="Actual Finish",
+            )
+            _validate_actuals(
+                status,
+                actual_start_h,
+                actual_finish_h,
+            )
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Linha {index + 2}: {exc}") from exc
 
@@ -218,6 +379,8 @@ def _rows_from_dataframe(df: pd.DataFrame) -> list[ImportedProgressRow]:
                     None if percent is None else float(percent)
                 ),
                 status=status,
+                actual_start_h=actual_start_h,
+                actual_finish_h=actual_finish_h,
             )
         )
     if not rows:
@@ -232,7 +395,10 @@ def _child_text(node: ET.Element, name: str, default: str | None = None) -> str 
     return default
 
 
-def _rows_from_project_xml(content: bytes) -> list[ImportedProgressRow]:
+def _rows_from_project_xml(
+    content: bytes,
+    calendar_origin: datetime | None = None,
+) -> list[ImportedProgressRow]:
     root = ET.fromstring(content)
     rows: list[ImportedProgressRow] = []
     for node in root.iter():
@@ -247,13 +413,29 @@ def _rows_from_project_xml(content: bytes) -> list[ImportedProgressRow]:
             continue
 
         percent = _percent(_child_text(node, "PercentComplete", "0")) or 0.0
+        status = _status_from_percent(percent)
+        actual_start_h = _parse_actual_datetime(
+            _child_text(node, "ActualStart"),
+            calendar_origin,
+        )
+        actual_finish_h = _parse_actual_datetime(
+            _child_text(node, "ActualFinish"),
+            calendar_origin,
+        )
+        _validate_actuals(
+            status,
+            actual_start_h,
+            actual_finish_h,
+        )
         rows.append(
             ImportedProgressRow(
                 source_id=source_id,
                 source_uid=source_uid,
                 name=_child_text(node, "Name"),
                 percent_complete=percent,
-                status=_status_from_percent(percent),
+                status=status,
+                actual_start_h=actual_start_h,
+                actual_finish_h=actual_finish_h,
             )
         )
 
@@ -264,12 +446,19 @@ def _rows_from_project_xml(content: bytes) -> list[ImportedProgressRow]:
     return rows
 
 
-def parse_progress_file(uploaded_file) -> list[ImportedProgressRow]:
+def parse_progress_file(
+    uploaded_file,
+    *,
+    calendar_origin: datetime | None = None,
+) -> list[ImportedProgressRow]:
     name = uploaded_file.name.lower()
     content = uploaded_file.getvalue()
 
     if name.endswith(".xml"):
-        return _rows_from_project_xml(content)
+        return _rows_from_project_xml(
+            content,
+            calendar_origin=calendar_origin,
+        )
     if name.endswith(".csv"):
         try:
             df = pd.read_csv(
@@ -285,9 +474,15 @@ def parse_progress_file(uploaded_file) -> list[ImportedProgressRow]:
                 engine="python",
                 encoding="latin1",
             )
-        return _rows_from_dataframe(df)
+        return _rows_from_dataframe(
+            df,
+            calendar_origin=calendar_origin,
+        )
     if name.endswith((".xlsx", ".xls")):
-        return _rows_from_dataframe(pd.read_excel(io.BytesIO(content)))
+        return _rows_from_dataframe(
+            pd.read_excel(io.BytesIO(content)),
+            calendar_origin=calendar_origin,
+        )
     raise ValueError(
         "Formato de progresso não suportado. Envie XML, XLSX/XLS ou CSV."
     )
@@ -354,6 +549,8 @@ def reconcile_progress(
                 ),
                 status=row.status,
                 source_reference=source_reference,
+                actual_start_h=row.actual_start_h,
+                actual_finish_h=row.actual_finish_h,
             )
         )
 
