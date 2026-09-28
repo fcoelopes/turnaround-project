@@ -384,10 +384,27 @@ Nesse segundo caso não existe escolha humana: o evento observado já contém a
 regra de roteamento. A aplicação materializa o ramo correspondente e segue para
 o replanejamento.
 
+### Recursos na execução
+
+A aba **Recursos** responde à pergunta **“com quem e com o que consigo executar
+o plano?”**. Ela reúne:
+
+- capacidades agregadas e equipamentos;
+- factibilidade dos modos MRCPSP;
+- roster e habilidades humanas;
+- alocação multi-skill;
+- pico de uso, utilização média e folga no pico do snapshot corrente.
+
+Pico e utilização são calculados a partir do mesmo cronograma replanejado
+mostrado em **Operação**, evitando uma leitura de recursos desconectada do
+forecast atual.
+
 ### Multi-skill workforce (MS-RCPSP)
 
-A página avançada possui a aba **Pessoas** para cadastrar o roster da parada e
-classificar quais recursos do cronograma representam habilidades humanas.
+A página avançada concentra recursos agregados e força de trabalho na aba
+**Recursos**. No mesmo contexto ficam capacidades/equipamentos, modos de
+execução, roster, habilidades e multi-skill. O cadastro identifica quais
+recursos do cronograma representam habilidades humanas.
 
 O modelo segue a formulação-base do MS-RCPSP:
 
