@@ -1498,27 +1498,96 @@ with resources_tab:
 
 with config_tab:
     st.markdown("#### Preferências do replanejamento")
-    stability_weight = st.slider(
-        "Peso de estabilidade do replanejamento (λ)",
-        min_value=0.0,
-        max_value=2.0,
-        value=min(2.0, max(0.0, float(execution_session.stability_weight))),
-        step=0.1,
-        key=f"stability_weight_{execution_session.id[:8]}",
-        help=(
-            "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos de início. "
-            "Atraso à deadline continua sendo prioridade. λ=0 reproduz o comportamento anterior; "
-            "λ=1 trata 1 h acumulada de mudança de início como 1 h no objetivo."
+    st.caption(
+        "Escolha quanto o replanejamento deve preservar os horários já combinados "
+        "para atividades futuras. Atraso à janela continua sendo prioridade."
+    )
+
+    stability_presets = {
+        "Baixa": 0.3,
+        "Balanceada": 1.0,
+        "Alta": 1.7,
+    }
+    persisted_stability_weight = min(
+        2.0,
+        max(0.0, float(execution_session.stability_weight)),
+    )
+    matching_level = next(
+        (
+            level
+            for level, weight in stability_presets.items()
+            if abs(weight - persisted_stability_weight) <= 1e-9
+        ),
+        None,
+    )
+    nearest_level = min(
+        stability_presets,
+        key=lambda level: abs(
+            stability_presets[level] - persisted_stability_weight
         ),
     )
-    st.caption(
-        "A estabilidade compara apenas atividades futuras que já existiam no plano anterior. "
-        "Novo escopo descoberto não recebe penalidade por não possuir início de referência."
+    selected_stability_level = st.radio(
+        "Preservação do plano",
+        options=list(stability_presets),
+        index=list(stability_presets).index(
+            matching_level or nearest_level
+        ),
+        horizontal=True,
+        key=f"stability_level_{execution_session.id[:8]}",
+        help=(
+            "Baixa permite maior rearranjo do trabalho futuro; Balanceada busca "
+            "compromisso entre prazo e estabilidade; Alta penaliza mais mudanças "
+            "nos horários já planejados."
+        ),
     )
 
+    with st.expander("Configuração avançada · estabilidade", expanded=False):
+        use_manual_stability_weight = st.checkbox(
+            "Usar valor λ manual",
+            value=matching_level is None,
+            key=f"stability_manual_enabled_{execution_session.id[:8]}",
+            help=(
+                "Use somente para estudos ou calibração. Quando ativo, este valor "
+                "substitui o nível operacional selecionado acima."
+            ),
+        )
+        manual_stability_weight = st.slider(
+            "λ de estabilidade",
+            min_value=0.0,
+            max_value=2.0,
+            value=persisted_stability_weight,
+            step=0.1,
+            disabled=not use_manual_stability_weight,
+            key=f"stability_weight_{execution_session.id[:8]}",
+            help=(
+                "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos "
+                "de início. λ=0 ignora estabilidade; valores maiores penalizam "
+                "mais mudanças de início."
+            ),
+        )
+        if use_manual_stability_weight:
+            st.caption(
+                "Valor avançado ativo: o λ manual substitui o nível "
+                f"{selected_stability_level}."
+            )
+        else:
+            st.caption(
+                "Mapeamento operacional: "
+                + " · ".join(
+                    f"{level} = λ {weight:.1f}"
+                    for level, weight in stability_presets.items()
+                )
+            )
 
+    stability_weight = (
+        float(manual_stability_weight)
+        if use_manual_stability_weight
+        else float(stability_presets[selected_stability_level])
+    )
     st.caption(
-        "Deixe λ em 1.0 se não houver motivo para privilegiar mais prazo ou mais estabilidade."
+        "A estabilidade compara apenas atividades futuras que já existiam no "
+        "plano anterior. Novo escopo descoberto não recebe penalidade por não "
+        "possuir início de referência."
     )
 
 empty_state = ExecutionState(current_time=0)
