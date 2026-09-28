@@ -62,3 +62,15 @@ def test_execution_supports_audited_progress_import_without_faking_actual_times(
     assert "record_progress_import(" in source
     assert '"Actual Start/Actual Finish"' in source
     assert "latest_progress_import(" in source
+
+
+def test_execution_actuals_override_clock_based_realized_inference():
+    source = ADVANCED_PAGE.read_text(encoding="utf-8")
+
+    assert "calendar_origin=calendar_origin" in source
+    assert '"Actual Start (H+)"' in source
+    assert '"Actual Finish (H+)"' in source
+    assert "actual_progress_authoritative = bool(actual_time_values)" in source
+    assert "if actual_progress_authoritative:" in source
+    assert '"Estado operacional orientado pelos Actuals importados.' in source
+    assert '"Sem Actuals importados, a tela mantém o modo de simulação legado:' in source
