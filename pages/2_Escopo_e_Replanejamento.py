@@ -32,6 +32,7 @@ from turnaround import (
     effective_capacities,
     evaluate_dynamic_scope_impacts,
     evaluate_scope_decisions,
+    forecast_remaining_finish,
     materialize_dynamic_scope,
     next_discovered_task_id,
     parse_progress_file,
@@ -1803,8 +1804,9 @@ with operation_tab:
         st.caption(
             "Aceita Microsoft Project XML, Excel ou CSV. Actual Start/Actual Finish "
             "em data/hora são convertidos para H+ usando a origem do baseline; "
-            "também são aceitas colunas H+ diretas. Trabalho concluído com ambos "
-            "os Actuals passa a ser congelado pelo realizado."
+            "também são aceitas colunas H+ diretas. Remaining Duration representa "
+            "horas de trabalho restantes da atividade em andamento e alimenta seu "
+            "forecast operacional sem usar % concluído como duração."
         )
         progress_file = st.file_uploader(
             "Arquivo de progresso",
@@ -1832,6 +1834,8 @@ with operation_tab:
                             "Status": row.status,
                             "Actual Start (H+)": row.actual_start_h,
                             "Actual Finish (H+)": row.actual_finish_h,
+                            "Remaining Duration (h)": row.remaining_duration_h,
+                            "Referência Remaining (H+)": row.remaining_as_of_h,
                             "Conciliação": row.source_reference,
                         }
                         for row in progress_result.rows
@@ -1873,6 +1877,8 @@ with operation_tab:
                                 "status": row.status,
                                 "actual_start_h": row.actual_start_h,
                                 "actual_finish_h": row.actual_finish_h,
+                                "remaining_duration_h": row.remaining_duration_h,
+                                "remaining_as_of_h": row.remaining_as_of_h,
                                 "source_reference": row.source_reference,
                             }
                             for row in progress_result.rows
@@ -1906,6 +1912,8 @@ with operation_tab:
                                 "Status": row.get("status"),
                                 "Actual Start (H+)": row.get("actual_start_h"),
                                 "Actual Finish (H+)": row.get("actual_finish_h"),
+                                "Remaining Duration (h)": row.get("remaining_duration_h"),
+                                "Referência Remaining (H+)": row.get("remaining_as_of_h"),
                             }
                             for row in latest_rows
                         ]
@@ -1930,16 +1938,31 @@ with operation_tab:
                     and row.get("actual_start_h") is not None
                 )
             )
+            in_progress_with_remaining = sum(
+                1
+                for row in latest_rows
+                if (
+                    row.get("status") == "in_progress"
+                    and row.get("actual_start_h") is not None
+                    and row.get("remaining_duration_h") is not None
+                )
+            )
             if actual_completed:
                 st.success(
                     f"{actual_completed} atividade(s) concluída(s) possuem Actual "
                     "Start/Finish e serão congeladas pelo realizado."
                 )
-            if actual_in_progress:
+            if in_progress_with_remaining:
+                st.success(
+                    f"{in_progress_with_remaining} atividade(s) em andamento possuem "
+                    "Actual Start + Remaining Duration e terão forecast congelado "
+                    "a partir da referência informada."
+                )
+            elif actual_in_progress:
                 st.info(
                     f"{actual_in_progress} atividade(s) em andamento possuem Actual "
-                    "Start. Elas serão auditadas, mas só terão término congelado "
-                    "quando Remaining Duration estiver disponível."
+                    "Start, mas ainda não têm Remaining Duration; ficam auditadas "
+                    "sem término previsto inventado."
                 )
 
     latest_progress_rows = (
@@ -1953,6 +1976,7 @@ with operation_tab:
         for value in (
             row.get("actual_start_h"),
             row.get("actual_finish_h"),
+            row.get("remaining_as_of_h"),
         )
         if value is not None
     ]
@@ -1987,39 +2011,96 @@ with operation_tab:
     executions: dict[str, TaskExecution] = {}
 
     if actual_progress_authoritative:
+        progress_state_errors: list[str] = []
         for row in latest_progress_rows:
-            if row.get("status") != "completed":
-                continue
+            task_id = str(row.get("task_id"))
+            status_value = row.get("status")
             actual_start = row.get("actual_start_h")
             actual_finish = row.get("actual_finish_h")
-            if actual_start is None or actual_finish is None:
+            remaining_duration = row.get("remaining_duration_h")
+            remaining_as_of = row.get("remaining_as_of_h")
+            reference_item = reference_item_by_id.get(task_id)
+            mode_name = (
+                reference_item.mode_name
+                if reference_item is not None
+                else None
+            )
+            assignments = (
+                {
+                    skill: list(person_ids)
+                    for skill, person_ids
+                    in reference_item.skill_assignments.items()
+                }
+                if reference_item is not None
+                else {}
+            )
+
+            if status_value == "completed":
+                if actual_start is None or actual_finish is None:
+                    continue
+                executions[task_id] = TaskExecution(
+                    status="completed",
+                    start=float(actual_start),
+                    finish=float(actual_finish),
+                    mode_name=mode_name,
+                    skill_assignments=assignments,
+                )
                 continue
-            reference_item = reference_item_by_id.get(
-                str(row.get("task_id"))
+
+            if status_value != "in_progress":
+                continue
+            if actual_start is None or remaining_duration is None:
+                continue
+
+            forecast_anchor = (
+                float(remaining_as_of)
+                if remaining_as_of is not None
+                else float(current_time)
             )
-            executions[str(row.get("task_id"))] = TaskExecution(
-                status="completed",
-                start=float(actual_start),
-                finish=float(actual_finish),
-                mode_name=(
-                    reference_item.mode_name
-                    if reference_item is not None
-                    else None
+            try:
+                forecast_finish = forecast_remaining_finish(
+                    project,
+                    task_id=task_id,
+                    remaining_duration_h=float(remaining_duration),
+                    from_h=forecast_anchor,
+                    mode_name=mode_name,
+                )
+                if forecast_finish <= current_time + 1e-9:
+                    raise ValueError(
+                        f"forecast H+{forecast_finish:g} não é posterior à hora "
+                        f"corrente H+{current_time:g}; atualize o progresso."
+                    )
+                executions[task_id] = TaskExecution(
+                    status="in_progress",
+                    start=float(actual_start),
+                    finish=float(forecast_finish),
+                    mode_name=mode_name,
+                    skill_assignments=assignments,
+                )
+            except ValueError as exc:
+                progress_state_errors.append(
+                    f"{task_id} · {row.get('task_name', 'atividade')}: {exc}"
+                )
+
+        if progress_state_errors:
+            status(
+                (
+                    "O progresso importado não forma um estado operacional "
+                    "calendar-aware válido. Corrija os dados ou ajuste "
+                    "calendário/overtime antes de replanejar."
                 ),
-                skill_assignments=(
-                    {
-                        skill: list(person_ids)
-                        for skill, person_ids
-                        in reference_item.skill_assignments.items()
-                    }
-                    if reference_item is not None
-                    else {}
-                ),
+                tone="danger",
+                title="Remaining Duration inconsistente.",
             )
+            for message in progress_state_errors:
+                st.error(message)
+            st.stop()
+
         st.caption(
-            "Estado operacional orientado pelos Actuals importados. Atividades sem "
-            "Actual Start/Finish não são inferidas como realizadas apenas porque a "
-            "hora corrente ultrapassou o horário planejado."
+            "Estado operacional orientado pelos Actuals importados. Atividades "
+            "concluídas usam Actual Start/Finish; atividades em andamento usam "
+            "Actual Start + Remaining Duration. Itens sem dados reais suficientes "
+            "não são inferidos como realizados apenas pelo relógio."
         )
     else:
         for item in execution_reference_items:
