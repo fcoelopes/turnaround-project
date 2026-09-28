@@ -516,7 +516,7 @@ Organizar em subseções:
 - atividades inviáveis;
 - conflito de skill.
 
-**TDS-16 implementado — aguardando revisão funcional:** a antiga aba
+**TDS-16 implementado e aprovado:** a antiga aba
 **Pessoas** foi absorvida por **Recursos**. O mesmo domínio agora reúne
 capacidades/equipamentos, modos de execução, roster, habilidades e multi-skill.
 O resultado do cenário exibe também **pico**, **utilização média** e **folga no
@@ -551,6 +551,14 @@ Alta        λ = 1,7
 ```
 
 Manter λ exato em **Configuração avançada**.
+
+**TDS-17 implementado — aguardando revisão funcional:** o controle principal
+passou a usar **Preservação do plano: Baixa / Balanceada / Alta**, mapeado
+internamente para λ=0,3 / 1,0 / 1,7. O λ exato ficou restrito ao expander
+**Configuração avançada · estabilidade**. Valores antigos fora dos presets são
+mantidos como perfil **Avançada**, sem alteração silenciosa do comportamento.
+Leituras operacionais, cenários salvos e o PDF passam a exibir o perfil
+operacional em vez do λ numérico.
 
 ---
 
@@ -849,7 +857,7 @@ Depois disso avaliar:
 - [x] Criar aba Visão.
 - [x] Criar aba Escopo.
 - [x] Consolidar Recursos + Pessoas.
-- [ ] Traduzir λ em níveis de preservação.
+- [x] Traduzir λ em níveis de preservação.
 - [ ] Manter configuração avançada opcional.
 
 ## Sprint 4 — Relatórios gerenciais
