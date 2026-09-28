@@ -3,11 +3,57 @@ import pandas as pd
 from turnaround.report import (
     _GanttFlowable,
     _gantt_chart_pages,
+    _planning_assumption_frames,
     _planning_front_page_metrics,
     _stability_profile_label,
     build_base_management_pdf,
     build_conditional_management_pdf,
 )
+
+
+def test_planning_assumption_frames_capture_effective_scenario_inputs():
+    summary, resources, events = _planning_assumption_frames(
+        {
+            "source_name": "parada.xml",
+            "deadline_h": 168.0,
+            "hours_per_day": 8,
+            "capacities": {"Mecânica": 4, "Guindaste": 1},
+            "capacity_origins": {
+                "Mecânica": "INFORMADA",
+                "Guindaste": "PROJECT",
+            },
+            "simulations": 300,
+            "duration_distribution": {
+                "optimistic_pct": -10,
+                "most_likely_pct": 0,
+                "pessimistic_pct": 30,
+            },
+            "scope_events": [
+                {
+                    "trigger": "10 · Inspecionar",
+                    "event": "nozzle_crack",
+                    "probability": 0.25,
+                }
+            ],
+            "heuristic": "SSGS · minimum_float",
+            "calculated_at": "2026-09-28T01:00+00:00",
+        }
+    )
+
+    values = dict(zip(summary["Premissa"], summary["Valor"]))
+    assert values["Arquivo de origem"] == "parada.xml"
+    assert values["Janela"] == "21.00 d (168.0 h)"
+    assert values["Horas/dia para conversão"] == "8"
+    assert values["Simulações Monte Carlo"] == "300"
+    assert "Triangular" in values["Distribuição de duração"]
+    assert values["Heurística escolhida"] == "SSGS · minimum_float"
+    assert values["Data/hora do cálculo"] == "2026-09-28T01:00+00:00"
+
+    mec = resources.loc[resources["Recurso"] == "Mecânica"].iloc[0]
+    assert mec["Capacidade"] == 4.0
+    assert mec["Origem"] == "INFORMADA"
+    assert events.iloc[0]["Evento"] == "nozzle_crack"
+    assert events.iloc[0]["Probabilidade"] == "25.0%"
 
 
 def test_planning_front_page_metrics_prioritize_decision_values():
