@@ -918,7 +918,7 @@ Depois disso avaliar:
 
 ## Sprint 5 — Calendários
 
-**TDS-25 implementado — aguardando revisão funcional:** criada a primitiva de
+**TDS-25 implementado e aprovado:** criada a primitiva de
 calendário de trabalho com **turnos diários recorrentes**, incluindo janelas que
 atravessam meia-noite (ex.: 19:00–07:00) e múltiplos turnos adjacentes. Nesta
 primeira etapa, atividades são tratadas como não preemptivas: toda a duração
@@ -927,7 +927,15 @@ A integração desses calendários com recursos e com RCPSP/MRCPSP permanece par
 as próximas microtarefas do Sprint 5.
 
 - [x] Turnos.
-- [ ] Calendário de recursos.
+- [x] Calendário de recursos.
+
+**TDS-26 implementado — aguardando revisão funcional:** o domínio avançado
+passou a aceitar um calendário por recurso e o **MRCPSP/rescheduling** já usa
+essas janelas ao procurar o início de cada atividade. Quando uma atividade exige
+mais de um recurso, o início só é liberado na primeira janela contínua comum a
+todos eles; recursos sem calendário explícito permanecem disponíveis 24 h. O
+RCPSP do Planejamento, Monte Carlo, indisponibilidades, overtime e MSPDI ainda
+não foram alterados nesta etapa.
 - [ ] Indisponibilidade.
 - [ ] Overtime.
 - [ ] Integração com RCPSP/MRCPSP.
