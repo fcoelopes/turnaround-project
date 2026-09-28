@@ -21,6 +21,25 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 
 ### Calendário específico por recurso
 
+### Indisponibilidades absolutas
+
+Além do turno recorrente, cada calendário pode registrar exceções absolutas no
+eixo H+ da parada. Exemplo:
+
+~~~text
+Guindaste
+turno recorrente: 06:00–18:00
+indisponível: H+30 até H+36
+~~~
+
+A indisponibilidade divide a janela trabalhável. Uma atividade não preemptiva
+só pode começar se sua duração completa couber em um trecho disponível depois
+da subtração desses bloqueios.
+
+Como o MRCPSP já consulta o calendário do recurso, essas exceções passam a ser
+respeitadas automaticamente pelo rescheduling avançado.
+
+
 No domínio MRCPSP, cada recurso pode ter seu próprio calendário recorrente.
 Ao programar uma atividade, o solver procura a primeira janela contínua em que
 **todos os recursos demandados** estejam simultaneamente disponíveis.
