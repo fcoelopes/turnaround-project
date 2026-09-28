@@ -76,11 +76,20 @@ def test_planning_risk_driver_frame_ignores_non_positive_event_impact():
 
 
 def test_planning_assumption_frames_capture_effective_scenario_inputs():
-    summary, resources, events = _planning_assumption_frames(
+    summary, resources, events, calendars = _planning_assumption_frames(
         {
             "source_name": "parada.xml",
             "deadline_h": 168.0,
-            "hours_per_day": 8,
+            "hours_per_day": 24,
+            "import_hours_per_day": 8,
+            "resource_calendars": {
+                "Guindaste": {
+                    "origin_hour": 6,
+                    "shifts": [
+                        {"start_hour": 7, "end_hour": 19},
+                    ],
+                }
+            },
             "capacities": {"Mecânica": 4, "Guindaste": 1},
             "capacity_origins": {
                 "Mecânica": "INFORMADA",
@@ -106,8 +115,9 @@ def test_planning_assumption_frames_capture_effective_scenario_inputs():
 
     values = dict(zip(summary["Premissa"], summary["Valor"]))
     assert values["Arquivo de origem"] == "parada.xml"
-    assert values["Janela"] == "21.00 d (168.0 h)"
-    assert values["Horas/dia para conversão"] == "8"
+    assert values["Janela"] == "7.00 d (168.0 h)"
+    assert values["Horas/dia para conversão"] == "24"
+    assert values["Horas/dia na importação"] == "8"
     assert values["Simulações Monte Carlo"] == "300"
     assert "Triangular" in values["Distribuição de duração"]
     assert values["Heurística escolhida"] == "SSGS · minimum_float"
@@ -118,6 +128,9 @@ def test_planning_assumption_frames_capture_effective_scenario_inputs():
     assert mec["Origem"] == "INFORMADA"
     assert events.iloc[0]["Evento"] == "nozzle_crack"
     assert events.iloc[0]["Probabilidade"] == "25.0%"
+    assert calendars.iloc[0]["Recurso"] == "Guindaste"
+    assert calendars.iloc[0]["Turno"] == "07:00–19:00"
+    assert calendars.iloc[0]["Relógio em H+0"] == "06:00"
 
 
 def test_planning_front_page_metrics_prioritize_decision_values():
