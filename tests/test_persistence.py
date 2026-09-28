@@ -571,6 +571,8 @@ def test_progress_import_survives_store_restart_without_new_schema(tmp_path):
                 "status": "in_progress",
                 "actual_start_h": 3.5,
                 "actual_finish_h": None,
+                "remaining_duration_h": 2.5,
+                "remaining_as_of_h": 4.0,
                 "source_reference": "UID 2020",
             },
         ],
@@ -589,6 +591,8 @@ def test_progress_import_survives_store_restart_without_new_schema(tmp_path):
     assert restored.payload["rows"][0]["actual_start_h"] == 1.0
     assert restored.payload["rows"][0]["actual_finish_h"] == 3.0
     assert restored.payload["rows"][1]["actual_start_h"] == 3.5
+    assert restored.payload["rows"][1]["remaining_duration_h"] == 2.5
+    assert restored.payload["rows"][1]["remaining_as_of_h"] == 4.0
     assert restored.payload["warnings"] == ["UID 999: atividade ignorada."]
 
     events = second.list_events(session.id)
