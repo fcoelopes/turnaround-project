@@ -559,6 +559,8 @@ def test_progress_import_survives_store_restart_without_new_schema(tmp_path):
                 "task_name": "Abrir equipamento",
                 "percent_complete": 100.0,
                 "status": "completed",
+                "actual_start_h": 1.0,
+                "actual_finish_h": 3.0,
                 "source_reference": "UID 1010",
             },
             {
@@ -567,6 +569,8 @@ def test_progress_import_survives_store_restart_without_new_schema(tmp_path):
                 "task_name": "Inspecionar",
                 "percent_complete": 40.0,
                 "status": "in_progress",
+                "actual_start_h": 3.5,
+                "actual_finish_h": None,
                 "source_reference": "UID 2020",
             },
         ],
@@ -582,6 +586,9 @@ def test_progress_import_survives_store_restart_without_new_schema(tmp_path):
     assert restored.payload["matched_rows"] == 2
     assert restored.payload["rows"][0]["task_id"] == "10"
     assert restored.payload["rows"][1]["percent_complete"] == 40.0
+    assert restored.payload["rows"][0]["actual_start_h"] == 1.0
+    assert restored.payload["rows"][0]["actual_finish_h"] == 3.0
+    assert restored.payload["rows"][1]["actual_start_h"] == 3.5
     assert restored.payload["warnings"] == ["UID 999: atividade ignorada."]
 
     events = second.list_events(session.id)
