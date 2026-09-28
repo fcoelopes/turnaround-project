@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Dict, Iterable, List, Tuple
 
+from .calendar import WorkingCalendar
 from .cpm import cpm_metrics, topological_order, validate_tasks
 from .models import ScheduledTask, Task, TurnaroundResult
 
@@ -56,9 +57,22 @@ def _precedence_bound(task: Task, scheduled: Dict[str, ScheduledTask]) -> int:
     return max(0, lb)
 
 
-def _fits(task: Task, start: int, usage: Dict[str, List[int]], capacities: Dict[str, int]) -> bool:
+def _fits(
+    task: Task,
+    start: int,
+    usage: Dict[str, List[int]],
+    capacities: Dict[str, int],
+    resource_calendars: dict[str, WorkingCalendar] | None = None,
+) -> bool:
     finish = start + task.duration_h
     for resource, demand in task.resources.items():
+        calendar = (resource_calendars or {}).get(resource)
+        if (
+            demand > 0
+            and calendar is not None
+            and not calendar.is_working_interval(start, task.duration_h)
+        ):
+            return False
         cap = capacities.get(resource, 0)
         if demand > cap:
             return False
@@ -101,7 +115,10 @@ def _priority_keys(tasks: List[Task], rule: str):
 
 
 def serial_schedule_generation(
-    tasks: List[Task], capacities: Dict[str, int], priority_rule: str = "minimum_float"
+    tasks: List[Task],
+    capacities: Dict[str, int],
+    priority_rule: str = "minimum_float",
+    resource_calendars: dict[str, WorkingCalendar] | None = None,
 ) -> TurnaroundResult:
     validate_tasks(tasks)
     by_id = {t.id: t for t in tasks}
@@ -128,7 +145,13 @@ def serial_schedule_generation(
         tid = sorted(eligible, key=key)[0]
         task = by_id[tid]
         start = _precedence_bound(task, scheduled)
-        while not _fits(task, start, usage, capacities):
+        while not _fits(
+            task,
+            start,
+            usage,
+            capacities,
+            resource_calendars,
+        ):
             start += 1
             if start > 1_000_000:
                 raise RuntimeError("Busca de janela viável excedeu o limite de segurança.")
@@ -163,10 +186,21 @@ def serial_schedule_generation(
 
 
 def optimize_turnaround(
-    tasks: List[Task], capacities: Dict[str, int], deadline_h: int | None = None
+    tasks: List[Task],
+    capacities: Dict[str, int],
+    deadline_h: int | None = None,
+    resource_calendars: dict[str, WorkingCalendar] | None = None,
 ) -> Tuple[TurnaroundResult, List[TurnaroundResult]]:
     rules = ["minimum_float", "most_successors", "longest_duration", "shortest_duration"]
-    candidates = [serial_schedule_generation(tasks, capacities, r) for r in rules]
+    candidates = [
+        serial_schedule_generation(
+            tasks,
+            capacities,
+            r,
+            resource_calendars=resource_calendars,
+        )
+        for r in rules
+    ]
     for c in candidates:
         c.tardiness_h = max(0, c.makespan_h - deadline_h) if deadline_h else 0
     best = min(candidates, key=lambda c: (c.tardiness_h, c.makespan_h))
