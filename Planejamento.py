@@ -25,6 +25,7 @@ from turnaround import (
     extract_scope_risk_candidates,
     materialize_planning_scope,
     upgrade_database,
+    validate_planning_baseline_for_execution,
 )
 from turnaround.io import load_schedule
 from turnaround.rcpsp import infer_capacities, optimize_turnaround
@@ -1175,6 +1176,32 @@ with tab_exec:
         },
         scope_risks=scope_risks,
     )
+    execution_readiness = validate_planning_baseline_for_execution(
+        approval_candidate
+    )
+    with st.expander(
+        "Validação para execução",
+        expanded=not execution_readiness.ready,
+    ):
+        if execution_readiness.ready:
+            st.success(
+                f"Baseline apta à execução · "
+                f"{len(execution_readiness.checks)} verificações estruturais aprovadas."
+            )
+        else:
+            st.error(
+                "A liberação para Escopo e Replanejamento está bloqueada "
+                "até corrigir os erros estruturais abaixo."
+            )
+        for message in execution_readiness.errors:
+            st.markdown(f"- ❌ {message}")
+        for message in execution_readiness.warnings:
+            st.markdown(f"- ⚠️ {message}")
+        if execution_readiness.checks:
+            st.caption(
+                "Verificado: " + " · ".join(execution_readiness.checks)
+            )
+
     approved_baseline = execution_store.load_planning_baseline(
         approval_candidate.key
     )
@@ -1195,8 +1222,9 @@ with tab_exec:
             title="Aprovação bloqueada por capacidade não validada.",
         )
     elif baseline_formal:
-        st.session_state["execution_baseline_key"] = approved_baseline.key
-        st.session_state["advanced_baseline_source"] = "Baseline aprovado"
+        if execution_readiness.ready:
+            st.session_state["execution_baseline_key"] = approved_baseline.key
+            st.session_state["advanced_baseline_source"] = "Baseline aprovado"
         status(
             (
                 f"{approved_baseline.scenario_name} · "
@@ -1204,8 +1232,12 @@ with tab_exec:
                 f"{len(approved_baseline.schedule)} atividades · "
                 f"ID {approved_baseline.key[:12]}."
             ),
-            tone="ok",
-            title="Baseline 0 formalmente aprovada.",
+            tone="ok" if execution_readiness.ready else "danger",
+            title=(
+                "Baseline 0 formalmente aprovada e apta à execução."
+                if execution_readiness.ready
+                else "Baseline 0 aprovada, mas bloqueada para execução."
+            ),
         )
         approval_cols = st.columns(3)
         approved_at_local = approved_baseline.approved_at.astimezone(
@@ -1279,7 +1311,7 @@ with tab_exec:
                 "✓ Aprovar formalmente a Baseline 0",
                 type="primary",
                 use_container_width=True,
-                disabled=not capacity_validation_ok,
+                disabled=not execution_readiness.ready,
             )
 
         if approve_submitted:
@@ -1323,7 +1355,7 @@ with tab_exec:
         )
         st.session_state.pop("planning_approval_notice", None)
 
-    if baseline_formal:
+    if baseline_formal and execution_readiness.ready:
         st.page_link(
             "pages/2_Escopo_e_Replanejamento.py",
             label="Abrir Escopo e Replanejamento",
