@@ -771,6 +771,92 @@ def _planning_front_page_metrics(
     ]
 
 
+def _planning_risk_driver_frame(
+    *,
+    risk: dict | None,
+    resource_df: pd.DataFrame | None,
+    max_rows: int = 5,
+) -> pd.DataFrame:
+    """Resume sinais que mais pressionam o prazo sem prescrever decisão."""
+    rows: list[dict[str, str | float]] = []
+
+    if risk:
+        for event in risk.get("scope_events", []):
+            impact = event.get("marginal_impact_h")
+            if impact is None or float(impact) <= 0:
+                continue
+            rows.append(
+                {
+                    "Tipo": "Evento de escopo",
+                    "Direcionador": str(event.get("event_name") or "evento"),
+                    "Sinal": f"+{float(impact):.1f} h",
+                    "Prioridade": float(impact),
+                    "Evidência": (
+                        f"P={float(event.get('probability_configured', 0.0)) * 100:.1f}% · "
+                        f"freq. simulada={float(event.get('frequency_simulated', 0.0)) * 100:.1f}%"
+                    ),
+                }
+            )
+
+    if resource_df is not None and not resource_df.empty:
+        ranked = resource_df.copy()
+        if "Utilizacao_%" in ranked.columns:
+            ranked = ranked.sort_values(
+                "Utilizacao_%",
+                ascending=False,
+                kind="stable",
+            )
+        top = ranked.iloc[0]
+        resource = str(top.get("Recurso", "Recurso"))
+        utilization = float(top.get("Utilizacao_%", 0.0) or 0.0)
+        peak = top.get("Pico")
+        capacity = top.get("Capacidade cenário", top.get("Capacidade"))
+        evidence_parts = [f"utilização média={utilization:.1f}%"]
+        signal = "maior utilização"
+        if peak is not None and capacity is not None:
+            peak_value = float(peak)
+            capacity_value = float(capacity)
+            evidence_parts.insert(
+                0,
+                f"pico={peak_value:g} / capacidade={capacity_value:g}",
+            )
+            if peak_value >= capacity_value - 1e-9:
+                signal = "atinge capacidade no pico"
+        rows.append(
+            {
+                "Tipo": "Recurso",
+                "Direcionador": resource,
+                "Sinal": signal,
+                "Prioridade": utilization / 100.0,
+                "Evidência": " · ".join(evidence_parts),
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(
+            columns=["Rank", "Tipo", "Direcionador", "Sinal", "Evidência"]
+        )
+
+    scope_rows = [row for row in rows if row["Tipo"] == "Evento de escopo"]
+    resource_rows = [row for row in rows if row["Tipo"] == "Recurso"]
+    scope_rows.sort(key=lambda row: float(row["Prioridade"]), reverse=True)
+    ordered = scope_rows + resource_rows
+    ordered = ordered[:max_rows]
+
+    return pd.DataFrame(
+        [
+            {
+                "Rank": index,
+                "Tipo": row["Tipo"],
+                "Direcionador": row["Direcionador"],
+                "Sinal": row["Sinal"],
+                "Evidência": row["Evidência"],
+            }
+            for index, row in enumerate(ordered, start=1)
+        ]
+    )
+
+
 def _planning_assumption_frames(
     assumptions: dict | None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -903,6 +989,34 @@ def build_base_management_pdf(
                     risk=risk,
                     overall_status=executive_status.overall,
                 )
+            ),
+            Spacer(1, 3 * mm),
+        ]
+    )
+
+    risk_driver_df = _planning_risk_driver_frame(
+        risk=risk,
+        resource_df=resource_df,
+    )
+    story.extend(
+        [
+            _p("Principais direcionadores", s["h2"]),
+            (
+                _dataframe_table(
+                    risk_driver_df,
+                    ["Rank", "Tipo", "Direcionador", "Sinal", "Evidência"],
+                    max_rows=5,
+                    widths=[12 * mm, 30 * mm, 42 * mm, 34 * mm, 56 * mm],
+                )
+                if not risk_driver_df.empty
+                else _p(
+                    "Nenhum direcionador adicional foi identificado neste cenário.",
+                    s["muted"],
+                )
+            ),
+            _p(
+                "Ordenação informativa para apoiar a análise; a ferramenta não seleciona a decisão técnica.",
+                s["muted"],
             ),
             Spacer(1, 3 * mm),
         ]
