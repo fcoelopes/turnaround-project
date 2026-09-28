@@ -269,7 +269,14 @@ O parser continua sendo uma única fonte de verdade. A página avançada pode
 consumir diretamente um baseline aprovado no Planejamento ou, como fallback,
 ler um XML do Microsoft Project e convertê-lo para o domínio avançado.
 
-### Aba Escopo\n\nA configuração de lógica de escopo deixou de ficar misturada com preferências\ngenéricas. A aba **Escopo** concentra `conditional`, XOR/OR/AND, gatilhos,\neventos, resolução `human/event`, rotas determinísticas e o editor tabular.\nO JSON continua sendo apenas uma fonte opcional de regras herdadas.\n\n### Regras de escopo em planilha
+### Aba Escopo
+
+A configuração de lógica de escopo deixou de ficar misturada com preferências
+genéricas. A aba **Escopo** concentra `conditional`, XOR/OR/AND, gatilhos,
+eventos, resolução `human/event`, rotas determinísticas e o editor tabular.
+O JSON continua sendo apenas uma fonte opcional de regras herdadas.
+
+### Regras de escopo em planilha
 
 Além do sidecar JSON, a página avançada possui um editor tabular persistido no
 SQLite. O botão **Adicionar regra** cria uma nova linha e o planejador pode
