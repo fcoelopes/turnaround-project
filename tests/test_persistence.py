@@ -538,3 +538,51 @@ def test_legacy_revision_without_audit_context_remains_readable(tmp_path):
     assert restored.previous_makespan_h is None
     assert restored.delta_vs_previous_h is None
     assert restored.delta_vs_original_h is None
+
+
+def test_progress_import_survives_store_restart_without_new_schema(tmp_path):
+    url = _database_url(tmp_path)
+    upgrade_database(url)
+
+    first = ExecutionStore(url)
+    session = first.get_or_create_active_session(
+        project_key="progress-project",
+        project_name="Parada progresso",
+    )
+    event = first.record_progress_import(
+        session.id,
+        source_name="progresso.xml",
+        rows=[
+            {
+                "task_id": "10",
+                "project_uid": "1010",
+                "task_name": "Abrir equipamento",
+                "percent_complete": 100.0,
+                "status": "completed",
+                "source_reference": "UID 1010",
+            },
+            {
+                "task_id": "20",
+                "project_uid": "2020",
+                "task_name": "Inspecionar",
+                "percent_complete": 40.0,
+                "status": "in_progress",
+                "source_reference": "UID 2020",
+            },
+        ],
+        warnings=["UID 999: atividade ignorada."],
+    )
+
+    second = ExecutionStore(url)
+    restored = second.latest_progress_import(session.id)
+
+    assert event.event_type == "PROGRESS_IMPORTED"
+    assert restored is not None
+    assert restored.payload["source_name"] == "progresso.xml"
+    assert restored.payload["matched_rows"] == 2
+    assert restored.payload["rows"][0]["task_id"] == "10"
+    assert restored.payload["rows"][1]["percent_complete"] == 40.0
+    assert restored.payload["warnings"] == ["UID 999: atividade ignorada."]
+
+    events = second.list_events(session.id)
+    assert any(item.event_type == "PROGRESS_IMPORTED" for item in events)
