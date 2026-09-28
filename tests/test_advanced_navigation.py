@@ -24,6 +24,11 @@ def test_advanced_navigation_uses_contextual_help_instead_of_manual_tab():
     assert "### Recursos da parada" in source
     assert "#### Capacidades e equipamentos" in source
     assert "#### Resultado do cenário" in source
+    assert '"Preservação do plano"' in source
+    assert '"Baixa": 0.3' in source
+    assert '"Balanceada": 1.0' in source
+    assert '"Alta": 1.7' in source
+    assert "Configuração avançada · estabilidade" in source
     assert '"Utilização (%)"' in source
     assert "with people_tab:" not in source
     assert "Ajuda · forecast, baseline vigente e rebaseline" in source
