@@ -764,7 +764,7 @@ Bloqueia: fechamento V-101
 
 Priorizar somente novos escopos com impacto relevante.
 
-**TDS-23 implementado — aguardando revisão funcional:** atividades `DS-*`
+**TDS-23 implementado e aprovado:** atividades `DS-*`
 relevantes agora aparecem na **Visão** e na primeira página do relatório de
 Execução com hora da descoberta, impacto marginal estimado sobre o término e
 atividades que passaram a bloquear. O impacto é calculado por contrafactual
@@ -912,7 +912,9 @@ Depois disso avaliar:
 - [x] Ranking de direcionadores de risco.
 - [x] Decisões pendentes na execução.
 - [x] Novo escopo com impacto.
-- [ ] Status gerencial coerente com P80/P(janela).
+- [x] Status gerencial coerente com P80/P(janela).
+
+**TDS-24 implementado — aguardando revisão funcional:** o Planejamento passou a ter uma única fonte de verdade para o status gerencial. O aviso intermediário que coloria **P(cumprir janela)** isoladamente foi removido; a interface e o PDF continuam usando `classify_planning_status`, que só considera o risco controlado quando **P80 cabe na janela e P(cumprir janela) ≥ 80%**. Isso elimina o caso contraditório em que a probabilidade aparecia verde enquanto o P80 continuava fora da janela.
 
 ## Sprint 5 — Calendários
 
