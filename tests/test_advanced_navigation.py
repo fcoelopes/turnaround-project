@@ -13,7 +13,7 @@ ADVANCED_PAGE = (
 def test_advanced_navigation_uses_contextual_help_instead_of_manual_tab():
     source = ADVANCED_PAGE.read_text(encoding="utf-8")
 
-    assert '["Visão", "Operação", "Escopo", "Recursos", "Configuração", "Governança"]' in source
+    assert '["Visão", "Operação", "Escopo", "Recursos", "Governança"]' in source
     assert '"Manual"' not in source
     assert "manual_tab" not in source
     assert "render_manual" not in source
@@ -28,9 +28,13 @@ def test_advanced_navigation_uses_contextual_help_instead_of_manual_tab():
     assert '"Baixa": 0.3' in source
     assert '"Balanceada": 1.0' in source
     assert '"Alta": 1.7' in source
-    assert "Configuração avançada · estabilidade" in source
+    assert "Mostrar configuração avançada de estabilidade" in source
     assert '"Utilização (%)"' in source
     assert "with people_tab:" not in source
+    assert "config_tab" not in source
+    assert '"Preferências do replanejamento"' in source
+    assert '"Histórico da execução"' in source
+    assert '"Sessão de execução persistida"' in source
     assert "Ajuda · forecast, baseline vigente e rebaseline" in source
     assert "### Visão executiva da parada" in source
     assert "### Escopo da parada" in source
