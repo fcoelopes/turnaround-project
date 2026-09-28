@@ -5,13 +5,17 @@ from xml.etree import ElementTree as ET
 
 from turnaround import (
     ActivationRule,
+    CalendarBlock,
+    DailyShift,
     ExecutionMode,
     ExecutionState,
+    OvertimeWindow,
     Precedence,
     TaskExecution,
     TriggerCondition,
     TurnaroundProject,
     TurnaroundTask,
+    WorkingCalendar,
     build_baseline_revision,
 )
 from turnaround.io import project_xml_to_tasks
@@ -325,3 +329,283 @@ def test_project_xml_export_writes_original_and_formal_baselines():
     )
     assert task.findtext("p:Start", namespaces=ns) == "2026-10-06T08:00:00"
     assert task.findtext("p:Finish", namespaces=ns) == "2026-10-06T13:00:00"
+
+
+def test_project_xml_export_assigns_recurring_calendar_to_resource():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="A",
+                name="Serviço mecânico",
+                modes=[
+                    ExecutionMode(
+                        name="base",
+                        duration=4,
+                        resources={"Equipe": 1},
+                    )
+                ],
+            )
+        ],
+        capacities={"Equipe": 1},
+        resource_calendars={
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+                origin_hour=6,
+            )
+        },
+    )
+    item = AdvancedScheduledTask(
+        task_id="A",
+        task_name="Serviço mecânico",
+        mode_name="base",
+        start=1,
+        finish=5,
+        duration=4,
+        resources={"Equipe": 1},
+        cost=0,
+    )
+
+    xml_bytes = build_project_xml(
+        project_name="Parada calendário",
+        project=project,
+        active_task_ids={"A"},
+        schedule_items=[item],
+        state=ExecutionState(current_time=0),
+        calendar_origin=datetime(2026, 10, 6, 6, 0),
+    )
+
+    root = ET.fromstring(xml_bytes)
+    ns = {"p": "http://schemas.microsoft.com/project"}
+
+    calendars = root.findall(".//p:Calendars/p:Calendar", ns)
+    assert len(calendars) == 2
+
+    custom = next(
+        node
+        for node in calendars
+        if node.findtext("p:Name", namespaces=ns) == "TDS · Equipe"
+    )
+    custom_uid = int(custom.findtext("p:UID", namespaces=ns))
+    weekdays = custom.findall("p:WeekDays/p:WeekDay", ns)
+    assert len(weekdays) == 7
+    for weekday in weekdays:
+        assert weekday.findtext("p:DayWorking", namespaces=ns) == "1"
+        times = weekday.findall(
+            "p:WorkingTimes/p:WorkingTime",
+            ns,
+        )
+        assert len(times) == 1
+        assert times[0].findtext("p:FromTime", namespaces=ns) == "07:00:00"
+        assert times[0].findtext("p:ToTime", namespaces=ns) == "19:00:00"
+
+    resource = root.find(".//p:Resources/p:Resource", ns)
+    assert resource is not None
+    assert int(resource.findtext("p:CalendarUID", namespaces=ns)) == custom_uid
+
+    notes = root.findtext(".//p:Tasks/p:Task/p:Notes", namespaces=ns) or ""
+    assert "Calendários de recurso: Equipe" in notes
+    assert "atividades não preemptivas" in notes
+
+
+def test_project_xml_export_splits_overnight_recurring_shift():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="N",
+                name="Serviço noturno",
+                modes=[
+                    ExecutionMode(
+                        name="base",
+                        duration=4,
+                        resources={"Noturno": 1},
+                    )
+                ],
+            )
+        ],
+        capacities={"Noturno": 1},
+        resource_calendars={
+            "Noturno": WorkingCalendar(
+                name="Noturno",
+                shifts=(DailyShift(19, 7),),
+                origin_hour=6,
+            )
+        },
+    )
+    item = AdvancedScheduledTask(
+        task_id="N",
+        task_name="Serviço noturno",
+        mode_name="base",
+        start=13,
+        finish=17,
+        duration=4,
+        resources={"Noturno": 1},
+        cost=0,
+    )
+
+    xml_bytes = build_project_xml(
+        project_name="Parada noite",
+        project=project,
+        active_task_ids={"N"},
+        schedule_items=[item],
+        state=ExecutionState(current_time=0),
+        calendar_origin=datetime(2026, 10, 6, 6, 0),
+    )
+
+    root = ET.fromstring(xml_bytes)
+    ns = {"p": "http://schemas.microsoft.com/project"}
+    custom = next(
+        node
+        for node in root.findall(".//p:Calendars/p:Calendar", ns)
+        if node.findtext("p:Name", namespaces=ns) == "TDS · Noturno"
+    )
+    first_day = custom.find("p:WeekDays/p:WeekDay", ns)
+    assert first_day is not None
+    times = first_day.findall("p:WorkingTimes/p:WorkingTime", ns)
+
+    assert [
+        (
+            item.findtext("p:FromTime", namespaces=ns),
+            item.findtext("p:ToTime", namespaces=ns),
+        )
+        for item in times
+    ] == [
+        ("00:00:00", "07:00:00"),
+        ("19:00:00", "23:59:59"),
+    ]
+
+
+def test_project_xml_export_materializes_blocks_and_overtime_as_exceptions():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="A",
+                name="Serviço",
+                modes=[
+                    ExecutionMode(
+                        name="base",
+                        duration=4,
+                        resources={"Equipe": 1},
+                    )
+                ],
+            )
+        ],
+        capacities={"Equipe": 1},
+        resource_calendars={
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+                origin_hour=6,
+                blocks=(
+                    CalendarBlock(
+                        start_h=6,
+                        end_h=8,
+                        reason="indisponibilidade",
+                    ),
+                ),
+                overtime_windows=(
+                    OvertimeWindow(
+                        start_h=13,
+                        end_h=17,
+                        reason="hora extra",
+                    ),
+                ),
+            )
+        },
+    )
+    item = AdvancedScheduledTask(
+        task_id="A",
+        task_name="Serviço",
+        mode_name="base",
+        start=8,
+        finish=12,
+        duration=4,
+        resources={"Equipe": 1},
+        cost=0,
+    )
+
+    xml_bytes = build_project_xml(
+        project_name="Parada exceção",
+        project=project,
+        active_task_ids={"A"},
+        schedule_items=[item],
+        state=ExecutionState(current_time=0),
+        calendar_origin=datetime(2026, 10, 6, 6, 0),
+    )
+
+    root = ET.fromstring(xml_bytes)
+    ns = {"p": "http://schemas.microsoft.com/project"}
+    custom = next(
+        node
+        for node in root.findall(".//p:Calendars/p:Calendar", ns)
+        if node.findtext("p:Name", namespaces=ns) == "TDS · Equipe"
+    )
+    exceptions = custom.findall("p:Exceptions/p:Exception", ns)
+    assert len(exceptions) == 1
+    exception = exceptions[0]
+    assert exception.findtext("p:DayWorking", namespaces=ns) == "1"
+
+    times = exception.findall("p:WorkingTimes/p:WorkingTime", ns)
+    assert [
+        (
+            wt.findtext("p:FromTime", namespaces=ns),
+            wt.findtext("p:ToTime", namespaces=ns),
+        )
+        for wt in times
+    ] == [
+        ("07:00:00", "12:00:00"),
+        ("14:00:00", "23:00:00"),
+    ]
+    assert (
+        exception.findtext(
+            "p:TimePeriod/p:FromDate",
+            namespaces=ns,
+        )
+        == "2026-10-06T00:00:00"
+    )
+
+
+def test_project_xml_export_keeps_24x7_for_resources_without_custom_calendar():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="A",
+                name="Serviço",
+                modes=[
+                    ExecutionMode(
+                        name="base",
+                        duration=2,
+                        resources={"Equipe": 1},
+                    )
+                ],
+            )
+        ],
+        capacities={"Equipe": 1},
+    )
+    item = AdvancedScheduledTask(
+        task_id="A",
+        task_name="Serviço",
+        mode_name="base",
+        start=0,
+        finish=2,
+        duration=2,
+        resources={"Equipe": 1},
+        cost=0,
+    )
+
+    xml_bytes = build_project_xml(
+        project_name="Parada 24h",
+        project=project,
+        active_task_ids={"A"},
+        schedule_items=[item],
+        state=ExecutionState(current_time=0),
+        calendar_origin=datetime(2026, 10, 6, 6, 0),
+    )
+
+    root = ET.fromstring(xml_bytes)
+    ns = {"p": "http://schemas.microsoft.com/project"}
+    resource = root.find(".//p:Resources/p:Resource", ns)
+    assert resource is not None
+    assert resource.findtext("p:CalendarUID", namespaces=ns) == "1"
+    calendars = root.findall(".//p:Calendars/p:Calendar", ns)
+    assert len(calendars) == 1
