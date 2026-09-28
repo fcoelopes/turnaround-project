@@ -655,8 +655,8 @@ def load_project(store: ExecutionStore):
 
 execution_store = _get_execution_store()
 
-vision_tab, operation_tab, config_tab, people_tab, governance_tab = st.tabs(
-    ["Visão", "Operação", "Configuração", "Pessoas", "Governança"]
+vision_tab, operation_tab, scope_tab, config_tab, people_tab, governance_tab = st.tabs(
+    ["Visão", "Operação", "Escopo", "Configuração", "Pessoas", "Governança"]
 )
 
 with operation_tab:
@@ -697,11 +697,17 @@ if project is None:
             "Selecione um baseline aprovado, carregue um XML na aba Operação "
             "ou use o cenário demonstrativo para montar a visão executiva."
         )
+    with scope_tab:
+        st.markdown("### Escopo")
+        st.info(
+            "Selecione um baseline aprovado, carregue um XML na aba Operação "
+            "ou use o cenário demonstrativo para configurar regras de escopo."
+        )
     with config_tab:
         st.markdown("### Configuração")
         st.info(
             "Selecione um baseline aprovado, carregue um XML na aba Operação "
-            "ou use o cenário demonstrativo para configurar regras e capacidades."
+            "ou use o cenário demonstrativo para configurar capacidades e preferências."
         )
     st.stop()
 
@@ -728,12 +734,28 @@ project_key = hashlib.sha256(
     ).encode("utf-8")
 ).hexdigest()
 
-with config_tab:
-    st.markdown("### Configuração de regras de escopo")
+with scope_tab:
+    st.markdown("### Escopo da parada")
     st.caption(
-        "Esta aba existe para qualquer plano carregado. "
-        "O JSON é apenas uma fonte opcional de regras herdadas."
+        "Defina aqui a lógica de ampliação e seleção de escopo. "
+        "O JSON continua opcional; o editor tabular é o mecanismo principal."
     )
+    with st.expander("Ajuda · domínio de escopo", expanded=False):
+        st.markdown(
+            """
+Use esta aba somente para regras que alteram **o que entra ou não entra na parada**.
+
+- **conditional**: uma atividade entra quando um gatilho/evento ocorre.
+- **XOR**: exatamente uma alternativa deve ser escolhida.
+- **OR**: uma ou mais alternativas podem ser escolhidas.
+- **AND**: todos os membros entram quando a condição é satisfeita.
+- **Gatilhos e eventos** representam a evidência que libera a regra.
+- **Resolução human** mantém a decisão com o planejador.
+- **Resolução event** aplica uma rota determinística já configurada.
+
+Capacidades, pessoas e estabilidade do replanejamento pertencem a outros domínios e não são configuradas aqui.
+            """
+        )
 
     with st.expander("Ajuda · conditional, XOR/OR/AND e resolução", expanded=False):
         st.markdown(
