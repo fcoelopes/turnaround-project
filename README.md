@@ -494,6 +494,21 @@ avançados aparecem somente no contexto em que fazem sentido.
 O manual técnico completo continua em
 `docs/manual-escopo-condicional.md` para consulta detalhada.
 
+### Decisões pendentes na leitura executiva
+
+Quando um grupo XOR/OR com resolução humana é disparado, a **Visão** e a primeira
+página do PDF de Execução mostram um quadro de decisões pendentes com:
+
+- alternativas avaliadas;
+- faixa de impacto de prazo contra o forecast atual;
+- faixa de impacto de custo;
+- déficit estático de recurso, quando existir;
+- quantidade de alternativas factíveis.
+
+Esses valores vêm dos mesmos cenários sombra calculados pelo motor de decisão.
+A aplicação continua sem escolher automaticamente entre reparar, substituir ou
+qualquer outra alternativa técnica.
+
 ### Dynamic scope discovery
 
 O framework diferencia dois tipos de mudança de escopo durante a parada:
