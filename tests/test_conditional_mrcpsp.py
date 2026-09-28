@@ -4,6 +4,8 @@ import pytest
 
 from turnaround import (
     ActivationRule,
+    DecisionEvaluation,
+    DecisionImpact,
     DiscoveredTask,
     ExecutionMode,
     ExecutionState,
@@ -22,6 +24,7 @@ from turnaround import (
     resolve_activation,
     reschedule_from_state,
     solve_mrcpsp,
+    summarize_pending_decisions,
 )
 from turnaround.io import project_xml_to_tasks
 
@@ -52,6 +55,73 @@ def task(
         ],
         activation=activation or ActivationRule(kind="mandatory"),
     )
+
+
+def test_pending_decision_summary_compares_alternatives_to_current_forecast():
+    decision = DecisionEvaluation(
+        group_id="V-101-disposition",
+        operator="xor",
+        resolution_mode="human",
+        impacts=[
+            DecisionImpact(
+                selection=("R",),
+                feasible=True,
+                task_names=("Reparar bocal",),
+                makespan=104.0,
+                total_cost=1200.0,
+            ),
+            DecisionImpact(
+                selection=("S",),
+                feasible=True,
+                task_names=("Substituir bocal",),
+                makespan=109.0,
+                total_cost=1700.0,
+                resource_gaps={"Guindaste": 1.0},
+            ),
+        ],
+    )
+
+    rows = summarize_pending_decisions(
+        [decision],
+        current_makespan=100.0,
+        current_cost=1000.0,
+    )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["Decisão"] == "V-101-disposition"
+    assert row["Alternativas"] == "Reparar bocal | Substituir bocal"
+    assert row["Impacto prazo"] == "+4.0 a +9.0 h"
+    assert row["Impacto custo"] == "+200.0 a +700.0 "
+    assert row["Recurso crítico"] == "Guindaste (faltam 1)"
+    assert row["Factibilidade"] == "2/2 alternativa(s) factível(is)"
+
+
+def test_pending_decision_summary_reports_no_feasible_alternative():
+    decision = DecisionEvaluation(
+        group_id="decision-x",
+        operator="xor",
+        resolution_mode="human",
+        impacts=[
+            DecisionImpact(
+                selection=("X",),
+                feasible=False,
+                task_names=("Alternativa X",),
+                resource_gaps={"Soldador": 1.0},
+                error="capacidade insuficiente",
+            )
+        ],
+    )
+
+    row = summarize_pending_decisions(
+        [decision],
+        current_makespan=50.0,
+        current_cost=0.0,
+    )[0]
+
+    assert row["Impacto prazo"] == "sem alternativa factível"
+    assert row["Impacto custo"] == "sem alternativa factível"
+    assert row["Recurso crítico"] == "Soldador (faltam 1)"
 
 
 def test_existing_task_domain_adapts_without_changing_semantics():
