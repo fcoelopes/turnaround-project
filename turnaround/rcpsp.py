@@ -134,6 +134,19 @@ def serial_schedule_generation(
                     f"Capacidade insuficiente para '{resource}': atividade {t.id} exige {demand}, "
                     f"mas a capacidade configurada é {capacities.get(resource, 0)}."
                 )
+            calendar = (resource_calendars or {}).get(resource)
+            if demand > 0 and calendar is not None:
+                try:
+                    calendar.next_working_start(
+                        0,
+                        t.duration_h,
+                        max_days=366,
+                    )
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Atividade {t.id} ({t.name}) com duração {t.duration_h:g} h "
+                        f"não cabe no calendário do recurso {resource}: {exc}"
+                    ) from exc
 
     while remaining:
         eligible = [
@@ -145,6 +158,11 @@ def serial_schedule_generation(
         tid = sorted(eligible, key=key)[0]
         task = by_id[tid]
         start = _precedence_bound(task, scheduled)
+        search_limit = (
+            start + 366 * 24
+            if resource_calendars
+            else 1_000_000
+        )
         while not _fits(
             task,
             start,
@@ -153,8 +171,11 @@ def serial_schedule_generation(
             resource_calendars,
         ):
             start += 1
-            if start > 1_000_000:
-                raise RuntimeError("Busca de janela viável excedeu o limite de segurança.")
+            if start > search_limit:
+                raise ValueError(
+                    f"Não existe janela comum factível para a atividade {task.id} "
+                    "considerando calendários e capacidade no horizonte de 366 dias."
+                )
         _reserve(task, start, usage)
         scheduled[tid] = ScheduledTask(
             id=task.id,
