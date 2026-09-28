@@ -34,6 +34,8 @@ from turnaround import (
     evaluate_scope_decisions,
     materialize_dynamic_scope,
     next_discovered_task_id,
+    parse_progress_file,
+    reconcile_progress,
     project_from_tasks,
     resolve_activation,
     reschedule_from_state,
@@ -1791,6 +1793,122 @@ with operation_tab:
         default_current_time = min(7.0, float(baseline.makespan))
     else:
         default_current_time = 0.0
+    latest_progress_import = execution_store.latest_progress_import(
+        execution_session.id
+    )
+    with st.expander(
+        "Importar progresso em lote",
+        expanded=False,
+    ):
+        st.caption(
+            "Aceita Microsoft Project XML, Excel ou CSV. Nesta etapa a importação "
+            "registra status/% concluído e concilia as atividades; ela ainda não "
+            "congela tarefas no scheduler sem Actual Start/Actual Finish."
+        )
+        progress_file = st.file_uploader(
+            "Arquivo de progresso",
+            type=["xml", "xlsx", "xls", "csv"],
+            key=f"progress_import_{execution_session.id[:8]}",
+        )
+        progress_result = None
+        if progress_file is not None:
+            try:
+                imported_rows = parse_progress_file(progress_file)
+                progress_result = reconcile_progress(
+                    imported_rows,
+                    project,
+                )
+                preview_df = pd.DataFrame(
+                    [
+                        {
+                            "ID": row.task_id,
+                            "UID Project": row.project_uid or "—",
+                            "Atividade": row.task_name,
+                            "% concluído": row.percent_complete,
+                            "Status": row.status,
+                            "Conciliação": row.source_reference,
+                        }
+                        for row in progress_result.rows
+                    ]
+                )
+                st.dataframe(
+                    preview_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "% concluído": st.column_config.NumberColumn(
+                            "% concluído",
+                            format="%.1f",
+                        )
+                    },
+                )
+                if progress_result.warnings:
+                    for warning in progress_result.warnings:
+                        st.warning(warning)
+                st.caption(
+                    f"{progress_result.matched_rows} de "
+                    f"{progress_result.source_rows} linha(s) conciliada(s)."
+                )
+
+                if st.button(
+                    "Registrar importação de progresso",
+                    type="primary",
+                    key=f"save_progress_import_{execution_session.id[:8]}",
+                ):
+                    execution_store.record_progress_import(
+                        execution_session.id,
+                        source_name=progress_file.name,
+                        rows=[
+                            {
+                                "task_id": row.task_id,
+                                "project_uid": row.project_uid,
+                                "task_name": row.task_name,
+                                "percent_complete": row.percent_complete,
+                                "status": row.status,
+                                "source_reference": row.source_reference,
+                            }
+                            for row in progress_result.rows
+                        ],
+                        warnings=list(progress_result.warnings),
+                    )
+                    st.success(
+                        "Progresso importado e registrado no histórico da sessão."
+                    )
+                    st.rerun()
+            except (TypeError, ValueError) as exc:
+                st.error(f"Não foi possível importar o progresso: {exc}")
+
+        if latest_progress_import is not None:
+            latest_payload = latest_progress_import.payload
+            st.divider()
+            st.caption(
+                "Última importação registrada: "
+                f"{latest_payload.get('source_name', 'arquivo')} · "
+                f"{latest_payload.get('matched_rows', 0)} atividade(s) conciliada(s)."
+            )
+            latest_rows = latest_payload.get("rows", [])
+            if latest_rows:
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "ID": row.get("task_id"),
+                                "Atividade": row.get("task_name"),
+                                "% concluído": row.get("percent_complete"),
+                                "Status": row.get("status"),
+                            }
+                            for row in latest_rows
+                        ]
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            st.info(
+                "Esta fotografia de progresso está auditada, mas ainda não altera "
+                "o estado congelado do scheduler. Actual Start/Finish serão a "
+                "próxima etapa para aplicar o realizado sem inventar horários."
+            )
+
     current_time = st.number_input(
         "Hora corrente desde o início da parada",
         min_value=0.0,
