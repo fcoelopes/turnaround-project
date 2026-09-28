@@ -205,6 +205,7 @@ def reschedule_from_state(
         reference_start_times=reference_start_times,
         stability_weight=stability_weight,
         workforce=workforce,
+        resource_calendars=project.resource_calendars,
     )
 
     combined_finish = max(
