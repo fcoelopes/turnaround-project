@@ -1002,6 +1002,94 @@ class ExecutionStore:
 
             return self._snapshot(record)
 
+    def record_progress_import(
+        self,
+        session_id: str,
+        *,
+        source_name: str,
+        rows: list[dict[str, Any]],
+        warnings: list[str] | None = None,
+    ) -> ExecutionEvent:
+        if not rows:
+            raise ValueError("Importação de progresso exige pelo menos uma linha conciliada.")
+
+        normalized_rows = [
+            {
+                "task_id": str(row["task_id"]),
+                "project_uid": (
+                    None
+                    if row.get("project_uid") is None
+                    else str(row.get("project_uid"))
+                ),
+                "task_name": str(row["task_name"]),
+                "percent_complete": (
+                    None
+                    if row.get("percent_complete") is None
+                    else float(row.get("percent_complete"))
+                ),
+                "status": str(row["status"]),
+                "source_reference": str(row["source_reference"]),
+            }
+            for row in rows
+        ]
+        payload = {
+            "source_name": str(source_name),
+            "rows": normalized_rows,
+            "warnings": list(warnings or []),
+            "matched_rows": len(normalized_rows),
+        }
+
+        with self.SessionLocal.begin() as db:
+            self._require_session(db, session_id)
+            self._append_event(
+                db,
+                session_id=session_id,
+                event_type="PROGRESS_IMPORTED",
+                payload=payload,
+            )
+            db.flush()
+            row = db.scalar(
+                select(ExecutionEventRecord)
+                .where(
+                    ExecutionEventRecord.session_id == session_id,
+                    ExecutionEventRecord.event_type == "PROGRESS_IMPORTED",
+                )
+                .order_by(ExecutionEventRecord.id.desc())
+                .limit(1)
+            )
+            assert row is not None
+            return ExecutionEvent(
+                id=row.id,
+                event_type=row.event_type,
+                task_id=row.task_id,
+                occurred_at=row.occurred_at,
+                payload=_json_load_dict(row.payload_json),
+            )
+
+    def latest_progress_import(
+        self,
+        session_id: str,
+    ) -> ExecutionEvent | None:
+        with self.SessionLocal() as db:
+            row = db.scalar(
+                select(ExecutionEventRecord)
+                .where(
+                    ExecutionEventRecord.session_id == session_id,
+                    ExecutionEventRecord.event_type == "PROGRESS_IMPORTED",
+                )
+                .order_by(ExecutionEventRecord.id.desc())
+                .limit(1)
+            )
+            if row is None:
+                return None
+            return ExecutionEvent(
+                id=row.id,
+                event_type=row.event_type,
+                task_id=row.task_id,
+                occurred_at=row.occurred_at,
+                payload=_json_load_dict(row.payload_json),
+            )
+
     def list_events(
         self,
         session_id: str,
