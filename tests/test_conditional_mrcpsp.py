@@ -17,6 +17,7 @@ from turnaround import (
     TurnaroundTask,
     apply_scope_config,
     discover_resource_catalog,
+    evaluate_dynamic_scope_impacts,
     evaluate_scope_decisions,
     materialize_dynamic_scope,
     next_discovered_task_id,
@@ -1344,6 +1345,68 @@ def test_dynamic_scope_discovery_injects_unplanned_task_and_successor_gate():
     # de estabilidade; somente C é comparada.
     assert result.schedule.stability_compared_tasks == 1
     assert result.schedule.total_start_deviation == pytest.approx(3)
+
+
+def test_dynamic_scope_impact_uses_same_state_counterfactual():
+    inspection = task("I", "Inspecionar equipamento", 2)
+    close = task("C", "Fechar equipamento", 1, predecessors=["I"])
+    base = TurnaroundProject(
+        tasks=[inspection, close],
+        capacities={"Mecânica": 1},
+        deadline=10,
+    )
+    discovered = DiscoveredTask(
+        id="DS-001",
+        name="Reparar trinca descoberta",
+        discovered_at=2,
+        modes=[
+            ExecutionMode(
+                name="campo",
+                duration=3,
+                resources={"Soldador": 1},
+            )
+        ],
+        precedences=[Precedence(predecessor_id="I")],
+        successor_task_ids=["C"],
+    )
+    state = ExecutionState(
+        current_time=2,
+        executions={
+            "I": TaskExecution(
+                status="completed",
+                start=0,
+                finish=2,
+                mode_name="base",
+            )
+        },
+    )
+    capacities = {"Mecânica": 1.0, "Soldador": 1.0}
+    effective = materialize_dynamic_scope(base, [discovered]).project.model_copy(
+        update={"capacities": capacities}
+    )
+    current = reschedule_from_state(
+        effective,
+        state,
+        reference_start_times={"C": 2.0},
+        stability_weight=1.0,
+    )
+
+    impacts = evaluate_dynamic_scope_impacts(
+        planned_project=base,
+        discovered_tasks=[discovered],
+        state=state,
+        capacities=capacities,
+        current_makespan=current.schedule.makespan,
+        critical_ids={"DS-001"},
+        reference_start_times={"C": 2.0},
+        stability_weight=1.0,
+    )
+
+    assert len(impacts) == 1
+    assert impacts[0]["id"] == "DS-001"
+    assert impacts[0]["impact_h"] == pytest.approx(3.0)
+    assert impacts[0]["successor_task_ids"] == ["C"]
+    assert impacts[0]["critical"] is True
 
 
 def test_dynamic_scope_can_chain_multiple_runtime_discoveries():
