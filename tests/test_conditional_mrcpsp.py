@@ -6,6 +6,7 @@ from turnaround import (
     ActivationRule,
     DecisionEvaluation,
     DecisionImpact,
+    DailyShift,
     DiscoveredTask,
     ExecutionMode,
     ExecutionState,
@@ -15,6 +16,7 @@ from turnaround import (
     TriggerCondition,
     TurnaroundProject,
     TurnaroundTask,
+    WorkingCalendar,
     apply_scope_config,
     discover_resource_catalog,
     evaluate_dynamic_scope_impacts,
@@ -1568,3 +1570,134 @@ def test_dynamic_scope_rejects_precedence_cycle():
 
     with pytest.raises(ValueError, match="ciclo de precedência"):
         materialize_dynamic_scope(base, [discovered])
+
+
+def test_in_progress_remaining_forecast_blocks_successor_until_forecast_finish():
+    active = task(
+        "A",
+        "Em andamento",
+        8,
+        resources={"Equipe": 1},
+    )
+    successor = task(
+        "B",
+        "Sucessora",
+        2,
+        resources={"Equipe": 1},
+        predecessors=["A"],
+    )
+    project = TurnaroundProject(
+        tasks=[active, successor],
+        capacities={"Equipe": 1},
+    )
+    state = ExecutionState(
+        current_time=3,
+        executions={
+            "A": TaskExecution(
+                status="in_progress",
+                start=1,
+                finish=6,
+                mode_name="base",
+            )
+        },
+    )
+
+    result = reschedule_from_state(project, state)
+
+    frozen = next(item for item in result.frozen_tasks if item.task_id == "A")
+    future = next(item for item in result.schedule.tasks if item.task_id == "B")
+    assert frozen.finish == pytest.approx(6)
+    assert future.start == pytest.approx(6)
+    assert future.finish == pytest.approx(8)
+
+
+def test_in_progress_remaining_segment_must_fit_resource_calendar():
+    active = task(
+        "A",
+        "Em andamento",
+        8,
+        resources={"Equipe": 1},
+    )
+    project = TurnaroundProject(
+        tasks=[active],
+        capacities={"Equipe": 1},
+        resource_calendars={
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+                origin_hour=6,
+            )
+        },
+    )
+    state = ExecutionState(
+        current_time=10,
+        executions={
+            "A": TaskExecution(
+                status="in_progress",
+                start=2,
+                finish=14,
+                mode_name="base",
+            )
+        },
+    )
+
+    with pytest.raises(ValueError, match="não cabe continuamente"):
+        reschedule_from_state(project, state)
+
+
+def test_in_progress_actual_load_cannot_exceed_modeled_capacity():
+    first = task(
+        "A",
+        "Em andamento A",
+        4,
+        resources={"Equipe": 1},
+    )
+    second = task(
+        "B",
+        "Em andamento B",
+        4,
+        resources={"Equipe": 1},
+    )
+    project = TurnaroundProject(
+        tasks=[first, second],
+        capacities={"Equipe": 1},
+    )
+    state = ExecutionState(
+        current_time=2,
+        executions={
+            "A": TaskExecution(
+                status="in_progress",
+                start=0,
+                finish=5,
+                mode_name="base",
+            ),
+            "B": TaskExecution(
+                status="in_progress",
+                start=1,
+                finish=4,
+                mode_name="base",
+            ),
+        },
+    )
+
+    with pytest.raises(ValueError, match="excede capacidade"):
+        reschedule_from_state(project, state)
+
+
+def test_in_progress_forecast_must_finish_after_current_time():
+    active = task("A", "Em andamento", 4)
+    project = TurnaroundProject(tasks=[active], capacities={})
+    state = ExecutionState(
+        current_time=5,
+        executions={
+            "A": TaskExecution(
+                status="in_progress",
+                start=1,
+                finish=5,
+                mode_name="base",
+            )
+        },
+    )
+
+    with pytest.raises(ValueError, match="não é posterior à hora corrente"):
+        reschedule_from_state(project, state)
