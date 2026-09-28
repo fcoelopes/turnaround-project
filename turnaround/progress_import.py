@@ -52,6 +52,26 @@ class ProgressImportResult:
         return len(self.rows)
 
 
+@dataclass(frozen=True)
+class BatchProgressMerge:
+    rows: tuple[ReconciledProgressRow, ...]
+    changed_task_ids: tuple[str, ...]
+    unchanged_task_ids: tuple[str, ...]
+    preserved_task_ids: tuple[str, ...]
+
+    @property
+    def changed_rows(self) -> int:
+        return len(self.changed_task_ids)
+
+    @property
+    def unchanged_rows(self) -> int:
+        return len(self.unchanged_task_ids)
+
+    @property
+    def preserved_rows(self) -> int:
+        return len(self.preserved_task_ids)
+
+
 _PROGRESS_ALIASES = {
     "id": ["id", "task id", "atividade id", "identificacao", "identificação"],
     "uid": ["uid", "project uid", "uid project", "microsoft project uid"],
@@ -774,4 +794,196 @@ def reconcile_progress(
         rows=tuple(reconciled),
         warnings=tuple(dict.fromkeys(warnings)),
         source_rows=len(rows),
+    )
+
+
+def _stored_progress_row(row: dict) -> ReconciledProgressRow:
+    return ReconciledProgressRow(
+        task_id=str(row["task_id"]),
+        project_uid=(
+            None
+            if row.get("project_uid") is None
+            else str(row.get("project_uid"))
+        ),
+        task_name=str(row.get("task_name") or row["task_id"]),
+        percent_complete=(
+            None
+            if row.get("percent_complete") is None
+            else float(row.get("percent_complete"))
+        ),
+        status=str(row.get("status") or "not_started"),
+        source_reference=str(row.get("source_reference") or "histórico"),
+        actual_start_h=(
+            None
+            if row.get("actual_start_h") is None
+            else float(row.get("actual_start_h"))
+        ),
+        actual_finish_h=(
+            None
+            if row.get("actual_finish_h") is None
+            else float(row.get("actual_finish_h"))
+        ),
+        remaining_duration_h=(
+            None
+            if row.get("remaining_duration_h") is None
+            else float(row.get("remaining_duration_h"))
+        ),
+        remaining_as_of_h=(
+            None
+            if row.get("remaining_as_of_h") is None
+            else float(row.get("remaining_as_of_h"))
+        ),
+    )
+
+
+def _merge_progress_row(
+    previous: ReconciledProgressRow,
+    incoming: ReconciledProgressRow,
+) -> ReconciledProgressRow:
+    terminal = {"completed", "skipped"}
+    if previous.status in terminal and incoming.status != previous.status:
+        raise ValueError(
+            f"Atividade {incoming.task_id}: status não pode regredir de "
+            f"{previous.status} para {incoming.status} em atualização em lote."
+        )
+    if previous.status == "in_progress" and incoming.status == "not_started":
+        raise ValueError(
+            f"Atividade {incoming.task_id}: status não pode regredir de "
+            "in_progress para not_started."
+        )
+
+    if (
+        previous.percent_complete is not None
+        and incoming.percent_complete is not None
+        and incoming.percent_complete < previous.percent_complete - 1e-9
+    ):
+        raise ValueError(
+            f"Atividade {incoming.task_id}: % concluído não pode regredir de "
+            f"{previous.percent_complete:g}% para "
+            f"{incoming.percent_complete:g}%."
+        )
+
+    if (
+        previous.remaining_as_of_h is not None
+        and incoming.remaining_as_of_h is not None
+        and incoming.remaining_as_of_h < previous.remaining_as_of_h - 1e-9
+    ):
+        raise ValueError(
+            f"Atividade {incoming.task_id}: referência do Remaining Duration "
+            f"H+{incoming.remaining_as_of_h:g} é anterior ao último snapshot "
+            f"H+{previous.remaining_as_of_h:g}."
+        )
+
+    status_changed = incoming.status != previous.status
+    percent = incoming.percent_complete
+    if percent is None and not status_changed:
+        percent = previous.percent_complete
+
+    actual_start = (
+        incoming.actual_start_h
+        if incoming.actual_start_h is not None
+        else previous.actual_start_h
+    )
+    actual_finish = (
+        incoming.actual_finish_h
+        if incoming.actual_finish_h is not None
+        else previous.actual_finish_h
+    )
+
+    if incoming.status in terminal:
+        remaining_duration = 0.0
+        remaining_as_of = (
+            incoming.remaining_as_of_h
+            if incoming.remaining_as_of_h is not None
+            else previous.remaining_as_of_h
+        )
+    else:
+        remaining_duration = (
+            incoming.remaining_duration_h
+            if incoming.remaining_duration_h is not None
+            else previous.remaining_duration_h
+        )
+        remaining_as_of = (
+            incoming.remaining_as_of_h
+            if incoming.remaining_as_of_h is not None
+            else previous.remaining_as_of_h
+        )
+
+    _validate_actuals(
+        incoming.status,
+        actual_start,
+        actual_finish,
+    )
+    _validate_remaining(
+        incoming.status,
+        actual_start,
+        remaining_duration,
+        remaining_as_of,
+    )
+
+    return ReconciledProgressRow(
+        task_id=incoming.task_id,
+        project_uid=incoming.project_uid or previous.project_uid,
+        task_name=incoming.task_name or previous.task_name,
+        percent_complete=percent,
+        status=incoming.status,
+        source_reference=incoming.source_reference,
+        actual_start_h=actual_start,
+        actual_finish_h=actual_finish,
+        remaining_duration_h=remaining_duration,
+        remaining_as_of_h=remaining_as_of,
+    )
+
+
+def merge_progress_snapshot(
+    previous_rows: list[dict] | tuple[dict, ...],
+    incoming_rows: list[ReconciledProgressRow] | tuple[ReconciledProgressRow, ...],
+) -> BatchProgressMerge:
+    """Aplica um lote parcial sobre a fotografia operacional anterior.
+
+    Atividades ausentes do novo arquivo são preservadas. Campos temporais
+    ausentes na linha nova também preservam o último valor conhecido, desde que
+    a transição de status continue coerente.
+    """
+    previous = [_stored_progress_row(row) for row in previous_rows]
+    previous_by_id = {row.task_id: row for row in previous}
+    incoming_by_id = {row.task_id: row for row in incoming_rows}
+    if len(incoming_by_id) != len(incoming_rows):
+        raise ValueError("Lote contém atividade duplicada após conciliação.")
+
+    merged_by_id = dict(previous_by_id)
+    changed: list[str] = []
+    unchanged: list[str] = []
+
+    for task_id, incoming in incoming_by_id.items():
+        old = previous_by_id.get(task_id)
+        if old is None:
+            merged = incoming
+            changed.append(task_id)
+        else:
+            merged = _merge_progress_row(old, incoming)
+            if merged == old:
+                unchanged.append(task_id)
+            else:
+                changed.append(task_id)
+        merged_by_id[task_id] = merged
+
+    preserved = [
+        row.task_id
+        for row in previous
+        if row.task_id not in incoming_by_id
+    ]
+
+    ordered_ids = [row.task_id for row in previous]
+    ordered_ids.extend(
+        row.task_id
+        for row in incoming_rows
+        if row.task_id not in previous_by_id
+    )
+
+    return BatchProgressMerge(
+        rows=tuple(merged_by_id[task_id] for task_id in ordered_ids),
+        changed_task_ids=tuple(changed),
+        unchanged_task_ids=tuple(unchanged),
+        preserved_task_ids=tuple(preserved),
     )
