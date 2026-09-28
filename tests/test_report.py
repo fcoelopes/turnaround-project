@@ -5,10 +5,74 @@ from turnaround.report import (
     _gantt_chart_pages,
     _planning_assumption_frames,
     _planning_front_page_metrics,
+    _planning_risk_driver_frame,
     _stability_profile_label,
     build_base_management_pdf,
     build_conditional_management_pdf,
 )
+
+
+def test_planning_risk_driver_frame_ranks_scope_and_resource_pressure():
+    resource_df = pd.DataFrame(
+        [
+            {
+                "Recurso": "Guindaste",
+                "Capacidade cenário": 1,
+                "Pico": 1,
+                "Utilizacao_%": 88.0,
+            },
+            {
+                "Recurso": "Mecânica",
+                "Capacidade cenário": 4,
+                "Pico": 3,
+                "Utilizacao_%": 62.0,
+            },
+        ]
+    )
+    risk = {
+        "scope_events": [
+            {
+                "event_name": "bundle_damage",
+                "marginal_impact_h": 9.0,
+                "probability_configured": 0.20,
+                "frequency_simulated": 0.19,
+            },
+            {
+                "event_name": "nozzle_crack",
+                "marginal_impact_h": 11.0,
+                "probability_configured": 0.30,
+                "frequency_simulated": 0.31,
+            },
+        ]
+    }
+
+    drivers = _planning_risk_driver_frame(
+        risk=risk,
+        resource_df=resource_df,
+    )
+
+    assert drivers.iloc[0]["Direcionador"] == "nozzle_crack"
+    assert drivers.iloc[0]["Sinal"] == "+11.0 h"
+    assert drivers.iloc[1]["Direcionador"] == "bundle_damage"
+    assert drivers.iloc[2]["Direcionador"] == "Guindaste"
+    assert drivers.iloc[2]["Sinal"] == "atinge capacidade no pico"
+    assert "pico=1 / capacidade=1" in drivers.iloc[2]["Evidência"]
+
+
+def test_planning_risk_driver_frame_ignores_non_positive_event_impact():
+    drivers = _planning_risk_driver_frame(
+        risk={
+            "scope_events": [
+                {
+                    "event_name": "neutral_event",
+                    "marginal_impact_h": 0.0,
+                }
+            ]
+        },
+        resource_df=None,
+    )
+
+    assert drivers.empty
 
 
 def test_planning_assumption_frames_capture_effective_scenario_inputs():
