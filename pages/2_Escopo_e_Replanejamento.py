@@ -595,6 +595,7 @@ def load_project(store: ExecutionStore):
         readiness = validate_planning_baseline_for_execution(
             approved_baseline,
             allow_dangling_repair=True,
+            require_formal_approval=True,
         )
         if not readiness.ready:
             status(
