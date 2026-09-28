@@ -391,3 +391,76 @@ def test_overtime_window_validation_is_explicit():
         OvertimeWindow(start_h=4, end_h=4)
     with pytest.raises(ValueError):
         OvertimeWindow(start_h=5, end_h=4)
+
+
+from turnaround.rcpsp import serial_schedule_generation
+
+
+def test_calendar_origin_aligns_clock_time_to_h_plus_axis():
+    calendar = WorkingCalendar(
+        name="Equipe",
+        shifts=(DailyShift(7, 19),),
+        origin_hour=6,
+    )
+
+    # H+0 = 06:00; turno 07:00-19:00 começa em H+1.
+    assert calendar.next_working_start(0, 4) == pytest.approx(1)
+    assert calendar.is_working_interval(1, 4) is True
+    assert calendar.is_working_interval(0, 1) is False
+
+
+def test_rcpsp_respects_resource_calendar_and_common_window():
+    tasks = [
+        TurnaroundTask(
+            id="A",
+            name="Içamento com equipe",
+            modes=[ExecutionMode(name="base", duration=4)],
+        )
+    ]
+    legacy_task = __import__("turnaround.models", fromlist=["Task"]).Task(
+        id="A",
+        name="Içamento com equipe",
+        duration_h=4,
+        resources={"Guindaste": 1, "Equipe": 1},
+    )
+    result = serial_schedule_generation(
+        [legacy_task],
+        capacities={"Guindaste": 1, "Equipe": 1},
+        resource_calendars={
+            "Guindaste": WorkingCalendar(
+                name="Guindaste",
+                shifts=(DailyShift(6, 18),),
+                origin_hour=6,
+            ),
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+                origin_hour=6,
+            ),
+        },
+    )
+
+    assert result.schedule[0].start_h == 1
+    assert result.schedule[0].finish_h == 5
+    assert result.resource_utilization["Equipe"] == pytest.approx(1.0)
+
+
+def test_rcpsp_rejects_activity_longer_than_resource_work_window():
+    legacy_task = __import__("turnaround.models", fromlist=["Task"]).Task(
+        id="A",
+        name="Serviço longo",
+        duration_h=13,
+        resources={"Equipe": 1},
+    )
+
+    with pytest.raises(ValueError, match="não cabe no calendário"):
+        serial_schedule_generation(
+            [legacy_task],
+            capacities={"Equipe": 1},
+            resource_calendars={
+                "Equipe": WorkingCalendar(
+                    name="Equipe",
+                    shifts=(DailyShift(7, 19),),
+                )
+            },
+        )
