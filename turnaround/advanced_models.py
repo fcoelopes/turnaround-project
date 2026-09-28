@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from .calendar import WorkingCalendar
+
 ActivationKind = Literal["mandatory", "optional", "conditional"]
 ConditionLogic = Literal["any", "all"]
 LogicalOperator = Literal["and", "or", "xor"]
@@ -220,6 +222,7 @@ class TurnaroundProject(BaseModel):
     capacities: dict[str, float]
     deadline: float | None = Field(default=None, gt=0)
     logical_groups: list[LogicalGroup] = Field(default_factory=list)
+    resource_calendars: dict[str, WorkingCalendar] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_project(self):
@@ -285,6 +288,17 @@ class TurnaroundProject(BaseModel):
                             f"seletivo: {previous} e {group.id}"
                         )
                     selective_membership[task_id] = group.id
+
+        known_resources = set(self.capacities)
+        for task in self.tasks:
+            for mode in task.modes:
+                known_resources.update(mode.resources)
+        unknown_calendar_resources = set(self.resource_calendars) - known_resources
+        if unknown_calendar_resources:
+            raise ValueError(
+                "Calendários referenciam recursos desconhecidos: "
+                + ", ".join(sorted(unknown_calendar_resources))
+            )
 
         bad_caps = {k: v for k, v in self.capacities.items() if v < 0}
         if bad_caps:
