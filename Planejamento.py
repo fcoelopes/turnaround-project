@@ -19,8 +19,10 @@ from turnaround.analysis import (
     tasks_dataframe,
 )
 from turnaround import (
+    DailyShift,
     ExecutionStore,
     PlanningScopeRisk,
+    WorkingCalendar,
     build_planning_baseline,
     extract_scope_risk_candidates,
     materialize_planning_scope,
@@ -90,12 +92,10 @@ with st.sidebar:
         min_value=0.0,
         value=0.0,
         step=0.5,
-        help="0 = sem deadline. O prazo é convertido em horas usando o fator de conversão acima.",
-    )
-    deadline_h = (
-        int(round(deadline_days * hours_per_day))
-        if deadline_days > 0
-        else None
+        help=(
+            "0 = sem deadline. Sem calendário real, usa o fator horas/dia acima; "
+            "com calendário de recurso, a janela passa a representar dias corridos de 24 h."
+        ),
     )
     st.caption(
         "Capacidades de recursos e premissas de risco são configuradas "
@@ -143,7 +143,7 @@ project_name = Path(uploaded.name).stem.replace("_", " ").strip() or "Turnaround
 try:
     tasks, xml_caps = load_schedule(
         uploaded,
-        hours_per_day=int(hours_per_day),
+        hours_per_day=int(timeline_hours_per_day),
     )
 except Exception as exc:
     st.error(f"Falha ao ler o cronograma: {exc}")
@@ -188,12 +188,38 @@ imported_scope_by_task = {
     if item.task_id in task_by_id
 }
 
+baseline_start_values = [
+    task.baseline_start
+    for task in tasks
+    if task.baseline_start
+]
+parsed_calendar_starts = pd.to_datetime(
+    pd.Series(baseline_start_values, dtype="object"),
+    errors="coerce",
+).dropna()
+planning_calendar_origin = (
+    parsed_calendar_starts.min().to_pydatetime()
+    if not parsed_calendar_starts.empty
+    else None
+)
+calendar_origin_hour = (
+    float(
+        planning_calendar_origin.hour
+        + planning_calendar_origin.minute / 60
+        + planning_calendar_origin.second / 3600
+    )
+    if planning_calendar_origin is not None
+    else 0.0
+)
+
 section(
     "2",
     "Configurar cenário",
-    "Capacidade em Recursos; incertezas de duração e escopo em Risco.",
+    "Capacidade e calendário em Recursos; incertezas de duração e escopo em Risco.",
 )
-config_resources, config_risk = st.tabs(["Recursos", "Risco"])
+config_resources, config_calendar, config_risk = st.tabs(
+    ["Recursos", "Calendários", "Risco"]
+)
 
 base_capacity_origin = {
     resource: ("PROJECT" if resource in xml_caps else "INFERIDA")
@@ -317,7 +343,113 @@ with config_resources:
 
         capacity_validation_ok = bool(confirm_inferred_capacities)
 
+resource_calendars: dict[str, WorkingCalendar] = {}
+calendar_config_errors: list[str] = []
+with config_calendar:
+    st.markdown("#### Turno recorrente por recurso")
+    st.caption(
+        "Por padrão, recursos permanecem 24 h disponíveis. Desative 24 h somente "
+        "quando quiser que o RCPSP respeite um turno real recorrente. Nesta etapa "
+        "o Planejamento configura um turno por recurso; indisponibilidades e overtime "
+        "continuam disponíveis no domínio avançado e ganharão entrada própria depois."
+    )
+    if planning_calendar_origin is not None:
+        st.caption(
+            "H+0 corresponde a "
+            f"{planning_calendar_origin.strftime('%d/%m/%Y %H:%M')}; "
+            "os horários abaixo são horas do relógio e serão alinhados a essa origem."
+        )
+    else:
+        st.warning(
+            "O arquivo não traz uma data/hora inicial utilizável. Para calendários "
+            "recorrentes, H+0 será tratado como 00:00."
+        )
+
+    calendar_input_df = pd.DataFrame(
+        [
+            {
+                "Recurso": resource,
+                "24 h": True,
+                "Início turno": 7,
+                "Fim turno": 19,
+            }
+            for resource in resources
+        ]
+    )
+    if calendar_input_df.empty:
+        st.info("Não há recursos para configurar calendário.")
+        edited_calendar_df = calendar_input_df
+    else:
+        edited_calendar_df = st.data_editor(
+            calendar_input_df,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            key=f"resource_calendar_editor_{source_key}",
+            disabled=["Recurso"],
+            column_config={
+                "Recurso": st.column_config.TextColumn("Recurso"),
+                "24 h": st.column_config.CheckboxColumn(
+                    "24 h",
+                    help="Marcado = recurso disponível continuamente.",
+                ),
+                "Início turno": st.column_config.NumberColumn(
+                    "Início turno",
+                    min_value=0,
+                    max_value=23,
+                    step=1,
+                    format="%d:00",
+                ),
+                "Fim turno": st.column_config.NumberColumn(
+                    "Fim turno",
+                    min_value=1,
+                    max_value=24,
+                    step=1,
+                    format="%d:00",
+                ),
+            },
+        )
+
+    for _, row in edited_calendar_df.iterrows():
+        resource = str(row["Recurso"])
+        if bool(row["24 h"]):
+            continue
+        try:
+            shift = DailyShift(
+                float(row["Início turno"]),
+                float(row["Fim turno"]),
+            )
+            resource_calendars[resource] = WorkingCalendar(
+                name=resource,
+                shifts=(shift,),
+                origin_hour=calendar_origin_hour,
+            )
+        except ValueError as exc:
+            calendar_config_errors.append(f"{resource}: {exc}")
+
+    for message in calendar_config_errors:
+        st.error(message)
+
+calendar_mode_active = bool(resource_calendars)
+timeline_hours_per_day = 24 if calendar_mode_active else int(hours_per_day)
+deadline_h = (
+    int(round(deadline_days * timeline_hours_per_day))
+    if deadline_days > 0
+    else None
+)
+
 with config_risk:
+    if calendar_mode_active:
+        status(
+            (
+                "O RCPSP determinístico já usa os calendários configurados. "
+                "O Monte Carlo ainda não: para não misturar bases temporais, "
+                "P50/P80/P90 ficam indisponíveis neste cenário até a integração "
+                "calendar-aware da próxima etapa."
+            ),
+            tone="warn",
+            title="Risco probabilístico temporariamente não comparável.",
+        )
     st.markdown("#### Incerteza de duração")
     st.caption(
         "Configure a distribuição triangular usada em cada iteração do Monte Carlo. "
@@ -532,10 +664,34 @@ planning_signature = hashlib.sha256(
             "source_sha256": hashlib.sha256(
                 uploaded.getvalue()
             ).hexdigest(),
-            "hours_per_day": int(hours_per_day),
+            "hours_per_day": int(timeline_hours_per_day),
+    "resource_calendars": {
+        resource: {
+            "origin_hour": float(calendar.origin_hour),
+            "shifts": [
+                {
+                    "start_hour": float(shift.start_hour),
+                    "end_hour": float(shift.end_hour),
+                }
+                for shift in calendar.shifts
+            ],
+        }
+        for resource, calendar in sorted(resource_calendars.items())
+    },
             "deadline_h": deadline_h,
             "capacities": capacities,
             "capacity_origins": capacity_origins,
+            "timeline_hours_per_day": int(timeline_hours_per_day),
+            "resource_calendars": {
+                resource: {
+                    "origin_hour": float(calendar.origin_hour),
+                    "shifts": [
+                        [float(shift.start_hour), float(shift.end_hour)]
+                        for shift in calendar.shifts
+                    ],
+                }
+                for resource, calendar in sorted(resource_calendars.items())
+            },
             "simulations": int(simulations),
             "optimistic_pct": int(optimistic_pct),
             "most_likely_pct": int(most_likely_pct),
@@ -555,7 +711,11 @@ run = st.button(
     "▶ Gerar cenário factível",
     type="primary",
     use_container_width=True,
-    disabled=bool(scope_config_errors) or duration_config_error,
+    disabled=(
+        bool(scope_config_errors)
+        or duration_config_error
+        or bool(calendar_config_errors)
+    ),
 )
 
 cached_result = st.session_state.get("planning_result")
@@ -575,6 +735,7 @@ if run:
             base_tasks,
             capacities,
             deadline_h=deadline_h,
+            resource_calendars=resource_calendars,
         )
         comparison = compare_baseline(base_tasks, best)
     except Exception as exc:
@@ -583,22 +744,29 @@ if run:
         st.stop()
 
     risk_error = None
-    with st.spinner("Simulando duração + ampliação probabilística de escopo..."):
-        try:
-            risk = simulate_deadline_risk(
-                tasks,
-                capacities,
-                priority_rule=best.priority_rule,
-                deadline_h=deadline_h,
-                n=int(simulations),
-                optimistic_factor=1 + optimistic_pct / 100,
-                most_likely_factor=1 + most_likely_pct / 100,
-                pessimistic_factor=1 + pessimistic_pct / 100,
-                scope_risks=scope_risks,
-            )
-        except Exception as exc:
-            risk = None
-            risk_error = str(exc)
+    if calendar_mode_active:
+        risk = None
+        risk_error = (
+            "Monte Carlo não executado: este cenário usa calendário real de recurso "
+            "e a integração probabilística calendar-aware ainda não foi concluída."
+        )
+    else:
+        with st.spinner("Simulando duração + ampliação probabilística de escopo..."):
+            try:
+                risk = simulate_deadline_risk(
+                    tasks,
+                    capacities,
+                    priority_rule=best.priority_rule,
+                    deadline_h=deadline_h,
+                    n=int(simulations),
+                    optimistic_factor=1 + optimistic_pct / 100,
+                    most_likely_factor=1 + most_likely_pct / 100,
+                    pessimistic_factor=1 + pessimistic_pct / 100,
+                    scope_risks=scope_risks,
+                )
+            except Exception as exc:
+                risk = None
+                risk_error = str(exc)
 
     cached_result = {
         "signature": planning_signature,
@@ -627,7 +795,7 @@ if risk_error:
             f"A simulação de risco não pôde ser concluída: {risk_error}"
         )
 
-schedule_df = schedule_dataframe(best, int(hours_per_day))
+schedule_df = schedule_dataframe(best, int(timeline_hours_per_day))
 crit_df = criticality_dataframe(base_tasks)
 
 # Consolida RCPSP e CPM na mesma visão. O cronograma factível continua vindo
@@ -686,20 +854,12 @@ gantt_labels = schedule_df["Rótulo"].tolist()
 # Quando o arquivo traz datas de baseline, usamos a primeira data como âncora
 # de calendário para o cronograma factível produzido pelo solver. A lógica do
 # RCPSP continua em horas; apenas a visualização passa a mostrar data/hora real.
-baseline_start_values = [
-    task.baseline_start
-    for task in tasks
-    if task.baseline_start
-]
-calendar_anchor = None
-if baseline_start_values:
-    parsed_starts = pd.to_datetime(
-        pd.Series(baseline_start_values, dtype="object"),
-        errors="coerce",
-        utc=True,
-    ).dropna()
-    if not parsed_starts.empty:
-        calendar_anchor = parsed_starts.min().tz_convert(None)
+calendar_anchor = (
+    pd.Timestamp(planning_calendar_origin).tz_localize(None)
+    if planning_calendar_origin is not None
+    and pd.Timestamp(planning_calendar_origin).tzinfo is not None
+    else planning_calendar_origin
+)
 
 use_calendar_axis = calendar_anchor is not None
 if use_calendar_axis:
@@ -1175,6 +1335,7 @@ with tab_exec:
             "pessimistic_pct": float(pessimistic_pct),
         },
         scope_risks=scope_risks,
+        resource_calendars=resource_calendars,
     )
     approved_baseline = execution_store.load_planning_baseline(
         approval_candidate.key
@@ -1264,7 +1425,7 @@ with tab_exec:
                 + (
                     "sem deadline"
                     if approved_baseline.deadline_h is None
-                    else f"{approved_baseline.deadline_h / hours_per_day:.2f} d"
+                    else f"{approved_baseline.deadline_h / approved_baseline.hours_per_day:.2f} d"
                 )
                 + "**"
             )
@@ -1442,7 +1603,7 @@ with tab_export:
 
     pdf_bytes = build_base_management_pdf(
         project_name=project_name,
-        hours_per_day=int(hours_per_day),
+        hours_per_day=int(timeline_hours_per_day),
         makespan_h=float(best.makespan_h),
         deadline_h=None if deadline_h is None else float(deadline_h),
         priority_rule=best.priority_rule,
