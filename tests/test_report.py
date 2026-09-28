@@ -3,10 +3,50 @@ import pandas as pd
 from turnaround.report import (
     _GanttFlowable,
     _gantt_chart_pages,
+    _planning_front_page_metrics,
     _stability_profile_label,
     build_base_management_pdf,
     build_conditional_management_pdf,
 )
+
+
+def test_planning_front_page_metrics_prioritize_decision_values():
+    metrics = dict(
+        _planning_front_page_metrics(
+            makespan_h=149.6,
+            deadline_h=168.0,
+            hours_per_day=8,
+            risk={
+                "p80_h": 171.2,
+                "probability_meet_deadline": 0.74,
+            },
+            overall_status="ATENÇÃO",
+        )
+    )
+
+    assert metrics["Janela"] == "21.00 d"
+    assert metrics["Makespan base"] == "18.70 d"
+    assert metrics["P80"] == "21.40 d"
+    assert metrics["P(cumprir janela)"] == "74.0%"
+    assert metrics["Reserva até P80"] == "+2.70 d"
+    assert metrics["Status geral"] == "ATENÇÃO"
+
+
+def test_planning_front_page_metrics_handle_missing_risk():
+    metrics = dict(
+        _planning_front_page_metrics(
+            makespan_h=80.0,
+            deadline_h=None,
+            hours_per_day=8,
+            risk=None,
+            overall_status="SEM JANELA",
+        )
+    )
+
+    assert metrics["Janela"] == "sem janela"
+    assert metrics["P80"] == "não simulado"
+    assert metrics["P(cumprir janela)"] == "—"
+    assert metrics["Reserva até P80"] == "não simulado"
 
 
 def test_stability_profile_label_maps_operational_levels():
