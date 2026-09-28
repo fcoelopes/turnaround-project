@@ -143,7 +143,7 @@ project_name = Path(uploaded.name).stem.replace("_", " ").strip() or "Turnaround
 try:
     tasks, xml_caps = load_schedule(
         uploaded,
-        hours_per_day=int(timeline_hours_per_day),
+        hours_per_day=int(hours_per_day),
     )
 except Exception as exc:
     st.error(f"Falha ao ler o cronograma: {exc}")
@@ -664,30 +664,25 @@ planning_signature = hashlib.sha256(
             "source_sha256": hashlib.sha256(
                 uploaded.getvalue()
             ).hexdigest(),
-            "hours_per_day": int(timeline_hours_per_day),
-    "resource_calendars": {
-        resource: {
-            "origin_hour": float(calendar.origin_hour),
-            "shifts": [
-                {
-                    "start_hour": float(shift.start_hour),
-                    "end_hour": float(shift.end_hour),
-                }
-                for shift in calendar.shifts
-            ],
-        }
-        for resource, calendar in sorted(resource_calendars.items())
-    },
+            "import_hours_per_day": int(hours_per_day),
+            "timeline_hours_per_day": int(timeline_hours_per_day),
             "deadline_h": deadline_h,
             "capacities": capacities,
             "capacity_origins": capacity_origins,
-            "timeline_hours_per_day": int(timeline_hours_per_day),
             "resource_calendars": {
                 resource: {
                     "origin_hour": float(calendar.origin_hour),
                     "shifts": [
                         [float(shift.start_hour), float(shift.end_hour)]
                         for shift in calendar.shifts
+                    ],
+                    "blocks": [
+                        [float(block.start_h), float(block.end_h), block.reason]
+                        for block in calendar.blocks
+                    ],
+                    "overtime_windows": [
+                        [float(window.start_h), float(window.end_h), window.reason]
+                        for window in calendar.overtime_windows
                     ],
                 }
                 for resource, calendar in sorted(resource_calendars.items())
@@ -997,22 +992,22 @@ with config_risk:
         risk_cols = st.columns(5)
         risk_cols[0].metric(
             "Média",
-            f"{risk['mean_h'] / hours_per_day:.2f} d",
+            f"{risk['mean_h'] / timeline_hours_per_day:.2f} d",
             help="Média das durações finais observadas nas simulações.",
         )
         risk_cols[1].metric(
             "P50",
-            f"{risk['p50_h'] / hours_per_day:.2f} d",
+            f"{risk['p50_h'] / timeline_hours_per_day:.2f} d",
             help="50% das simulações terminaram até este prazo.",
         )
         risk_cols[2].metric(
             "P80",
-            f"{risk['p80_h'] / hours_per_day:.2f} d",
+            f"{risk['p80_h'] / timeline_hours_per_day:.2f} d",
             help="80% das simulações terminaram até este prazo.",
         )
         risk_cols[3].metric(
             "P90",
-            f"{risk['p90_h'] / hours_per_day:.2f} d",
+            f"{risk['p90_h'] / timeline_hours_per_day:.2f} d",
             help="90% das simulações terminaram até este prazo.",
         )
         risk_cols[4].metric(
@@ -1031,7 +1026,7 @@ with config_risk:
         hist_df = pd.DataFrame(
             {
                 "Makespan_dias": [
-                    value / hours_per_day
+                    value / timeline_hours_per_day
                     for value in risk["samples"]
                 ]
             }
@@ -1056,11 +1051,11 @@ with config_risk:
             decomposition_cols = st.columns(4)
             decomposition_cols[0].metric(
                 "P80 somente duração",
-                f"{risk['duration_only_p80_h'] / hours_per_day:.2f} d",
+                f"{risk['duration_only_p80_h'] / timeline_hours_per_day:.2f} d",
             )
             decomposition_cols[1].metric(
                 "P80 combinado",
-                f"{risk['p80_h'] / hours_per_day:.2f} d",
+                f"{risk['p80_h'] / timeline_hours_per_day:.2f} d",
             )
             decomposition_cols[2].metric(
                 "Impacto médio do escopo",
@@ -1142,7 +1137,7 @@ cand_df = pd.DataFrame(
             "Regra": candidate.priority_rule,
             "Makespan_h": candidate.makespan_h,
             "Makespan_dias": round(
-                candidate.makespan_h / hours_per_day,
+                candidate.makespan_h / timeline_hours_per_day,
                 2,
             ),
             "Atraso_h": candidate.tardiness_h,
@@ -1169,7 +1164,7 @@ with tab_exec:
     metric_cols = st.columns(4)
     metric_cols[0].metric(
         "Makespan base" if scope_risks else "Makespan",
-        f"{best.makespan_h / hours_per_day:.2f} d",
+        f"{best.makespan_h / timeline_hours_per_day:.2f} d",
         help=(
             "Cronograma determinístico do escopo-base; atividades potenciais "
             "entram apenas na análise probabilística."
@@ -1183,7 +1178,7 @@ with tab_exec:
     )
     metric_cols[2].metric(
         "P80",
-        "—" if not risk else f"{risk['p80_h'] / hours_per_day:.2f} d",
+        "—" if not risk else f"{risk['p80_h'] / timeline_hours_per_day:.2f} d",
     )
     metric_cols[3].metric(
         "P(cumprir janela)",
@@ -1316,7 +1311,7 @@ with tab_exec:
     approval_candidate = build_planning_baseline(
         project_name=project_name,
         source_name=uploaded.name,
-        hours_per_day=int(hours_per_day),
+        hours_per_day=int(timeline_hours_per_day),
         deadline_h=(
             None
             if deadline_h is None
@@ -1555,7 +1550,7 @@ with tab_schedule:
         d1, d2 = st.columns(2)
         d1.metric(
             "CPM sem recursos",
-            f"{comparison['unconstrained_makespan_h'] / hours_per_day:.2f} d",
+            f"{comparison['unconstrained_makespan_h'] / timeline_hours_per_day:.2f} d",
         )
         d2.metric("Regra selecionada", best.priority_rule)
         st.dataframe(
@@ -1567,7 +1562,8 @@ with tab_schedule:
 scenario_assumptions = {
     "source_name": uploaded.name,
     "deadline_h": None if deadline_h is None else float(deadline_h),
-    "hours_per_day": int(hours_per_day),
+    "hours_per_day": int(timeline_hours_per_day),
+    "import_hours_per_day": int(hours_per_day),
     "capacities": {
         resource: float(value)
         for resource, value in capacities.items()
