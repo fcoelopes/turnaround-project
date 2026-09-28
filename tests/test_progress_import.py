@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 import pytest
 
@@ -167,4 +168,121 @@ def test_progress_import_rejects_inconsistent_status_and_percent():
     )
 
     with pytest.raises(ValueError, match="concluído exige 100"):
+        parse_progress_file(upload)
+
+
+def test_csv_actual_datetimes_are_converted_to_h_plus_from_project_origin():
+    upload = _Upload(
+        name="actuals.csv",
+        content=(
+            "ID,% concluído,Actual Start,Actual Finish\n"
+            "10,100,2026-10-06 07:30,2026-10-06 09:30\n"
+        ).encode("utf-8"),
+    )
+
+    result = reconcile_progress(
+        parse_progress_file(
+            upload,
+            calendar_origin=datetime(2026, 10, 6, 6, 0),
+        ),
+        _project(),
+    )
+
+    row = result.rows[0]
+    assert row.actual_start_h == pytest.approx(1.5)
+    assert row.actual_finish_h == pytest.approx(3.5)
+
+
+def test_csv_can_import_actuals_directly_in_h_plus_without_calendar_origin():
+    upload = _Upload(
+        name="actuals_h.csv",
+        content=(
+            "ID,Status,Actual Start H,Actual Finish H\n"
+            "10,completed,2.5,5.0\n"
+            "20,in progress,4.0,\n"
+        ).encode("utf-8"),
+    )
+
+    result = reconcile_progress(
+        parse_progress_file(upload),
+        _project(),
+    )
+
+    assert result.rows[0].actual_start_h == pytest.approx(2.5)
+    assert result.rows[0].actual_finish_h == pytest.approx(5.0)
+    assert result.rows[1].actual_start_h == pytest.approx(4.0)
+    assert result.rows[1].actual_finish_h is None
+
+
+def test_project_xml_imports_actual_start_and_finish_against_baseline_origin():
+    upload = _Upload(
+        name="actuals.xml",
+        content=b'''<?xml version="1.0" encoding="UTF-8"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Tasks>
+    <Task>
+      <UID>1010</UID><ID>10</ID><Name>Abrir equipamento</Name>
+      <Summary>0</Summary><PercentComplete>100</PercentComplete>
+      <ActualStart>2026-10-06T07:00:00</ActualStart>
+      <ActualFinish>2026-10-06T10:00:00</ActualFinish>
+    </Task>
+    <Task>
+      <UID>2020</UID><ID>20</ID><Name>Inspecionar</Name>
+      <Summary>0</Summary><PercentComplete>40</PercentComplete>
+      <ActualStart>2026-10-06T10:30:00</ActualStart>
+    </Task>
+  </Tasks>
+</Project>''',
+    )
+
+    result = reconcile_progress(
+        parse_progress_file(
+            upload,
+            calendar_origin=datetime(2026, 10, 6, 6, 0),
+        ),
+        _project(),
+    )
+
+    assert result.rows[0].actual_start_h == pytest.approx(1.0)
+    assert result.rows[0].actual_finish_h == pytest.approx(4.0)
+    assert result.rows[1].actual_start_h == pytest.approx(4.5)
+    assert result.rows[1].actual_finish_h is None
+
+
+def test_absolute_actuals_require_project_origin():
+    upload = _Upload(
+        name="actuals.csv",
+        content=(
+            "ID,Status,Actual Start,Actual Finish\n"
+            "10,completed,2026-10-06 07:00,2026-10-06 09:00\n"
+        ).encode("utf-8"),
+    )
+
+    with pytest.raises(ValueError, match="origem temporal"):
+        parse_progress_file(upload)
+
+
+def test_actual_finish_before_start_is_rejected():
+    upload = _Upload(
+        name="actuals_h.csv",
+        content=(
+            "ID,Status,Actual Start H,Actual Finish H\n"
+            "10,completed,5,4\n"
+        ).encode("utf-8"),
+    )
+
+    with pytest.raises(ValueError, match="Actual Finish deve ser"):
+        parse_progress_file(upload)
+
+
+def test_not_started_activity_cannot_have_actual_start():
+    upload = _Upload(
+        name="invalid.csv",
+        content=(
+            "ID,Status,Actual Start H\n"
+            "10,not started,2\n"
+        ).encode("utf-8"),
+    )
+
+    with pytest.raises(ValueError, match="não iniciada"):
         parse_progress_file(upload)
