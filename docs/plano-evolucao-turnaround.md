@@ -938,14 +938,23 @@ RCPSP do Planejamento, Monte Carlo, indisponibilidades, overtime e MSPDI ainda
 não foram alterados nesta etapa.
 - [x] Indisponibilidade.
 
-**TDS-27 implementado — aguardando revisão funcional:** calendários de recurso
+**TDS-27 implementado e aprovado:** calendários de recurso
 agora aceitam **bloqueios absolutos no eixo H+ da parada**, por exemplo
 `Guindaste indisponível de H+30 a H+36`. Esses bloqueios são subtraídos das
 janelas recorrentes de turno; o MRCPSP/rescheduling passa a evitá-los
 automaticamente porque continua consultando o mesmo calendário antes de liberar
 o início da atividade. Nesta etapa, os bloqueios ainda pertencem ao modelo em
 memória e não possuem interface/persistência própria.
-- [ ] Overtime.
+- [x] Overtime.
+
+**TDS-28 implementado — aguardando revisão funcional:** calendários de recurso
+agora aceitam **janelas extraordinárias absolutas de overtime** no eixo H+.
+Essas janelas ampliam a disponibilidade recorrente do turno e podem formar uma
+janela contínua com ele; indisponibilidades absolutas continuam tendo
+precedência e podem cortar também o overtime. O MRCPSP/rescheduling usa essas
+janelas automaticamente por consultar o mesmo `WorkingCalendar`. Nesta etapa,
+overtime representa disponibilidade autorizada; **custo de hora extra ainda não
+entra no objetivo do solver**.
 - [ ] Integração com RCPSP/MRCPSP.
 - [ ] Integração com Monte Carlo.
 - [ ] Exportação Project coerente.
