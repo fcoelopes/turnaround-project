@@ -260,6 +260,7 @@ def materialize_dynamic_scope(
         capacities=dict(project.capacities),
         deadline=project.deadline,
         logical_groups=project.logical_groups,
+        resource_calendars=dict(project.resource_calendars),
     )
     return DynamicScopeMaterialization(
         project=effective,
