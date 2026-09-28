@@ -5,6 +5,7 @@ import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import plotly.express as px
@@ -1207,22 +1208,29 @@ with tab_exec:
             title="Baseline 0 formalmente aprovada.",
         )
         approval_cols = st.columns(3)
-        approval_cols[0].metric(
-            "Aprovado por",
-            approved_baseline.approved_by,
+        approved_at_local = approved_baseline.approved_at.astimezone(
+            ZoneInfo("America/Fortaleza")
         )
-        approval_cols[1].metric(
-            "Aprovada em",
-            approved_baseline.approved_at.isoformat(timespec="minutes"),
-        )
-        approval_cols[2].metric(
-            "Janela aprovada",
-            (
-                "sem deadline"
-                if approved_baseline.deadline_h is None
-                else f"{approved_baseline.deadline_h / hours_per_day:.2f} d"
-            ),
-        )
+        with approval_cols[0]:
+            st.caption("Aprovado por")
+            st.markdown(f"**{approved_baseline.approved_by}**")
+        with approval_cols[1]:
+            st.caption("Aprovada em")
+            st.markdown(
+                f"**{approved_at_local.strftime('%d/%m/%Y %H:%M')}**"
+            )
+            st.caption("Horário local · America/Fortaleza")
+        with approval_cols[2]:
+            st.caption("Janela aprovada")
+            st.markdown(
+                "**"
+                + (
+                    "sem deadline"
+                    if approved_baseline.deadline_h is None
+                    else f"{approved_baseline.deadline_h / hours_per_day:.2f} d"
+                )
+                + "**"
+            )
         st.caption(
             f"Motivo / observação: {approved_baseline.approval_reason}"
         )
