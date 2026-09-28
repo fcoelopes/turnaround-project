@@ -701,8 +701,8 @@ def load_project(store: ExecutionStore):
 
 execution_store = _get_execution_store()
 
-vision_tab, operation_tab, scope_tab, resources_tab, config_tab, governance_tab = st.tabs(
-    ["Visão", "Operação", "Escopo", "Recursos", "Configuração", "Governança"]
+vision_tab, operation_tab, scope_tab, resources_tab, governance_tab = st.tabs(
+    ["Visão", "Operação", "Escopo", "Recursos", "Governança"]
 )
 
 with operation_tab:
@@ -756,12 +756,6 @@ if project is None:
             "um projeto estiver disponível."
         )
         _render_workforce_section(execution_store, project)
-    with config_tab:
-        st.markdown("### Configuração")
-        st.info(
-            "Selecione um baseline aprovado, carregue um XML na aba Operação "
-            "ou use o cenário demonstrativo para configurar preferências avançadas."
-        )
     st.stop()
 
 base_planned_project = project
@@ -1191,7 +1185,7 @@ discovered_tasks = execution_store.load_discovered_tasks(
     execution_session.id
 )
 
-with config_tab:
+with operation_tab:
     st.caption(
         f"Sessão persistida: {execution_session.id[:8]} · SQLite · "
         f"{len(discovered_tasks)} atividade(s) dinâmica(s) armazenada(s) · "
@@ -1223,7 +1217,7 @@ with config_tab:
                     del st.session_state[key]
             st.rerun()
 
-with config_tab:
+with operation_tab:
     with st.expander("Histórico da execução", expanded=False):
         persisted_events = execution_store.list_events(
             execution_session.id,
@@ -1496,104 +1490,112 @@ with resources_tab:
     st.divider()
     _render_workforce_section(execution_store, project)
 
-with config_tab:
-    st.markdown("#### Preferências do replanejamento")
-    st.caption(
-        "Escolha quanto o replanejamento deve preservar os horários já combinados "
-        "para atividades futuras. Atraso à janela continua sendo prioridade."
-    )
+with operation_tab:
+    with st.expander("Preferências do replanejamento", expanded=False):
+        st.caption(
+            "Escolha quanto o replanejamento deve preservar os horários já "
+            "combinados para atividades futuras. Atraso à janela continua sendo prioridade."
+        )
 
-    stability_presets = {
-        "Baixa": 0.3,
-        "Balanceada": 1.0,
-        "Alta": 1.7,
-    }
-    persisted_stability_weight = min(
-        2.0,
-        max(0.0, float(execution_session.stability_weight)),
-    )
-    matching_level = next(
-        (
-            level
-            for level, weight in stability_presets.items()
-            if abs(weight - persisted_stability_weight) <= 1e-9
-        ),
-        None,
-    )
-    nearest_level = min(
-        stability_presets,
-        key=lambda level: abs(
-            stability_presets[level] - persisted_stability_weight
-        ),
-    )
-    selected_stability_level = st.radio(
-        "Preservação do plano",
-        options=list(stability_presets),
-        index=list(stability_presets).index(
-            matching_level or nearest_level
-        ),
-        horizontal=True,
-        key=f"stability_level_{execution_session.id[:8]}",
-        help=(
-            "Baixa permite maior rearranjo do trabalho futuro; Balanceada busca "
-            "compromisso entre prazo e estabilidade; Alta penaliza mais mudanças "
-            "nos horários já planejados."
-        ),
-    )
+        stability_presets = {
+            "Baixa": 0.3,
+            "Balanceada": 1.0,
+            "Alta": 1.7,
+        }
+        persisted_stability_weight = min(
+            2.0,
+            max(0.0, float(execution_session.stability_weight)),
+        )
+        matching_level = next(
+            (
+                level
+                for level, weight in stability_presets.items()
+                if abs(weight - persisted_stability_weight) <= 1e-9
+            ),
+            None,
+        )
+        nearest_level = min(
+            stability_presets,
+            key=lambda level: abs(
+                stability_presets[level] - persisted_stability_weight
+            ),
+        )
+        selected_stability_level = st.radio(
+            "Preservação do plano",
+            options=list(stability_presets),
+            index=list(stability_presets).index(
+                matching_level or nearest_level
+            ),
+            horizontal=True,
+            key=f"stability_level_{execution_session.id[:8]}",
+            help=(
+                "Baixa permite maior rearranjo do trabalho futuro; Balanceada busca "
+                "compromisso entre prazo e estabilidade; Alta penaliza mais mudanças "
+                "nos horários já planejados."
+            ),
+        )
 
-    with st.expander("Configuração avançada · estabilidade", expanded=False):
-        use_manual_stability_weight = st.checkbox(
-            "Usar valor λ manual",
+        show_advanced_stability = st.checkbox(
+            "Mostrar configuração avançada de estabilidade",
             value=matching_level is None,
-            key=f"stability_manual_enabled_{execution_session.id[:8]}",
-            help=(
-                "Use somente para estudos ou calibração. Quando ativo, este valor "
-                "substitui o nível operacional selecionado acima."
-            ),
+            key=f"stability_advanced_visible_{execution_session.id[:8]}",
+            help="Exibe o λ numérico somente para estudos ou calibração.",
         )
-        manual_stability_weight = st.slider(
-            "λ de estabilidade",
-            min_value=0.0,
-            max_value=2.0,
-            value=persisted_stability_weight,
-            step=0.1,
-            disabled=not use_manual_stability_weight,
-            key=f"stability_weight_{execution_session.id[:8]}",
-            help=(
-                "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos "
-                "de início. λ=0 ignora estabilidade; valores maiores penalizam "
-                "mais mudanças de início."
-            ),
-        )
-        if use_manual_stability_weight:
-            st.caption(
-                "Valor avançado ativo: o λ manual substitui o nível "
-                f"{selected_stability_level}."
+        use_manual_stability_weight = matching_level is None
+        manual_stability_weight = persisted_stability_weight
+        if show_advanced_stability:
+            use_manual_stability_weight = st.checkbox(
+                "Usar valor λ manual",
+                value=matching_level is None,
+                key=f"stability_manual_enabled_{execution_session.id[:8]}",
+                help=(
+                    "Quando ativo, este valor substitui o nível operacional "
+                    "selecionado acima."
+                ),
             )
-        else:
-            st.caption(
-                "Mapeamento operacional: "
-                + " · ".join(
-                    f"{level} = λ {weight:.1f}"
-                    for level, weight in stability_presets.items()
+            manual_stability_weight = st.slider(
+                "λ de estabilidade",
+                min_value=0.0,
+                max_value=2.0,
+                value=persisted_stability_weight,
+                step=0.1,
+                disabled=not use_manual_stability_weight,
+                key=f"stability_weight_{execution_session.id[:8]}",
+                help=(
+                    "Objetivo do rescheduling: makespan + λ × soma dos deslocamentos "
+                    "de início. λ=0 ignora estabilidade; valores maiores penalizam "
+                    "mais mudanças de início."
+                ),
+            )
+            if use_manual_stability_weight:
+                st.caption(
+                    "Valor avançado ativo: o λ manual substitui o nível "
+                    f"{selected_stability_level}."
                 )
-            )
+            else:
+                st.caption(
+                    "Mapeamento operacional: "
+                    + " · ".join(
+                        f"{level} = λ {weight:.1f}"
+                        for level, weight in stability_presets.items()
+                    )
+                )
 
-    stability_weight = (
-        float(manual_stability_weight)
-        if use_manual_stability_weight
-        else float(stability_presets[selected_stability_level])
-    )
-    stability_profile_label = (
-        "Avançada"
-        if use_manual_stability_weight
-        else selected_stability_level
-    )
-    st.caption(
-        "A estabilidade compara apenas atividades futuras que já existiam no "
-        "plano anterior. Novo escopo descoberto não recebe penalidade por não "
-        "possuir início de referência."
-    )
+        stability_weight = (
+            float(manual_stability_weight)
+            if use_manual_stability_weight
+            else float(stability_presets[selected_stability_level])
+        )
+        stability_profile_label = (
+            "Avançada"
+            if use_manual_stability_weight
+            else selected_stability_level
+        )
+        st.caption(
+            "A estabilidade compara apenas atividades futuras que já existiam no "
+            "plano anterior. Novo escopo descoberto não recebe penalidade por não "
+            "possuir início de referência."
+        )
 
 empty_state = ExecutionState(current_time=0)
 baseline_activation = resolve_activation(planned_project, empty_state)
