@@ -145,6 +145,7 @@ def validate_planning_baseline_for_execution(
             tasks,
             baseline.capacities,
             deadline=baseline.deadline_h,
+            resource_calendars=baseline.to_resource_calendars(),
         )
         apply_planning_scope_risks_to_project(
             project,
@@ -276,6 +277,31 @@ def validate_planning_baseline_for_execution(
         )
     elif expected_base_ids:
         checks.append("Horários aprovados respeitam duração e precedências")
+
+    calendar_errors: list[str] = []
+    calendars = baseline.to_resource_calendars()
+    for item in baseline.schedule:
+        for resource, demand in item.resources.items():
+            if float(demand) <= 0:
+                continue
+            calendar = calendars.get(resource)
+            if calendar is None:
+                continue
+            if not calendar.is_working_interval(
+                float(item.start_h),
+                float(item.duration_h),
+            ):
+                calendar_errors.append(
+                    f"{item.task_id}: {resource} fora da janela de trabalho"
+                )
+    if calendar_errors:
+        errors.append(
+            "O cronograma aprovado viola calendário de recurso: "
+            + _preview(calendar_errors)
+            + "."
+        )
+    elif calendars:
+        checks.append("Cronograma aprovado respeita calendários dos recursos")
 
     resource_events: dict[str, list[tuple[float, int, float, str]]] = {}
     for item in baseline.schedule:
