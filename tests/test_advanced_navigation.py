@@ -86,3 +86,16 @@ def test_execution_uses_remaining_duration_for_in_progress_forecast():
     assert 'status="in_progress"' in source
     assert "remaining_as_of_h" in source
     assert '"Remaining Duration inconsistente."' in source
+
+
+def test_execution_progress_batch_merges_partial_updates_atomically():
+    source = ADVANCED_PAGE.read_text(encoding="utf-8")
+
+    assert "merge_progress_snapshot(" in source
+    assert "allow_partial=latest_progress_import is not None" in source
+    assert '"Alteradas no lote"' in source
+    assert '"Sem mudança"' in source
+    assert '"Preservadas"' in source
+    assert "expected_previous_event_id=" in source
+    assert "changed_task_ids=list(batch_merge.changed_task_ids)" in source
+    assert "disabled=batch_merge.changed_rows == 0" in source
