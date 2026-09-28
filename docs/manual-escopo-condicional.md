@@ -3,7 +3,7 @@
 Este manual descreve o uso da página **Escopo e Replanejamento** do Turnaround Decision Support.
 
 > A interface não mantém mais uma aba **Manual**. A ajuda curta aparece dentro de
-> **Operação**, **Escopo**, **Recursos**, **Configuração** e **Governança**; este documento
+> **Operação**, **Escopo**, **Recursos** e **Governança**; este documento
 > permanece como referência técnica completa.
 
 A funcionalidade foi criada para tratar um problema típico de paradas de manutenção: o planejamento começa com um escopo conhecido, mas novas atividades podem surgir somente depois da abertura e inspeção do equipamento.
@@ -645,15 +645,15 @@ modos de execução
 
 ### Preservação do plano
 
-Em **Configuração**, escolha quanto o replanejamento deve preservar os horários
-já comunicados para o trabalho futuro:
+Em **Operação → Preferências do replanejamento**, escolha quanto o
+replanejamento deve preservar os horários já comunicados para o trabalho futuro:
 
 - **Baixa**: aceita mais rearranjo em busca de prazo;
 - **Balanceada**: compromisso padrão entre prazo e estabilidade;
 - **Alta**: penaliza mais mudanças nos horários já planejados.
 
-O valor matemático λ fica escondido em **Configuração avançada · estabilidade**.
-Ele só precisa ser usado diretamente em estudos ou calibração.
+O valor matemático λ fica escondido por padrão. Marque **Mostrar configuração
+avançada de estabilidade** somente para estudos ou calibração.
 
 ---
 
