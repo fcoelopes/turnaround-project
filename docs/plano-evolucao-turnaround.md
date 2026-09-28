@@ -978,7 +978,7 @@ trabalháveis, e a antiga “penalidade de recursos” é apresentada como
 
 - [x] Integração com Monte Carlo.
 
-**TDS-30 implementado — aguardando revisão funcional:** o Monte Carlo passou a
+**TDS-30 implementado e aprovado:** o Monte Carlo passou a
 reutilizar o mesmo `serial_schedule_generation` calendar-aware do RCPSP
 determinístico em **todas as iterações**, inclusive no cenário pareado
 “somente duração” usado para separar o impacto do escopo potencial. P50, P80,
@@ -990,7 +990,24 @@ pela triangular não couber em nenhuma janela contínua do recurso, a simulaçã
 falha com diagnóstico de calendário em vez de fracionar a atividade
 silenciosamente. O resultado de risco registra ainda `calendar_aware` e os
 recursos calendarizados usados no cálculo.
-- [ ] Exportação Project coerente.
+- [x] Exportação Project coerente.
+
+**TDS-31 implementado — aguardando revisão funcional:** o exportador MSPDI deixou
+de representar todos os recursos pelo calendário 24×7. O arquivo mantém um
+calendário-base 24×7 para o projeto e cria um calendário dedicado para cada
+recurso que possui `WorkingCalendar`, associando-o via `Resource.CalendarUID`.
+Turnos recorrentes são exportados em `WeekDays/WorkingTimes`; turnos que
+atravessam meia-noite são divididos nos dois trechos do dia.
+
+Bloqueios absolutos e overtime são materializados como **Exceptions datadas**,
+recalculando os trechos trabalháveis efetivos daquele dia para preservar a
+precedência “indisponibilidade vence overtime”. Recursos sem calendário
+explícito continuam vinculados ao calendário 24×7.
+
+O XML continua sendo um **snapshot operacional**. A premissa TDS de atividade
+não preemptiva é registrada nas Notas, mas não possui equivalente nativo
+perfeito no MSPDI; portanto um usuário que alterar a lógica e mandar o Project
+recalcular pode obter datas diferentes das calculadas pelo TDS.
 
 ## Sprint 6 — Atualização operacional
 
