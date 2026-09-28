@@ -82,12 +82,15 @@ class WorkingCalendar:
     shifts: tuple[DailyShift, ...]
     blocks: tuple[CalendarBlock, ...] = ()
     overtime_windows: tuple[OvertimeWindow, ...] = ()
+    origin_hour: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.name.strip():
             raise ValueError("Calendário exige nome")
         if not self.shifts:
             raise ValueError("Calendário exige pelo menos um turno")
+        if not 0.0 <= float(self.origin_hour) < 24.0:
+            raise ValueError("origin_hour deve estar em [0, 24)")
 
     def working_intervals(
         self,
@@ -102,12 +105,13 @@ class WorkingCalendar:
         if abs(end - start) <= 1e-9:
             return []
 
-        first_day = floor(start / 24.0) - 1
-        last_day = ceil(end / 24.0) + 1
+        origin = float(self.origin_hour)
+        first_day = floor((start + origin) / 24.0) - 1
+        last_day = ceil((end + origin) / 24.0) + 1
         raw: list[tuple[float, float]] = []
 
         for day in range(first_day, last_day + 1):
-            day_start = day * 24.0
+            day_start = day * 24.0 - origin
             for shift in self.shifts:
                 shift_start = day_start + float(shift.start_hour)
                 if shift.crosses_midnight:
