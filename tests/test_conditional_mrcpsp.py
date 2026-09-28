@@ -125,6 +125,30 @@ def test_pending_decision_summary_reports_no_feasible_alternative():
     assert row["Recurso crítico"] == "Soldador (faltam 1)"
 
 
+def test_project_xml_drops_links_to_omitted_zero_duration_rows():
+    xml = b'''<?xml version="1.0" encoding="UTF-8"?>
+    <Project xmlns="http://schemas.microsoft.com/project">
+      <Tasks>
+        <Task>
+          <UID>5</UID><ID>5</ID><Name>Marco intermediario</Name>
+          <Summary>0</Summary><Milestone>1</Milestone><Duration>PT0H0M0S</Duration>
+        </Task>
+        <Task>
+          <UID>7</UID><ID>7</ID><Name>Atividade executavel</Name>
+          <Summary>0</Summary><Milestone>0</Milestone><Duration>PT4H0M0S</Duration>
+          <PredecessorLink>
+            <PredecessorUID>5</PredecessorUID><Type>1</Type><LinkLag>0</LinkLag>
+          </PredecessorLink>
+        </Task>
+      </Tasks>
+    </Project>'''
+
+    tasks, _ = project_xml_to_tasks(xml)
+
+    assert [task.id for task in tasks] == ["7"]
+    assert tasks[0].predecessors == []
+
+
 def test_existing_task_domain_adapts_without_changing_semantics():
     xml = b'''<?xml version="1.0" encoding="UTF-8"?>
     <Project xmlns="http://schemas.microsoft.com/project">
