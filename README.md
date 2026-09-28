@@ -17,6 +17,23 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 11. Em uma página avançada, trata **MRCPSP**, escopo opcional/condicional e rescheduling após inspeções.
 12. Exporta o snapshot operacional replanejado em **Microsoft Project XML (MSPDI)**, materializando condicionais ativadas, atividades `DS-*`, precedências, recursos e novos horários.
 
+## Calendários de trabalho
+
+O domínio já possui uma primitiva de calendário com turnos diários recorrentes.
+Ela suporta, por exemplo:
+
+- `07:00–19:00`;
+- `19:00–07:00` atravessando meia-noite;
+- dois turnos adjacentes formando operação contínua 24 h.
+
+Nesta etapa, o calendário trabalha com atividades **não preemptivas**: a
+atividade só pode iniciar quando sua duração completa cabe em uma janela
+contínua. Horas fora do turno não contam como horas executadas.
+
+A integração com calendários específicos por recurso, RCPSP/MRCPSP, Monte Carlo
+e exportação MSPDI é incremental e pertence às próximas etapas do Sprint de
+Calendários.
+
 ## Dois níveis de planejamento
 
 ### Planejamento-base — RCPSP
