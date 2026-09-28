@@ -1009,6 +1009,11 @@ class ExecutionStore:
         source_name: str,
         rows: list[dict[str, Any]],
         warnings: list[str] | None = None,
+        expected_previous_event_id: int | None = None,
+        changed_task_ids: list[str] | None = None,
+        unchanged_task_ids: list[str] | None = None,
+        preserved_task_ids: list[str] | None = None,
+        incoming_rows: int | None = None,
     ) -> ExecutionEvent:
         if not rows:
             raise ValueError("Importação de progresso exige pelo menos uma linha conciliada.")
@@ -1057,10 +1062,33 @@ class ExecutionStore:
             "rows": normalized_rows,
             "warnings": list(warnings or []),
             "matched_rows": len(normalized_rows),
+            "incoming_rows": (
+                len(normalized_rows)
+                if incoming_rows is None
+                else int(incoming_rows)
+            ),
+            "changed_task_ids": list(changed_task_ids or []),
+            "unchanged_task_ids": list(unchanged_task_ids or []),
+            "preserved_task_ids": list(preserved_task_ids or []),
         }
 
         with self.SessionLocal.begin() as db:
             self._require_session(db, session_id)
+            latest_id = db.scalar(
+                select(ExecutionEventRecord.id)
+                .where(
+                    ExecutionEventRecord.session_id == session_id,
+                    ExecutionEventRecord.event_type == "PROGRESS_IMPORTED",
+                )
+                .order_by(ExecutionEventRecord.id.desc())
+                .limit(1)
+            )
+            if latest_id != expected_previous_event_id:
+                raise ValueError(
+                    "A fotografia de progresso mudou desde a prévia. "
+                    "Recarregue a página e refaça a conciliação antes de registrar."
+                )
+
             self._append_event(
                 db,
                 session_id=session_id,
