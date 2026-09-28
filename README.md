@@ -23,6 +23,25 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 
 ### Indisponibilidades absolutas
 
+### Overtime autorizado
+
+O calendário também pode receber janelas extraordinárias absolutas de trabalho:
+
+~~~text
+Equipe
+turno recorrente: 07:00–19:00
+overtime aprovado: H+19 até H+23
+~~~
+
+Nesse caso, o trecho regular e o overtime se unem numa janela contínua
+`07:00–23:00` naquele dia. Uma indisponibilidade absoluta continua tendo
+precedência e pode cortar a janela extraordinária.
+
+No MRCPSP/rescheduling, configurar o overtime significa autorizar seu uso pelo
+scheduler. Nesta etapa, ele altera somente a disponibilidade temporal; custo de
+hora extra ainda não é incorporado ao objetivo de otimização.
+
+
 Além do turno recorrente, cada calendário pode registrar exceções absolutas no
 eixo H+ da parada. Exemplo:
 
