@@ -947,7 +947,7 @@ o início da atividade. Nesta etapa, os bloqueios ainda pertencem ao modelo em
 memória e não possuem interface/persistência própria.
 - [x] Overtime.
 
-**TDS-28 implementado — aguardando revisão funcional:** calendários de recurso
+**TDS-28 implementado e aprovado:** calendários de recurso
 agora aceitam **janelas extraordinárias absolutas de overtime** no eixo H+.
 Essas janelas ampliam a disponibilidade recorrente do turno e podem formar uma
 janela contínua com ele; indisponibilidades absolutas continuam tendo
@@ -955,7 +955,30 @@ precedência e podem cortar também o overtime. O MRCPSP/rescheduling usa essas
 janelas automaticamente por consultar o mesmo `WorkingCalendar`. Nesta etapa,
 overtime representa disponibilidade autorizada; **custo de hora extra ainda não
 entra no objetivo do solver**.
-- [ ] Integração com RCPSP/MRCPSP.
+- [x] Integração com RCPSP/MRCPSP.
+
+**TDS-29 implementado — aguardando revisão funcional:** o RCPSP do
+**Planejamento** passou a respeitar o mesmo `WorkingCalendar` usado pelo
+MRCPSP. A aba **Calendários** permite manter recursos 24 h ou configurar um
+turno recorrente por recurso; o relógio do turno é alinhado à data/hora inicial
+do cronograma (ex.: Project inicia 06:00 e turno inicia 07:00 → H+1). Quando
+existe calendário restritivo, a linha do tempo passa a usar **tempo decorrido
+real**, portanto uma janela de 30 dias corresponde a 720 h e os indicadores em
+dias usam divisor 24.
+
+Os calendários usados no cálculo são persistidos dentro da **Baseline 0** e
+restaurados na Execução sem migration de banco, pois o snapshot continua no
+`payload_json`. O gate de prontidão também verifica se os horários aprovados
+respeitam os calendários persistidos. Baselines antigas sem calendário mantêm o
+mesmo fingerprint.
+
+Para evitar falsa precisão, enquanto o Monte Carlo ainda não usa calendário,
+cenários com calendário real **não exibem P50/P80/P90 nem
+P(cumprir janela)**; o status fica como risco não avaliado até a próxima etapa.
+A utilização de recurso passa a usar somente suas horas efetivamente
+trabalháveis, e a antiga “penalidade de recursos” é apresentada como
+**penalidade recursos/calendário** quando ambas as restrições estão presentes.
+
 - [ ] Integração com Monte Carlo.
 - [ ] Exportação Project coerente.
 
