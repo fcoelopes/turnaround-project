@@ -1028,6 +1028,16 @@ class ExecutionStore:
                     else float(row.get("percent_complete"))
                 ),
                 "status": str(row["status"]),
+                "actual_start_h": (
+                    None
+                    if row.get("actual_start_h") is None
+                    else float(row.get("actual_start_h"))
+                ),
+                "actual_finish_h": (
+                    None
+                    if row.get("actual_finish_h") is None
+                    else float(row.get("actual_finish_h"))
+                ),
                 "source_reference": str(row["source_reference"]),
             }
             for row in rows
