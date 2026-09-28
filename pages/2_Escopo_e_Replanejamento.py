@@ -1584,6 +1584,11 @@ with config_tab:
         if use_manual_stability_weight
         else float(stability_presets[selected_stability_level])
     )
+    stability_profile_label = (
+        "Avançada"
+        if use_manual_stability_weight
+        else selected_stability_level
+    )
     st.caption(
         "A estabilidade compara apenas atividades futuras que já existiam no "
         "plano anterior. Novo escopo descoberto não recebe penalidade por não "
@@ -2860,7 +2865,7 @@ with operation_tab:
                 ),
             },
             {"Parâmetro": "Atraso", "Valor": f"{result.schedule.tardiness:.1f} h"},
-            {"Parâmetro": "Peso estabilidade λ", "Valor": f"{stability_weight:.1f}"},
+            {"Parâmetro": "Preservação do plano", "Valor": stability_profile_label},
             {"Parâmetro": "Achados observados", "Valor": observed_events_label},
             {"Parâmetro": "Opcionais selecionadas", "Valor": optional_label},
             {"Parâmetro": "Decisões humanas", "Valor": human_decisions_label},
@@ -3013,7 +3018,7 @@ with operation_tab:
                             "Horas recuperadas": base_result.schedule.makespan - result.schedule.makespan,
                             "Δ início acumulado (h)": result.schedule.total_start_deviation,
                             "Maior Δ início (h)": result.schedule.max_start_deviation,
-                            "λ estabilidade": stability_weight,
+                            "Preservação do plano": stability_profile_label,
                             "Dynamic scope": len(dynamic_scope_ids),
                             "Modos alterados": int(
                                 sum(
@@ -3233,8 +3238,8 @@ with operation_tab:
             )
             sr3.metric("Custo dos modos", f"{result.schedule.total_cost:,.0f}")
             sr4.metric(
-                "Peso λ",
-                f"{stability_weight:.1f}",
+                "Preservação do plano",
+                stability_profile_label,
             )
             st.caption(
                 f"{result.schedule.stability_compared_tasks} atividade(s) comparadas · "
