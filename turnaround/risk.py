@@ -5,6 +5,7 @@ from typing import Dict, List
 
 import numpy as np
 
+from .calendar import WorkingCalendar
 from .models import Task
 from .planning_scope_risk import PlanningScopeRisk, materialize_planning_scope
 from .rcpsp import serial_schedule_generation
@@ -21,6 +22,7 @@ def simulate_deadline_risk(
     pessimistic_factor: float = 1.30,
     seed: int = 42,
     scope_risks: list[PlanningScopeRisk] | None = None,
+    resource_calendars: dict[str, WorkingCalendar] | None = None,
 ) -> dict:
     if n <= 0:
         raise ValueError("Número de simulações deve ser positivo.")
@@ -126,6 +128,7 @@ def simulate_deadline_risk(
             sampled_scenario,
             capacities,
             priority_rule,
+            resource_calendars=resource_calendars,
         )
         makespans.append(float(scenario_result.makespan_h))
 
@@ -150,6 +153,7 @@ def simulate_deadline_risk(
             sampled_base,
             capacities,
             priority_rule,
+            resource_calendars=resource_calendars,
         )
         duration_only_makespans.append(float(base_result.makespan_h))
         scope_impacts.append(
@@ -247,4 +251,6 @@ def simulate_deadline_risk(
             task_id: float(count / n)
             for task_id, count in task_active_count.items()
         },
+        "calendar_aware": bool(resource_calendars),
+        "calendar_resources": sorted((resource_calendars or {}).keys()),
     }
