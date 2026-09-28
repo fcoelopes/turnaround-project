@@ -1,3 +1,4 @@
+from .calendar import DailyShift, WorkingCalendar
 from .activation import ActivationResult, ActivationState, resolve_activation
 from .advanced_adapter import project_from_tasks
 from .baseline_revision import (
@@ -43,6 +44,8 @@ from .reschedule import RescheduleResult, reschedule_from_state
 from .scope import apply_scope_config
 
 __all__ = [
+    "DailyShift",
+    "WorkingCalendar",
     "ActivationResult",
     "ActivationRule",
     "ActivationState",
