@@ -13,7 +13,7 @@ ADVANCED_PAGE = (
 def test_advanced_navigation_uses_contextual_help_instead_of_manual_tab():
     source = ADVANCED_PAGE.read_text(encoding="utf-8")
 
-    assert '["Visão", "Operação", "Configuração", "Pessoas", "Governança"]' in source
+    assert '["Visão", "Operação", "Escopo", "Configuração", "Pessoas", "Governança"]' in source
     assert '"Manual"' not in source
     assert "manual_tab" not in source
     assert "render_manual" not in source
@@ -23,6 +23,8 @@ def test_advanced_navigation_uses_contextual_help_instead_of_manual_tab():
     assert "Ajuda · como funciona o multi-skill" in source
     assert "Ajuda · forecast, baseline vigente e rebaseline" in source
     assert "### Visão executiva da parada" in source
+    assert "### Escopo da parada" in source
+    assert "Ajuda · domínio de escopo" in source
     assert '"Decisões pendentes"' in source
     assert '"#### Novo escopo relevante"' in source
     assert '"#### Cadeia controladora"' in source
