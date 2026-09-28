@@ -1325,6 +1325,7 @@ def build_conditional_management_pdf(
     execution_state_df: pd.DataFrame | None = None,
     dynamic_scope_df: pd.DataFrame | None = None,
     baseline_revisions_df: pd.DataFrame | None = None,
+    pending_decisions_df: pd.DataFrame | None = None,
 ) -> bytes:
     s = _styles()
     delta = current_makespan - baseline_makespan
@@ -1455,6 +1456,30 @@ def build_conditional_management_pdf(
                 ("Δ vs vigente", f"{delta_vs_governing:+.1f} h"),
                 window_metric,
             ]
+        ),
+        *(
+            [
+                _p("DECISÕES PENDENTES", s["h2"]),
+                _dataframe_table(
+                    pending_decisions_df,
+                    [
+                        "Decisão",
+                        "Alternativas",
+                        "Impacto prazo",
+                        "Impacto custo",
+                        "Recurso crítico",
+                    ],
+                    max_rows=8,
+                    widths=[25 * mm, 55 * mm, 28 * mm, 28 * mm, 38 * mm],
+                ),
+                _p(
+                    "Impactos comparados contra o forecast atual. O relatório não seleciona a alternativa técnica.",
+                    s["muted"],
+                ),
+            ]
+            if pending_decisions_df is not None
+            and not pending_decisions_df.empty
+            else []
         ),
         _p("Leitura executiva", s["h2"]),
         _p(
