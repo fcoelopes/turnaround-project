@@ -51,6 +51,7 @@ def validate_planning_baseline_for_execution(
     baseline: ApprovedPlanningBaseline,
     *,
     allow_dangling_repair: bool = False,
+    require_formal_approval: bool = False,
 ) -> ExecutionReadinessReport:
     """Valida se uma Baseline 0 pode atravessar a fronteira para Execução.
 
@@ -64,6 +65,23 @@ def validate_planning_baseline_for_execution(
     if not baseline.tasks:
         errors.append("O baseline não possui atividades.")
         return ExecutionReadinessReport(tuple(errors), tuple(warnings), tuple(checks))
+
+    if require_formal_approval:
+        missing_governance = []
+        if not (baseline.scenario_name or "").strip():
+            missing_governance.append("nome do cenário")
+        if not (baseline.approved_by or "").strip():
+            missing_governance.append("aprovador")
+        if not (baseline.approval_reason or "").strip():
+            missing_governance.append("motivo da aprovação")
+        if missing_governance:
+            errors.append(
+                "Baseline sem governança formal completa: "
+                + ", ".join(missing_governance)
+                + "."
+            )
+        else:
+            checks.append("Governança formal da Baseline 0 registrada")
 
     task_ids = [item.id for item in baseline.tasks]
     duplicates = sorted(
@@ -114,7 +132,7 @@ def validate_planning_baseline_for_execution(
             "Existem auto-precedências: " + _preview(self_links) + "."
         )
 
-    if not duplicates:
+    if not duplicates and (not dangling or allow_dangling_repair):
         try:
             topological_order(tasks)
         except ValueError as exc:
