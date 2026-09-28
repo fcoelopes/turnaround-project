@@ -219,11 +219,19 @@ def project_xml_to_tasks(content: bytes, hours_per_day: int = 8) -> Tuple[List[T
 
     task_nodes = [n for n in root.iter() if _local(n.tag) == "Task"]
     uid_to_id: Dict[str, str] = {}
+    executable_uid_to_id: Dict[str, str] = {}
     for node in task_nodes:
         uid = _child_text(node, "UID")
         tid = _child_text(node, "ID") or uid
         if uid and tid:
             uid_to_id[str(uid)] = str(tid)
+            summary = _child_text(node, "Summary", "0")
+            duration_h = parse_duration_to_hours(
+                _child_text(node, "Duration"),
+                hours_per_day,
+            )
+            if summary != "1" and duration_h > 0:
+                executable_uid_to_id[str(uid)] = str(tid)
 
     relation_map = {0: "FF", 1: "FS", 2: "SF", 3: "SS"}
     tasks: List[Task] = []
@@ -246,7 +254,12 @@ def project_xml_to_tasks(content: bytes, hours_per_day: int = 8) -> Tuple[List[T
             pred_uid = _child_text(child, "PredecessorUID")
             if pred_uid is None:
                 continue
-            pred_id = uid_to_id.get(str(pred_uid), str(pred_uid))
+            pred_id = executable_uid_to_id.get(str(pred_uid))
+            if pred_id is None:
+                # Summary rows and zero-duration rows are intentionally omitted
+                # from the executable MVP. Their IDs must not leak as dangling
+                # predecessors into the normalized network.
+                continue
             try:
                 relation = relation_map.get(int(_child_text(child, "Type", "1")), "FS")
             except ValueError:
