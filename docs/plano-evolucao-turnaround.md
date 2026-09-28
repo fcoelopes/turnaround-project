@@ -415,6 +415,13 @@ Cadeia controladora
 
 Sem controles técnicos.
 
+**TDS-14 implementado — aguardando revisão funcional:** a nova aba **Visão**
+reutiliza o mesmo snapshot operacional calculado pelo replanejamento e mostra
+Baseline original, Baseline vigente, Forecast atual, Δ vs original, Δ vs vigente,
+situação da janela, decisões humanas pendentes, novo escopo ativo e cadeia
+controladora. A aba é deliberadamente somente leitura e não duplica controles
+técnicos da Operação, Recursos ou Governança.
+
 ---
 
 # 10. Aba Operação
@@ -584,10 +591,10 @@ Substituir aba Manual por **? Ajuda** no header ou expander contextual.
 
 Objetivo: evitar consumir uma aba operacional com documentação.
 
-**TDS-13 implementado — aguardando revisão funcional:** a aba **Manual** foi
-removida da navegação principal. A ajuda essencial foi distribuída em expanders
-contextuais de **Operação**, **Configuração**, **Pessoas** e **Governança**. O
-manual técnico completo permanece em `docs/manual-escopo-condicional.md`.
+**TDS-13 implementado e aprovado:** a aba **Manual** foi removida da navegação
+principal. A ajuda essencial foi distribuída em expanders contextuais de
+**Operação**, **Configuração**, **Pessoas** e **Governança**. O manual técnico
+completo permanece em `docs/manual-escopo-condicional.md`.
 
 ---
 
@@ -826,7 +833,7 @@ Depois disso avaliar:
 
 ## Sprint 3 — Reorganização da execução
 
-- [ ] Criar aba Visão.
+- [x] Criar aba Visão.
 - [ ] Criar aba Escopo.
 - [ ] Consolidar Recursos + Pessoas.
 - [ ] Traduzir λ em níveis de preservação.
