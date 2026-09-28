@@ -92,7 +92,7 @@ def test_pending_decision_summary_compares_alternatives_to_current_forecast():
     assert row["Decisão"] == "V-101-disposition"
     assert row["Alternativas"] == "Reparar bocal | Substituir bocal"
     assert row["Impacto prazo"] == "+4.0 a +9.0 h"
-    assert row["Impacto custo"] == "+200.0 a +700.0 "
+    assert row["Impacto custo"] == "+200.0 a +700.0"
     assert row["Recurso crítico"] == "Guindaste (faltam 1)"
     assert row["Factibilidade"] == "2/2 alternativa(s) factível(is)"
 
