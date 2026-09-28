@@ -250,6 +250,23 @@ Project grava a referência original como `Baseline` (`Number=0`) e as revisões
 formais como `Baseline1` … `Baseline10`, quando a atividade fizer parte
 daquela revisão.
 
+### Primeira página do relatório de Planejamento
+
+O PDF gerencial de Planejamento prioriza a decisão antes dos detalhes técnicos.
+A abertura do relatório mostra, nesta ordem lógica:
+
+- janela;
+- makespan base;
+- P80;
+- P(cumprir janela);
+- reserva até P80;
+- status geral.
+
+**Reserva até P80** é a diferença entre o P80 e o makespan base, isto é, quanto
+de prazo adicional separa o cenário determinístico da referência probabilística
+P80. Informações de aprovação da Baseline 0 e diagnóstico técnico aparecem
+depois desse resumo executivo.
+
 ### Scope discovery — MRCPSP + escopo condicional
 
 A página **Escopo e Replanejamento** acrescenta a dinâmica típica de turnaround:
