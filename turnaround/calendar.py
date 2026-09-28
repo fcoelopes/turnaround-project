@@ -58,12 +58,30 @@ class CalendarBlock:
 
 
 @dataclass(frozen=True)
+class OvertimeWindow:
+    """Janela extraordinária absoluta autorizada no eixo H+ da parada."""
+
+    start_h: float
+    end_h: float
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        start = float(self.start_h)
+        end = float(self.end_h)
+        if start < 0:
+            raise ValueError("start_h do overtime deve ser >= 0")
+        if end <= start:
+            raise ValueError("end_h do overtime deve ser > start_h")
+
+
+@dataclass(frozen=True)
 class WorkingCalendar:
     """Calendário recorrente formado por uma ou mais janelas diárias."""
 
     name: str
     shifts: tuple[DailyShift, ...]
     blocks: tuple[CalendarBlock, ...] = ()
+    overtime_windows: tuple[OvertimeWindow, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -103,6 +121,12 @@ class WorkingCalendar:
                 clipped_end = min(end, shift_end)
                 if clipped_end > clipped_start + 1e-9:
                     raw.append((clipped_start, clipped_end))
+
+        for overtime in self.overtime_windows:
+            overtime_start = max(start, float(overtime.start_h))
+            overtime_end = min(end, float(overtime.end_h))
+            if overtime_end > overtime_start + 1e-9:
+                raw.append((overtime_start, overtime_end))
 
         if not raw:
             return []
