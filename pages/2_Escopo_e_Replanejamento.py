@@ -37,6 +37,7 @@ from turnaround import (
     resolve_activation,
     reschedule_from_state,
     solve_mrcpsp,
+    summarize_pending_decisions,
     skill_capacities,
     skill_requirements,
     task_reference_catalog,
@@ -2484,6 +2485,13 @@ with operation_tab:
             st.caption(f"Com os recursos-base também é inviável: {base_result_error}")
         st.stop()
 
+    pending_decision_rows = summarize_pending_decisions(
+        decision_engine.pending_human,
+        current_makespan=float(result.schedule.makespan),
+        current_cost=float(result.schedule.total_cost),
+    )
+    pending_decisions_df = pd.DataFrame(pending_decision_rows)
+
     active_now = result.activation.active_ids
     new_scope = active_now - baseline_activation.active_ids
 
@@ -2703,6 +2711,7 @@ with operation_tab:
             for key, value in sorted(decision_engine.auto_resolved.items())
             if value
         },
+        "pending_decisions": pending_decision_rows,
         "dynamic_scope": [
             item.model_dump(mode="json")
             for item in discovered_tasks
@@ -3118,6 +3127,26 @@ with operation_tab:
             f"{result.schedule.makespan - project.deadline:.1f} h."
         )
 
+    if not pending_decisions_df.empty:
+        vision_tab.markdown("#### Decisões pendentes")
+        vision_tab.caption(
+            "Impactos comparados contra o forecast atual. A ferramenta informa "
+            "as consequências; a decisão técnica permanece humana."
+        )
+        vision_tab.dataframe(
+            pending_decisions_df[
+                [
+                    "Decisão",
+                    "Alternativas",
+                    "Impacto prazo",
+                    "Impacto custo",
+                    "Recurso crítico",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
     scope_col, chain_col = vision_tab.columns(2)
     active_change_names = [
         name_by_id.get(task_id, task_id)
@@ -3451,6 +3480,7 @@ with operation_tab:
             execution_state_df=execution_state_report_df,
             dynamic_scope_df=dynamic_scope_report_df,
             baseline_revisions_df=baseline_revisions_df,
+            pending_decisions_df=pending_decisions_df,
         )
 
         st.info(
