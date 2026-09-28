@@ -18,7 +18,7 @@ class ImportedProgressRow:
     source_id: str | None
     source_uid: str | None
     name: str | None
-    percent_complete: float
+    percent_complete: float | None
     status: ProgressStatus
 
 
@@ -27,7 +27,7 @@ class ReconciledProgressRow:
     task_id: str
     project_uid: str | None
     task_name: str
-    percent_complete: float
+    percent_complete: float | None
     status: ProgressStatus
     source_reference: str
 
@@ -204,14 +204,6 @@ def _rows_from_dataframe(df: pd.DataFrame) -> list[ImportedProgressRow]:
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Linha {index + 2}: {exc}") from exc
 
-        if percent is None:
-            percent = {
-                "not_started": 0.0,
-                "in_progress": 50.0,
-                "completed": 100.0,
-                "skipped": 0.0,
-            }[status]
-
         rows.append(
             ImportedProgressRow(
                 source_id=source_id,
@@ -222,7 +214,9 @@ def _rows_from_dataframe(df: pd.DataFrame) -> list[ImportedProgressRow]:
                     or pd.isna(row[name_col])
                     else str(row[name_col]).strip() or None
                 ),
-                percent_complete=float(percent),
+                percent_complete=(
+                    None if percent is None else float(percent)
+                ),
                 status=status,
             )
         )
@@ -353,7 +347,11 @@ def reconcile_progress(
                 task_id=task.id,
                 project_uid=task.project_uid,
                 task_name=task.name,
-                percent_complete=float(row.percent_complete),
+                percent_complete=(
+                    None
+                    if row.percent_complete is None
+                    else float(row.percent_complete)
+                ),
                 status=row.status,
                 source_reference=source_reference,
             )
