@@ -771,6 +771,77 @@ def _planning_front_page_metrics(
     ]
 
 
+def _planning_assumption_frames(
+    assumptions: dict | None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Normaliza premissas do cenário para rastreabilidade no PDF."""
+    assumptions = dict(assumptions or {})
+    hours_per_day = int(assumptions.get("hours_per_day") or 0)
+    deadline_h = assumptions.get("deadline_h")
+    deadline_label = "sem janela"
+    if deadline_h is not None and hours_per_day > 0:
+        deadline_label = (
+            f"{float(deadline_h) / float(hours_per_day):.2f} d "
+            f"({float(deadline_h):.1f} h)"
+        )
+
+    distribution = assumptions.get("duration_distribution") or {}
+    distribution_label = "não informada"
+    if distribution:
+        distribution_label = (
+            f"Triangular · otimista {float(distribution.get('optimistic_pct', 0)):+.0f}% · "
+            f"mais provável {float(distribution.get('most_likely_pct', 0)):+.0f}% · "
+            f"pessimista {float(distribution.get('pessimistic_pct', 0)):+.0f}%"
+        )
+
+    summary_df = pd.DataFrame(
+        [
+            {"Premissa": "Arquivo de origem", "Valor": assumptions.get("source_name") or "—"},
+            {"Premissa": "Janela", "Valor": deadline_label},
+            {
+                "Premissa": "Horas/dia para conversão",
+                "Valor": str(hours_per_day) if hours_per_day > 0 else "—",
+            },
+            {
+                "Premissa": "Simulações Monte Carlo",
+                "Valor": str(assumptions.get("simulations") or "—"),
+            },
+            {"Premissa": "Distribuição de duração", "Valor": distribution_label},
+            {"Premissa": "Heurística escolhida", "Valor": assumptions.get("heuristic") or "—"},
+            {"Premissa": "Data/hora do cálculo", "Valor": assumptions.get("calculated_at") or "—"},
+        ]
+    )
+
+    capacities = assumptions.get("capacities") or {}
+    origins = assumptions.get("capacity_origins") or {}
+    resource_df = pd.DataFrame(
+        [
+            {
+                "Recurso": resource,
+                "Capacidade": float(capacity),
+                "Origem": origins.get(resource, "—"),
+            }
+            for resource, capacity in sorted(capacities.items())
+        ],
+        columns=["Recurso", "Capacidade", "Origem"],
+    )
+
+    event_df = pd.DataFrame(
+        [
+            {
+                "Gatilho": item.get("trigger") or item.get("trigger_task_id") or "—",
+                "Evento": item.get("event") or item.get("event_name") or "—",
+                "Probabilidade": (
+                    f"{float(item.get('probability', 0.0)) * 100:.1f}%"
+                ),
+            }
+            for item in assumptions.get("scope_events", [])
+        ],
+        columns=["Gatilho", "Evento", "Probabilidade"],
+    )
+    return summary_df, resource_df, event_df
+
+
 def build_base_management_pdf(
     *,
     project_name: str,
@@ -787,6 +858,7 @@ def build_base_management_pdf(
     baseline_approved_by: str | None = None,
     baseline_approved_at: str | None = None,
     baseline_approval_reason: str | None = None,
+    scenario_assumptions: dict | None = None,
 ) -> bytes:
     s = _styles()
     story: list = [
@@ -896,6 +968,52 @@ def build_base_management_pdf(
                 f"Regra SSGS selecionada: {priority_rule.replace('_', ' ')}.",
                 s["muted"],
             ),
+        ]
+    )
+
+    assumption_summary_df, assumption_resource_df, assumption_event_df = (
+        _planning_assumption_frames(scenario_assumptions)
+    )
+    story.extend(
+        [
+            PageBreak(),
+            _p("PREMISSAS DO CENÁRIO", s["kicker"]),
+            _p("Rastreabilidade do cálculo", s["title"]),
+            _p(
+                "Valores efetivamente usados para gerar este cenário e sua análise de risco.",
+                s["muted"],
+            ),
+            Spacer(1, 3 * mm),
+            _dataframe_table(
+                assumption_summary_df,
+                ["Premissa", "Valor"],
+                max_rows=12,
+                widths=[58 * mm, 116 * mm],
+            ),
+            Spacer(1, 4 * mm),
+            _p("Capacidades e origem", s["h2"]),
+            _dataframe_table(
+                assumption_resource_df,
+                ["Recurso", "Capacidade", "Origem"],
+                max_rows=30,
+                widths=[80 * mm, 44 * mm, 50 * mm],
+            ),
+            Spacer(1, 4 * mm),
+            _p("Probabilidades de eventos de escopo", s["h2"]),
+            (
+                _dataframe_table(
+                    assumption_event_df,
+                    ["Gatilho", "Evento", "Probabilidade"],
+                    max_rows=30,
+                    widths=[72 * mm, 72 * mm, 30 * mm],
+                )
+                if not assumption_event_df.empty
+                else _p(
+                    "Nenhum evento probabilístico de ampliação de escopo configurado.",
+                    s["muted"],
+                )
+            ),
+            PageBreak(),
         ]
     )
 
