@@ -30,6 +30,7 @@ from turnaround import (
     apply_scope_rule_rows,
     discover_resource_catalog,
     effective_capacities,
+    evaluate_dynamic_scope_impacts,
     evaluate_scope_decisions,
     materialize_dynamic_scope,
     next_discovered_task_id,
@@ -2651,20 +2652,49 @@ with operation_tab:
         )
         st.stop()
 
+    dynamic_scope_impacts = evaluate_dynamic_scope_impacts(
+        planned_project=planned_project,
+        discovered_tasks=discovered_tasks,
+        state=state,
+        capacities=project.capacities,
+        current_makespan=float(result.schedule.makespan),
+        critical_ids=criticality.critical_ids,
+        reference_start_times=reference_start_times,
+        stability_weight=stability_weight,
+        workforce=workforce,
+    )
+    dynamic_scope_impact_by_id = {
+        str(row["id"]): row
+        for row in dynamic_scope_impacts
+    }
     dynamic_scope_report_df = pd.DataFrame(
         [
             {
                 "ID": item.id,
                 "Atividade": item.name,
                 "Descoberta em (h)": float(item.discovered_at),
+                "Impacto no término": (
+                    "não isolável"
+                    if dynamic_scope_impact_by_id[item.id]["impact_h"] is None
+                    else f"{float(dynamic_scope_impact_by_id[item.id]['impact_h']):+.1f} h"
+                ),
                 "Recursos": "; ".join(
                     f"{resource}={demand:g}"
                     for mode in item.modes
                     for resource, demand in sorted(mode.resources.items())
                 ) or "—",
-                "Bloqueia": ", ".join(item.successor_task_ids) or "—",
+                "Bloqueia": ", ".join(
+                    name_by_id.get(task_id, task_id)
+                    for task_id in item.successor_task_ids
+                ) or "—",
+                "Crítica atual": (
+                    "sim"
+                    if item.id in criticality.critical_ids
+                    else "não"
+                ),
             }
             for item in discovered_tasks
+            if item.id in dynamic_scope_impact_by_id
         ]
     )
 
@@ -3154,21 +3184,29 @@ with operation_tab:
     ]
     with scope_col:
         st.markdown("#### Novo escopo relevante")
-        if active_change_names:
+        if not dynamic_scope_report_df.empty:
+            st.dataframe(
+                dynamic_scope_report_df[
+                    [
+                        "ID",
+                        "Atividade",
+                        "Descoberta em (h)",
+                        "Impacto no término",
+                        "Bloqueia",
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.caption(
+                "Impacto marginal estimado por contrafactual individual no mesmo "
+                "estado operacional. Dependências entre DS-* podem impedir isolamento."
+            )
+        elif active_change_names:
             st.write(
                 f"{len(active_change_names)} atividade(s) adicional(is) ativa(s) "
-                f"neste snapshot."
+                "neste snapshot, sem DS-* com impacto gerencial destacado."
             )
-            st.markdown(
-                "\n".join(
-                    f"- {name}"
-                    for name in active_change_names[:8]
-                )
-            )
-            if len(active_change_names) > 8:
-                st.caption(
-                    f"+ {len(active_change_names) - 8} atividade(s) adicional(is)."
-                )
         else:
             st.caption("Nenhuma atividade adicional está ativa neste snapshot.")
         if dynamic_scope_ids:
