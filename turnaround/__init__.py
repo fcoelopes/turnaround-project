@@ -8,6 +8,7 @@ from .baseline_revision import (
 )
 from .criticality import EffectiveCriticalityResult, EffectiveDriver, analyze_effective_criticality
 from .decision_engine import DecisionEngineResult, DecisionEvaluation, DecisionImpact, evaluate_scope_decisions, summarize_pending_decisions
+from .execution_readiness import ExecutionReadinessReport, validate_planning_baseline_for_execution
 from .dynamic_scope import DynamicScopeMaterialization, evaluate_dynamic_scope_impacts, materialize_dynamic_scope, next_discovered_task_id
 from .advanced_models import (
     ActivationRule,
@@ -65,6 +66,7 @@ __all__ = [
     "EffectiveDriver",
     "ExecutionEvent",
     "ExecutionMode",
+    "ExecutionReadinessReport",
     "ExecutionSessionSnapshot",
     "ExecutionStore",
     "ScopeRuleRow",
@@ -114,6 +116,7 @@ __all__ = [
     "task_reference",
     "task_reference_catalog",
     "upgrade_database",
+    "validate_planning_baseline_for_execution",
     "workforce_summary",
 ]
 
