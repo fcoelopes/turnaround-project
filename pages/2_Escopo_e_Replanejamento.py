@@ -591,7 +591,33 @@ def load_project(store: ExecutionStore):
             if item.key == selected_key
         )
         st.session_state["execution_baseline_key"] = approved_baseline.key
-        tasks = approved_baseline.to_tasks()
+        dangling_links = approved_baseline.dangling_predecessor_links()
+        tasks = approved_baseline.to_tasks(
+            drop_dangling_predecessors=bool(dangling_links)
+        )
+        if dangling_links:
+            dangling_preview = ", ".join(
+                f"{task_id} → {predecessor_id}"
+                for task_id, predecessor_id in dangling_links[:8]
+            )
+            suffix = (
+                ""
+                if len(dangling_links) <= 8
+                else f" · +{len(dangling_links) - 8} vínculo(s)"
+            )
+            status(
+                (
+                    "O baseline aprovado contém vínculo(s) para atividade(s) "
+                    "não executável(is) que não fazem parte do snapshot. "
+                    "Esses vínculos órfãos foram removidos apenas na ponte para "
+                    "Execução: "
+                    + dangling_preview
+                    + suffix
+                    + "."
+                ),
+                tone="warn",
+                title="Rede do baseline normalizada para execução.",
+            )
         xml_caps = {
             resource: float(quantity)
             for resource, quantity in approved_baseline.capacities.items()
