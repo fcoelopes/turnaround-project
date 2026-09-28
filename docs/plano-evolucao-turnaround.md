@@ -393,6 +393,14 @@ Relatório
 
 A navegação deve seguir o domínio da parada, não a estrutura interna do software.
 
+**TDS-18 implementado — aguardando revisão funcional:** a aba genérica
+**Configuração** foi removida da navegação. Sessão persistida, histórico e
+preferências de replanejamento passaram para **Operação** em blocos contextuais
+colapsáveis. A configuração numérica de λ só aparece quando o usuário marca
+**Mostrar configuração avançada de estabilidade**. A navegação operacional fica
+agora **Visão / Operação / Escopo / Recursos / Governança**; a futura aba
+**Relatório** permanece como evolução específica do Sprint 4.
+
 ---
 
 # 9. Aba Visão
@@ -552,10 +560,10 @@ Alta        λ = 1,7
 
 Manter λ exato em **Configuração avançada**.
 
-**TDS-17 implementado — aguardando revisão funcional:** o controle principal
+**TDS-17 implementado e aprovado:** o controle principal
 passou a usar **Preservação do plano: Baixa / Balanceada / Alta**, mapeado
-internamente para λ=0,3 / 1,0 / 1,7. O λ exato ficou restrito ao expander
-**Configuração avançada · estabilidade**. Valores antigos fora dos presets são
+internamente para λ=0,3 / 1,0 / 1,7. O λ exato ficou restrito à opção
+**Mostrar configuração avançada de estabilidade**. Valores antigos fora dos presets são
 mantidos como perfil **Avançada**, sem alteração silenciosa do comportamento.
 Leituras operacionais, cenários salvos e o PDF passam a exibir o perfil
 operacional em vez do λ numérico.
@@ -614,7 +622,7 @@ Objetivo: evitar consumir uma aba operacional com documentação.
 
 **TDS-13 implementado e aprovado:** a aba **Manual** foi removida da navegação
 principal. A ajuda essencial foi distribuída em expanders contextuais de
-**Operação**, **Escopo**, **Recursos**, **Configuração** e **Governança**. O manual técnico
+**Operação**, **Escopo**, **Recursos** e **Governança**. O manual técnico
 completo permanece em `docs/manual-escopo-condicional.md`.
 
 ---
@@ -858,7 +866,7 @@ Depois disso avaliar:
 - [x] Criar aba Escopo.
 - [x] Consolidar Recursos + Pessoas.
 - [x] Traduzir λ em níveis de preservação.
-- [ ] Manter configuração avançada opcional.
+- [x] Manter configuração avançada opcional.
 
 ## Sprint 4 — Relatórios gerenciais
 
