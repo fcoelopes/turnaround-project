@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from turnaround.planning_status import classify_planning_status
 
 
@@ -83,3 +85,16 @@ def test_status_does_not_turn_green_when_risk_is_missing():
     assert result.deterministic == "DENTRO"
     assert result.overall == "RISCO NÃO AVALIADO"
     assert result.tone == "warn"
+
+def test_planning_ui_has_single_managerial_status_source():
+    source = (
+        Path(__file__).resolve().parents[1] / "Planejamento.py"
+    ).read_text(encoding="utf-8")
+
+    assert "classify_planning_status(" in source
+    assert 'tone = "ok" if probability >= 0.8 else "warn"' not in source
+    assert (
+        "A classificação gerencial de prazo combina P80 e "
+        "P(cumprir janela)"
+    ) in source
+    assert 'title=f"Status geral: {executive_status.overall}."' in source
