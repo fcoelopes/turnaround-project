@@ -7,8 +7,11 @@ import pytest
 
 from turnaround import (
     ExecutionMode,
+    DailyShift,
     TurnaroundProject,
     TurnaroundTask,
+    WorkingCalendar,
+    forecast_remaining_finish,
     parse_progress_file,
     reconcile_progress,
 )
@@ -286,3 +289,137 @@ def test_not_started_activity_cannot_have_actual_start():
 
     with pytest.raises(ValueError, match="não iniciada"):
         parse_progress_file(upload)
+
+
+def test_csv_imports_remaining_duration_and_status_reference_in_h_plus():
+    upload = _Upload(
+        name="remaining.csv",
+        content=(
+            "ID,Status,Actual Start H,Remaining Duration,Status H+\n"
+            "20,in progress,4,3.5,6\n"
+        ).encode("utf-8"),
+    )
+
+    result = reconcile_progress(
+        parse_progress_file(upload),
+        _project(),
+    )
+    row = result.rows[0]
+
+    assert row.actual_start_h == pytest.approx(4.0)
+    assert row.remaining_duration_h == pytest.approx(3.5)
+    assert row.remaining_as_of_h == pytest.approx(6.0)
+
+
+def test_project_xml_imports_remaining_duration_and_status_date():
+    upload = _Upload(
+        name="remaining.xml",
+        content=b'''<?xml version="1.0" encoding="UTF-8"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <StatusDate>2026-10-06T10:00:00</StatusDate>
+  <Tasks>
+    <Task>
+      <UID>2020</UID><ID>20</ID><Name>Inspecionar</Name>
+      <Summary>0</Summary><PercentComplete>40</PercentComplete>
+      <ActualStart>2026-10-06T08:00:00</ActualStart>
+      <RemainingDuration>PT3H30M0S</RemainingDuration>
+    </Task>
+  </Tasks>
+</Project>''',
+    )
+
+    result = reconcile_progress(
+        parse_progress_file(
+            upload,
+            calendar_origin=datetime(2026, 10, 6, 6, 0),
+        ),
+        _project(),
+    )
+    row = result.rows[0]
+
+    assert row.actual_start_h == pytest.approx(2.0)
+    assert row.remaining_as_of_h == pytest.approx(4.0)
+    assert row.remaining_duration_h == pytest.approx(3.5)
+
+
+def test_in_progress_remaining_duration_requires_actual_start():
+    upload = _Upload(
+        name="remaining.csv",
+        content=(
+            "ID,Status,Remaining Duration\n"
+            "20,in progress,3\n"
+        ).encode("utf-8"),
+    )
+
+    with pytest.raises(ValueError, match="exige Actual Start"):
+        parse_progress_file(upload)
+
+
+def test_completed_activity_rejects_positive_remaining_duration():
+    upload = _Upload(
+        name="remaining.csv",
+        content=(
+            "ID,Status,Actual Start H,Actual Finish H,Remaining Duration\n"
+            "10,completed,1,4,2\n"
+        ).encode("utf-8"),
+    )
+
+    with pytest.raises(ValueError, match="igual a 0"):
+        parse_progress_file(upload)
+
+
+def test_remaining_reference_cannot_precede_actual_start():
+    upload = _Upload(
+        name="remaining.csv",
+        content=(
+            "ID,Status,Actual Start H,Remaining Duration,Status H+\n"
+            "20,in progress,5,3,4\n"
+        ).encode("utf-8"),
+    )
+
+    with pytest.raises(ValueError, match="não pode anteceder"):
+        parse_progress_file(upload)
+
+
+def test_remaining_forecast_respects_resource_calendar():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="20",
+                project_uid="2020",
+                name="Inspecionar",
+                modes=[
+                    ExecutionMode(
+                        name="base",
+                        duration=8,
+                        resources={"Equipe": 1},
+                    )
+                ],
+            )
+        ],
+        capacities={"Equipe": 1},
+        resource_calendars={
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+                origin_hour=6,
+            )
+        },
+    )
+
+    assert forecast_remaining_finish(
+        project,
+        task_id="20",
+        remaining_duration_h=4,
+        from_h=2,
+        mode_name="base",
+    ) == pytest.approx(6.0)
+
+    with pytest.raises(ValueError, match="não cabe continuamente"):
+        forecast_remaining_finish(
+            project,
+            task_id="20",
+            remaining_duration_h=4,
+            from_h=10,
+            mode_name="base",
+        )
