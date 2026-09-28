@@ -957,7 +957,7 @@ overtime representa disponibilidade autorizada; **custo de hora extra ainda não
 entra no objetivo do solver**.
 - [x] Integração com RCPSP/MRCPSP.
 
-**TDS-29 implementado — aguardando revisão funcional:** o RCPSP do
+**TDS-29 implementado e aprovado:** o RCPSP do
 **Planejamento** passou a respeitar o mesmo `WorkingCalendar` usado pelo
 MRCPSP. A aba **Calendários** permite manter recursos 24 h ou configurar um
 turno recorrente por recurso; o relógio do turno é alinhado à data/hora inicial
@@ -972,14 +972,24 @@ restaurados na Execução sem migration de banco, pois o snapshot continua no
 respeitam os calendários persistidos. Baselines antigas sem calendário mantêm o
 mesmo fingerprint.
 
-Para evitar falsa precisão, enquanto o Monte Carlo ainda não usa calendário,
-cenários com calendário real **não exibem P50/P80/P90 nem
-P(cumprir janela)**; o status fica como risco não avaliado até a próxima etapa.
 A utilização de recurso passa a usar somente suas horas efetivamente
 trabalháveis, e a antiga “penalidade de recursos” é apresentada como
 **penalidade recursos/calendário** quando ambas as restrições estão presentes.
 
-- [ ] Integração com Monte Carlo.
+- [x] Integração com Monte Carlo.
+
+**TDS-30 implementado — aguardando revisão funcional:** o Monte Carlo passou a
+reutilizar o mesmo `serial_schedule_generation` calendar-aware do RCPSP
+determinístico em **todas as iterações**, inclusive no cenário pareado
+“somente duração” usado para separar o impacto do escopo potencial. P50, P80,
+P90 e `P(cumprir janela)` voltam a ser exibidos em cenários com turnos porque
+agora estão no mesmo eixo de tempo decorrido e respeitam os mesmos calendários.
+
+A hipótese continua explicitamente **não preemptiva**. Se uma duração sorteada
+pela triangular não couber em nenhuma janela contínua do recurso, a simulação
+falha com diagnóstico de calendário em vez de fracionar a atividade
+silenciosamente. O resultado de risco registra ainda `calendar_aware` e os
+recursos calendarizados usados no cálculo.
 - [ ] Exportação Project coerente.
 
 ## Sprint 6 — Atualização operacional
@@ -1005,7 +1015,7 @@ A ferramenta pode ser considerada pronta para um piloto operacional de grande pa
 
 - [ ] capacidades forem explicitamente validadas;
 - [x] baseline passar por gate estrutural antes de habilitar replanejamento;
-- [ ] calendário/turnos forem respeitados pelo scheduler;
+- [x] calendário/turnos forem respeitados pelo scheduler;
 - [ ] status executivo considerar risco;
 - [ ] baseline original possuir governança formal;
 - [ ] rebaseline possuir governança formal;
@@ -1013,7 +1023,7 @@ A ferramenta pode ser considerada pronta para um piloto operacional de grande pa
 - [ ] relatório de Planejamento registrar todas as premissas;
 - [ ] relatório de Execução mostrar decisões pendentes e novo escopo relevante;
 - [ ] Project XML mantiver baseline, revisões, forecast e realizado;
-- [ ] Monte Carlo respeitar escopo potencial e calendários;
+- [x] Monte Carlo respeitar escopo potencial e calendários;
 - [ ] testes de regressão cobrirem planejamento → baseline → execução → replanejamento → exportação.
 
 ---
