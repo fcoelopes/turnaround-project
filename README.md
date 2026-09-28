@@ -509,6 +509,22 @@ Esses valores vêm dos mesmos cenários sombra calculados pelo motor de decisão
 A aplicação continua sem escolher automaticamente entre reparar, substituir ou
 qualquer outra alternativa técnica.
 
+### Impacto gerencial do escopo descoberto
+
+Atividades criadas durante a execução (`DS-*`) podem aparecer na **Visão** e na
+primeira página do PDF quando forem relevantes para o término. Para cada uma, a
+aplicação mostra:
+
+- hora da descoberta;
+- impacto marginal estimado no término;
+- atividades que passaram a ser bloqueadas;
+- vínculo com a cadeia crítica atual.
+
+O impacto é obtido por um contrafactual no mesmo estado operacional: o cenário
+é reprogramado sem aquela `DS-*` e comparado com o forecast corrente. Se outra
+atividade descoberta depender dela e o efeito não puder ser isolado com
+segurança, o relatório mostra **não isolável**.
+
 ### Dynamic scope discovery
 
 O framework diferencia dois tipos de mudança de escopo durante a parada:
