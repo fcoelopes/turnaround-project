@@ -83,9 +83,10 @@ def summarize_pending_decisions(
                 return "sem alternativa factível"
             low = min(values)
             high = max(values)
+            unit = f" {suffix}" if suffix else ""
             if abs(low - high) <= 1e-9:
-                return f"{low:+.1f} {suffix}"
-            return f"{low:+.1f} a {high:+.1f} {suffix}"
+                return f"{low:+.1f}{unit}"
+            return f"{low:+.1f} a {high:+.1f}{unit}"
 
         resource_gaps: dict[str, float] = {}
         for impact in decision.impacts:
