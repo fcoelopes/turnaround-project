@@ -130,6 +130,19 @@ def reschedule_from_state(
         if tid not in task_by_id or execution.status not in {"completed", "in_progress"}:
             continue
         assert execution.start is not None and execution.finish is not None
+        if execution.status == "in_progress":
+            if execution.start > state.current_time + 1e-9:
+                raise ValueError(
+                    f"Atividade {tid} está em andamento, mas Actual Start "
+                    f"H+{execution.start:g} é posterior à hora corrente "
+                    f"H+{state.current_time:g}."
+                )
+            if execution.finish <= state.current_time + 1e-9:
+                raise ValueError(
+                    f"Atividade {tid} está em andamento, mas o término previsto "
+                    f"H+{execution.finish:g} não é posterior à hora corrente "
+                    f"H+{state.current_time:g}."
+                )
         task = task_by_id[tid]
         mode = next(
             (m for m in task.modes if m.name == execution.mode_name),
@@ -139,6 +152,26 @@ def reschedule_from_state(
             skill: tuple(person_ids)
             for skill, person_ids in execution.skill_assignments.items()
         }
+
+        if execution.status == "in_progress":
+            remaining_segment = execution.finish - state.current_time
+            for resource, demand in mode.resources.items():
+                if float(demand) <= 0:
+                    continue
+                calendar = project.resource_calendars.get(resource)
+                if (
+                    calendar is not None
+                    and not calendar.is_working_interval(
+                        state.current_time,
+                        remaining_segment,
+                    )
+                ):
+                    raise ValueError(
+                        f"Atividade {tid} em andamento: trecho restante de "
+                        f"{remaining_segment:g} h a partir de H+{state.current_time:g} "
+                        f"não cabe continuamente no calendário do recurso {resource}."
+                    )
+
         human_requirements = skill_requirements(mode.resources, workforce)
         if (
             execution.status == "in_progress"
@@ -176,6 +209,28 @@ def reschedule_from_state(
                     skill_assignments=assignments,
                 )
             )
+
+    for resource, capacity in project.capacities.items():
+        events: list[tuple[float, int, float, str]] = []
+        for interval in fixed_intervals:
+            demand = float(interval.resources.get(resource, 0.0))
+            if demand <= 0:
+                continue
+            events.append((interval.start, 1, demand, interval.task_id))
+            events.append((interval.finish, 0, -demand, interval.task_id))
+
+        usage = 0.0
+        for when, order, delta, task_id in sorted(
+            events,
+            key=lambda item: (item[0], item[1]),
+        ):
+            usage += delta
+            if usage > float(capacity) + 1e-9:
+                raise ValueError(
+                    f"Estado real em andamento excede capacidade de {resource} "
+                    f"em H+{when:g}: uso {usage:g} > {float(capacity):g}. "
+                    "Atualize capacidade ou revise os dados importados."
+                )
 
     frozen_ids = set(fixed_task_times)
     schedulable = []
