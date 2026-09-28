@@ -173,7 +173,19 @@ def serial_schedule_generation(
     utilization = {}
     for r, timeline in usage.items():
         cap = capacities.get(r, 0)
-        utilization[r] = 0.0 if cap <= 0 or makespan <= 0 else sum(timeline[:makespan]) / (cap * makespan)
+        calendar = (resource_calendars or {}).get(r)
+        if calendar is None:
+            available_h = float(makespan)
+        else:
+            available_h = sum(
+                end - start
+                for start, end in calendar.working_intervals(0, makespan)
+            )
+        utilization[r] = (
+            0.0
+            if cap <= 0 or available_h <= 0
+            else sum(timeline[:makespan]) / (cap * available_h)
+        )
 
     return TurnaroundResult(
         schedule=schedule,
