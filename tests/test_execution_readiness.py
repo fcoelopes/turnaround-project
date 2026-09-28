@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from turnaround import (
+    DailyShift,
     PlanningScopeRisk,
+    WorkingCalendar,
     build_planning_baseline,
     validate_planning_baseline_for_execution,
 )
@@ -315,3 +317,55 @@ def test_execution_side_requires_formal_governance():
 
     assert report.ready is False
     assert any("governança formal" in error for error in report.errors)
+
+
+def test_gate_rejects_schedule_outside_approved_resource_calendar():
+    tasks = [
+        Task(
+            id="1",
+            name="Serviço",
+            duration_h=4,
+            resources={"Equipe": 1},
+        )
+    ]
+    baseline = build_planning_baseline(
+        project_name="Parada calendário",
+        source_name="parada.xml",
+        hours_per_day=24,
+        deadline_h=48,
+        capacities={"Equipe": 1},
+        capacity_origins={"Equipe": "PROJECT"},
+        capacities_validated=True,
+        tasks=tasks,
+        result=_result(
+            ScheduledTask(
+                id="1",
+                name="Serviço",
+                start_h=0,
+                finish_h=4,
+                duration_h=4,
+                resources={"Equipe": 1},
+            )
+        ),
+        resource_calendars={
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+                origin_hour=6,
+            )
+        },
+        scenario_name="Baseline 0",
+        approved_by="Planejamento",
+        approval_reason="Liberado.",
+    )
+
+    report = validate_planning_baseline_for_execution(
+        baseline,
+        require_formal_approval=True,
+    )
+
+    assert report.ready is False
+    assert any(
+        "fora da janela de trabalho" in error
+        for error in report.errors
+    )
