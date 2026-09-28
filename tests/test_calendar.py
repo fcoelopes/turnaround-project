@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from turnaround import DailyShift, WorkingCalendar
+from turnaround import (
+    DailyShift,
+    ExecutionMode,
+    ExecutionState,
+    TurnaroundProject,
+    TurnaroundTask,
+    WorkingCalendar,
+    reschedule_from_state,
+    solve_mrcpsp,
+)
 
 
 def test_day_shift_moves_activity_to_next_available_window():
@@ -74,3 +83,135 @@ def test_shift_validation_is_explicit():
         DailyShift(8, 8)
     with pytest.raises(ValueError):
         DailyShift(0, 25)
+
+
+def test_mrcpsp_respects_distinct_resource_calendars():
+    tasks = [
+        TurnaroundTask(
+            id="A",
+            name="Içamento",
+            modes=[
+                ExecutionMode(
+                    name="base",
+                    duration=4,
+                    resources={"Guindaste": 1},
+                )
+            ],
+        ),
+        TurnaroundTask(
+            id="B",
+            name="Inspeção",
+            modes=[
+                ExecutionMode(
+                    name="base",
+                    duration=4,
+                    resources={"Inspeção": 1},
+                )
+            ],
+        ),
+    ]
+    result = solve_mrcpsp(
+        tasks,
+        capacities={"Guindaste": 1, "Inspeção": 1},
+        resource_calendars={
+            "Guindaste": WorkingCalendar(
+                name="Guindaste",
+                shifts=(DailyShift(6, 18),),
+            ),
+            "Inspeção": WorkingCalendar(
+                name="Inspeção",
+                shifts=(DailyShift(8, 17),),
+            ),
+        },
+    )
+    by_id = {item.task_id: item for item in result.tasks}
+
+    assert by_id["A"].start == pytest.approx(6)
+    assert by_id["A"].finish == pytest.approx(10)
+    assert by_id["B"].start == pytest.approx(8)
+    assert by_id["B"].finish == pytest.approx(12)
+
+
+def test_mrcpsp_uses_common_window_for_all_resources_of_activity():
+    task = TurnaroundTask(
+        id="A",
+        name="Içamento com equipe",
+        modes=[
+            ExecutionMode(
+                name="base",
+                duration=4,
+                resources={"Guindaste": 1, "Equipe": 1},
+            )
+        ],
+    )
+
+    result = solve_mrcpsp(
+        [task],
+        capacities={"Guindaste": 1, "Equipe": 1},
+        resource_calendars={
+            "Guindaste": WorkingCalendar(
+                name="Guindaste",
+                shifts=(DailyShift(6, 18),),
+            ),
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+            ),
+        },
+    )
+
+    assert result.tasks[0].start == pytest.approx(7)
+    assert result.tasks[0].finish == pytest.approx(11)
+
+
+def test_reschedule_moves_work_to_next_resource_shift():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="A",
+                name="Serviço mecânico",
+                modes=[
+                    ExecutionMode(
+                        name="base",
+                        duration=4,
+                        resources={"Equipe": 1},
+                    )
+                ],
+            )
+        ],
+        capacities={"Equipe": 1},
+        resource_calendars={
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+            )
+        },
+    )
+
+    result = reschedule_from_state(
+        project,
+        ExecutionState(current_time=17),
+    )
+
+    assert result.schedule.tasks[0].start == pytest.approx(31)
+    assert result.schedule.tasks[0].finish == pytest.approx(35)
+
+
+def test_project_rejects_calendar_for_unknown_resource():
+    with pytest.raises(ValueError, match="recursos desconhecidos"):
+        TurnaroundProject(
+            tasks=[
+                TurnaroundTask(
+                    id="A",
+                    name="Atividade",
+                    modes=[ExecutionMode(name="base", duration=1)],
+                )
+            ],
+            capacities={},
+            resource_calendars={
+                "Fantasma": WorkingCalendar(
+                    name="Fantasma",
+                    shifts=(DailyShift(7, 19),),
+                )
+            },
+        )
