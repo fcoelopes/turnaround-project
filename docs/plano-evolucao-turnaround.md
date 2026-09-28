@@ -929,14 +929,22 @@ as próximas microtarefas do Sprint 5.
 - [x] Turnos.
 - [x] Calendário de recursos.
 
-**TDS-26 implementado — aguardando revisão funcional:** o domínio avançado
+**TDS-26 implementado e aprovado:** o domínio avançado
 passou a aceitar um calendário por recurso e o **MRCPSP/rescheduling** já usa
 essas janelas ao procurar o início de cada atividade. Quando uma atividade exige
 mais de um recurso, o início só é liberado na primeira janela contínua comum a
 todos eles; recursos sem calendário explícito permanecem disponíveis 24 h. O
 RCPSP do Planejamento, Monte Carlo, indisponibilidades, overtime e MSPDI ainda
 não foram alterados nesta etapa.
-- [ ] Indisponibilidade.
+- [x] Indisponibilidade.
+
+**TDS-27 implementado — aguardando revisão funcional:** calendários de recurso
+agora aceitam **bloqueios absolutos no eixo H+ da parada**, por exemplo
+`Guindaste indisponível de H+30 a H+36`. Esses bloqueios são subtraídos das
+janelas recorrentes de turno; o MRCPSP/rescheduling passa a evitá-los
+automaticamente porque continua consultando o mesmo calendário antes de liberar
+o início da atividade. Nesta etapa, os bloqueios ainda pertencem ao modelo em
+memória e não possuem interface/persistência própria.
 - [ ] Overtime.
 - [ ] Integração com RCPSP/MRCPSP.
 - [ ] Integração com Monte Carlo.
