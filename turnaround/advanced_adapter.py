@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .advanced_models import ExecutionMode, Precedence, TurnaroundProject, TurnaroundTask
+from .calendar import WorkingCalendar
 from .models import Task
 
 
@@ -9,6 +10,7 @@ def project_from_tasks(
     capacities: dict[str, int | float],
     *,
     deadline: float | None = None,
+    resource_calendars: dict[str, WorkingCalendar] | None = None,
 ) -> TurnaroundProject:
     """Converte o domínio existente do MVP para o domínio MRCPSP/conditional.
 
@@ -45,4 +47,5 @@ def project_from_tasks(
         tasks=converted,
         capacities={k: float(v) for k, v in capacities.items()},
         deadline=deadline,
+        resource_calendars=dict(resource_calendars or {}),
     )
