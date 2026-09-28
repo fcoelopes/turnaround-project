@@ -269,7 +269,7 @@ O parser continua sendo uma única fonte de verdade. A página avançada pode
 consumir diretamente um baseline aprovado no Planejamento ou, como fallback,
 ler um XML do Microsoft Project e convertê-lo para o domínio avançado.
 
-### Regras de escopo em planilha
+### Aba Escopo\n\nA configuração de lógica de escopo deixou de ficar misturada com preferências\ngenéricas. A aba **Escopo** concentra `conditional`, XOR/OR/AND, gatilhos,\neventos, resolução `human/event`, rotas determinísticas e o editor tabular.\nO JSON continua sendo apenas uma fonte opcional de regras herdadas.\n\n### Regras de escopo em planilha
 
 Além do sidecar JSON, a página avançada possui um editor tabular persistido no
 SQLite. O botão **Adicionar regra** cria uma nova linha e o planejador pode
@@ -315,7 +315,7 @@ como uma camada adicional.
 
 A configuração da regra e a resolução da decisão são etapas diferentes.
 
-Na aba **Configuração**, o planejador define a lógica:
+Na aba **Escopo**, o planejador define a lógica:
 
 - `conditional`: não representa escolha entre alternativas. É uma ativação direta:
   se o gatilho for concluído e o evento ocorrer, a atividade-alvo entra no escopo;
