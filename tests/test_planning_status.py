@@ -118,3 +118,15 @@ def test_planning_release_is_gated_by_execution_readiness():
     assert "disabled=not execution_readiness.ready" in source
     assert "if baseline_formal and execution_readiness.ready:" in source
     assert "readiness_subject = (" in source
+
+
+def test_planning_calendar_mode_uses_elapsed_time_and_disables_incomparable_risk():
+    source = (
+        Path(__file__).resolve().parents[1] / "Planejamento.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'config_resources, config_calendar, config_risk' in source
+    assert 'timeline_hours_per_day = 24 if calendar_mode_active' in source
+    assert 'resource_calendars=resource_calendars' in source
+    assert 'Monte Carlo não executado: este cenário usa calendário real' in source
+    assert '"resource_calendars": {' in source
