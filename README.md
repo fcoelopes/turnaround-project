@@ -138,6 +138,26 @@ contínua. Horas fora do turno não contam como horas executadas.
 A integração com calendários específicos por recurso já alcança RCPSP, MRCPSP
 e Monte Carlo. A exportação MSPDI continua pendente no Sprint de Calendários.
 
+## Exportação Microsoft Project com calendários
+
+O XML operacional MSPDI exportado pela página de Execução preserva a estrutura
+temporal usada pelo TDS:
+
+- calendário-base 24×7 do projeto;
+- calendário dedicado para cada recurso com `WorkingCalendar`;
+- turnos recorrentes em `WeekDays/WorkingTimes`;
+- turno noturno dividido entre o fim e o início do dia;
+- indisponibilidades e overtime materializados como exceções datadas;
+- `Resource.CalendarUID` apontando cada recurso para o calendário correto.
+
+Recursos sem calendário restritivo continuam usando o calendário-base 24×7.
+
+O arquivo é um **snapshot operacional**, não uma tradução integral do motor de
+scheduling. A regra TDS de atividade não preemptiva dentro da janela contínua
+não tem equivalente nativo perfeito no MSPDI. Por isso os horários calculados
+são exportados e a hipótese é registrada nas Notas; se a lógica for alterada e
+o cronograma for recalculado no Project, as datas podem divergir do snapshot.
+
 ## Dois níveis de planejamento
 
 ### Planejamento-base — RCPSP
