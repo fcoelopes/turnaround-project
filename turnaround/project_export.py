@@ -5,6 +5,7 @@ from xml.etree import ElementTree as ET
 
 from .advanced_models import ExecutionState, TurnaroundProject, TurnaroundTask
 from .baseline_revision import BaselineRevision
+from .calendar import WorkingCalendar
 from .mrcpsp import AdvancedScheduledTask
 
 
@@ -103,22 +104,216 @@ def _append_baseline(
     _text(baseline, "Cost", float(cost))
 
 
-def _calendar(root: ET.Element) -> None:
-    calendars = ET.SubElement(root, _tag("Calendars"))
-    calendar = ET.SubElement(calendars, _tag("Calendar"))
-    _text(calendar, "UID", 1)
-    _text(calendar, "Name", "Turnaround 24x7")
-    _text(calendar, "IsBaseCalendar", 1)
-    weekdays = ET.SubElement(calendar, _tag("WeekDays"))
+def _clock_text(hour: float, *, end: bool = False) -> str:
+    value = float(hour)
+    if value < 0 or value > 24:
+        raise ValueError(f"Hora de calendário inválida: {value:g}")
+    if abs(value - 24.0) <= 1e-9:
+        # MSPDI usa horário de relógio; evitamos 24:00:00 por compatibilidade.
+        return "23:59:59"
 
+    total_seconds = int(round(value * 3600))
+    total_seconds = min(total_seconds, 24 * 3600 - 1)
+    hh, remainder = divmod(total_seconds, 3600)
+    mm, ss = divmod(remainder, 60)
+    return f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+
+def _merge_clock_intervals(
+    intervals: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    cleaned = sorted(
+        (max(0.0, float(start)), min(24.0, float(end)))
+        for start, end in intervals
+        if float(end) > float(start) + 1e-9
+    )
+    merged: list[list[float]] = []
+    for start, end in cleaned:
+        if not merged or start > merged[-1][1] + 1e-9:
+            merged.append([start, end])
+        else:
+            merged[-1][1] = max(merged[-1][1], end)
+    return [(start, end) for start, end in merged]
+
+
+def _recurring_shift_intervals(
+    calendar: WorkingCalendar,
+) -> list[tuple[float, float]]:
+    intervals: list[tuple[float, float]] = []
+    for shift in calendar.shifts:
+        start = float(shift.start_hour)
+        end = float(shift.end_hour)
+        if shift.crosses_midnight:
+            intervals.append((0.0, end))
+            intervals.append((start, 24.0))
+        else:
+            intervals.append((start, end))
+    merged = _merge_clock_intervals(intervals)
+    if len(merged) > 5:
+        raise ValueError(
+            f"Calendário {calendar.name!r} possui {len(merged)} janelas diárias; "
+            "MSPDI aceita no máximo cinco WorkingTime por dia."
+        )
+    return merged
+
+
+def _append_working_times(
+    parent: ET.Element,
+    intervals: list[tuple[float, float]],
+) -> None:
+    if not intervals:
+        return
+    if len(intervals) > 5:
+        raise ValueError(
+            "MSPDI aceita no máximo cinco WorkingTime por dia."
+        )
+    working_times = ET.SubElement(parent, _tag("WorkingTimes"))
+    for start, end in intervals:
+        working_time = ET.SubElement(working_times, _tag("WorkingTime"))
+        _text(working_time, "FromTime", _clock_text(start))
+        _text(working_time, "ToTime", _clock_text(end, end=True))
+
+
+def _append_weekdays(
+    calendar_node: ET.Element,
+    calendar: WorkingCalendar | None,
+) -> None:
+    weekdays = ET.SubElement(calendar_node, _tag("WeekDays"))
+    intervals = (
+        [(0.0, 24.0)]
+        if calendar is None
+        else _recurring_shift_intervals(calendar)
+    )
     for day_type in range(1, 8):
         weekday = ET.SubElement(weekdays, _tag("WeekDay"))
         _text(weekday, "DayType", day_type)
-        _text(weekday, "DayWorking", 1)
-        working_times = ET.SubElement(weekday, _tag("WorkingTimes"))
-        working_time = ET.SubElement(working_times, _tag("WorkingTime"))
-        _text(working_time, "FromTime", "00:00:00")
-        _text(working_time, "ToTime", "23:59:00")
+        _text(weekday, "DayWorking", 1 if intervals else 0)
+        _append_working_times(weekday, intervals)
+
+
+def _affected_exception_dates(
+    calendar: WorkingCalendar,
+    calendar_origin: datetime,
+) -> list[datetime]:
+    dates: set = set()
+    for item in [*calendar.blocks, *calendar.overtime_windows]:
+        start_dt = calendar_origin + timedelta(hours=float(item.start_h))
+        end_dt = calendar_origin + timedelta(hours=float(item.end_h))
+        current = start_dt.date()
+        last = end_dt.date()
+        while current <= last:
+            dates.add(current)
+            current += timedelta(days=1)
+    return [
+        datetime.combine(day, datetime.min.time())
+        for day in sorted(dates)
+    ]
+
+
+def _effective_day_intervals(
+    calendar: WorkingCalendar,
+    *,
+    calendar_origin: datetime,
+    day_start: datetime,
+) -> list[tuple[float, float]]:
+    day_end = day_start + timedelta(days=1)
+    start_h = (day_start - calendar_origin).total_seconds() / 3600
+    end_h = (day_end - calendar_origin).total_seconds() / 3600
+    intervals = calendar.working_intervals(start_h, end_h)
+
+    clock_intervals: list[tuple[float, float]] = []
+    for start, end in intervals:
+        start_dt = calendar_origin + timedelta(hours=float(start))
+        end_dt = calendar_origin + timedelta(hours=float(end))
+        start_clock = (
+            start_dt.hour
+            + start_dt.minute / 60
+            + start_dt.second / 3600
+        )
+        if end_dt >= day_end - timedelta(microseconds=1):
+            end_clock = 24.0
+        else:
+            end_clock = (
+                end_dt.hour
+                + end_dt.minute / 60
+                + end_dt.second / 3600
+            )
+        clock_intervals.append((start_clock, end_clock))
+
+    merged = _merge_clock_intervals(clock_intervals)
+    if len(merged) > 5:
+        raise ValueError(
+            f"Calendário {calendar.name!r} gera {len(merged)} janelas no dia "
+            f"{day_start:%Y-%m-%d}; MSPDI aceita no máximo cinco."
+        )
+    return merged
+
+
+def _append_exceptions(
+    calendar_node: ET.Element,
+    calendar: WorkingCalendar,
+    *,
+    calendar_origin: datetime,
+) -> None:
+    exception_days = _affected_exception_dates(calendar, calendar_origin)
+    if not exception_days:
+        return
+
+    exceptions = ET.SubElement(calendar_node, _tag("Exceptions"))
+    for day_start in exception_days:
+        intervals = _effective_day_intervals(
+            calendar,
+            calendar_origin=calendar_origin,
+            day_start=day_start,
+        )
+        exception = ET.SubElement(exceptions, _tag("Exception"))
+        _text(exception, "EnteredByOccurrences", 0)
+        period = ET.SubElement(exception, _tag("TimePeriod"))
+        _text(period, "FromDate", _format_dt(day_start))
+        _text(
+            period,
+            "ToDate",
+            _format_dt(day_start + timedelta(hours=23, minutes=59)),
+        )
+        _text(exception, "Occurrences", 1)
+        _text(exception, "Name", f"TDS · {day_start:%Y-%m-%d}")
+        _text(exception, "Type", 1)
+        _text(exception, "DayWorking", 1 if intervals else 0)
+        _append_working_times(exception, intervals)
+
+
+def _append_calendars(
+    root: ET.Element,
+    *,
+    resource_calendars: dict[str, WorkingCalendar],
+    calendar_origin: datetime,
+) -> dict[str, int]:
+    calendars = ET.SubElement(root, _tag("Calendars"))
+
+    base = ET.SubElement(calendars, _tag("Calendar"))
+    _text(base, "UID", 1)
+    _text(base, "Name", "Turnaround 24x7")
+    _text(base, "IsBaseCalendar", 1)
+    _text(base, "BaseCalendarUID", -1)
+    _append_weekdays(base, None)
+
+    uid_by_resource: dict[str, int] = {}
+    for uid, resource in enumerate(sorted(resource_calendars), start=2):
+        calendar = resource_calendars[resource]
+        node = ET.SubElement(calendars, _tag("Calendar"))
+        _text(node, "UID", uid)
+        _text(node, "Name", f"TDS · {resource}")
+        _text(node, "IsBaseCalendar", 1)
+        _text(node, "BaseCalendarUID", -1)
+        _append_weekdays(node, calendar)
+        _append_exceptions(
+            node,
+            calendar,
+            calendar_origin=calendar_origin,
+        )
+        uid_by_resource[resource] = uid
+
+    return uid_by_resource
 
 
 def build_project_xml(
@@ -223,7 +418,11 @@ def build_project_xml(
     _text(root, "DefaultFinishTime", "23:59:00")
     _text(root, "CalendarUID", 1)
 
-    _calendar(root)
+    resource_calendar_uid = _append_calendars(
+        root,
+        resource_calendars=project.resource_calendars,
+        calendar_origin=calendar_origin,
+    )
 
     tasks_node = ET.SubElement(root, _tag("Tasks"))
 
@@ -323,6 +522,19 @@ def build_project_xml(
             )
         else:
             notes.append("Baseline vigente: Original")
+        task_calendar_resources = [
+            resource
+            for resource, demand in item.resources.items()
+            if float(demand) > 0 and resource in project.resource_calendars
+        ]
+        if task_calendar_resources:
+            notes.append(
+                "Calendários de recurso: "
+                + ", ".join(sorted(task_calendar_resources))
+            )
+        notes.append(
+            "Hipótese de scheduling: atividades não preemptivas no TDS."
+        )
         _text(task_node, "Notes", "\n".join(notes))
 
         original_item = original_baseline_by_id.get(task.id)
@@ -394,6 +606,11 @@ def build_project_xml(
             resource,
             "MaxUnits",
             float(project.capacities.get(name, 1.0)),
+        )
+        _text(
+            resource,
+            "CalendarUID",
+            resource_calendar_uid.get(name, 1),
         )
 
     assignments_node = ET.SubElement(root, _tag("Assignments"))
