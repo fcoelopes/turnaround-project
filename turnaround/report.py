@@ -729,6 +729,48 @@ def _build_pdf(story: list) -> bytes:
     return buffer.getvalue()
 
 
+def _planning_front_page_metrics(
+    *,
+    makespan_h: float,
+    deadline_h: float | None,
+    hours_per_day: int,
+    risk: dict | None,
+    overall_status: str,
+) -> list[tuple[str, str]]:
+    """Métricas que a primeira página deve responder sem leitura técnica."""
+    day = float(hours_per_day)
+    deadline = (
+        "sem janela"
+        if deadline_h is None
+        else f"{float(deadline_h) / day:.2f} d"
+    )
+    p80_h = None if not risk else risk.get("p80_h")
+    probability = (
+        None
+        if not risk
+        else risk.get("probability_meet_deadline")
+    )
+    p80 = "não simulado" if p80_h is None else f"{float(p80_h) / day:.2f} d"
+    probability_label = (
+        "—"
+        if probability is None
+        else f"{100 * float(probability):.1f}%"
+    )
+    reserve = (
+        "não simulado"
+        if p80_h is None
+        else f"{(float(p80_h) - float(makespan_h)) / day:+.2f} d"
+    )
+    return [
+        ("Janela", deadline),
+        ("Makespan base", f"{float(makespan_h) / day:.2f} d"),
+        ("P80", p80),
+        ("P(cumprir janela)", probability_label),
+        ("Reserva até P80", reserve),
+        ("Status geral", overall_status),
+    ]
+
+
 def build_base_management_pdf(
     *,
     project_name: str,
@@ -756,6 +798,43 @@ def build_base_management_pdf(
         ),
         Spacer(1, 3 * mm),
     ]
+
+    executive_status = classify_planning_status(
+        makespan_h=float(makespan_h),
+        deadline_h=None if deadline_h is None else float(deadline_h),
+        p80_h=None if not risk else float(risk["p80_h"]),
+        probability_meet_deadline=(
+            None
+            if not risk or risk.get("probability_meet_deadline") is None
+            else float(risk["probability_meet_deadline"])
+        ),
+    )
+    tone = "good" if executive_status.tone == "ok" else executive_status.tone
+    status_text = (
+        f"{executive_status.overall}. "
+        f"Determinístico: {executive_status.deterministic}; "
+        f"P80: {executive_status.p80}; "
+        f"P(janela): {executive_status.probability}. "
+        f"{executive_status.detail}"
+    )
+    story.extend([_status_box(status_text, tone), Spacer(1, 4 * mm)])
+
+    story.extend(
+        [
+            _metric_table(
+                _planning_front_page_metrics(
+                    makespan_h=float(makespan_h),
+                    deadline_h=(
+                        None if deadline_h is None else float(deadline_h)
+                    ),
+                    hours_per_day=hours_per_day,
+                    risk=risk,
+                    overall_status=executive_status.overall,
+                )
+            ),
+            Spacer(1, 3 * mm),
+        ]
+    )
 
     if (
         baseline_scenario_name
@@ -796,46 +875,13 @@ def build_base_management_pdf(
             ]
         )
 
-    executive_status = classify_planning_status(
-        makespan_h=float(makespan_h),
-        deadline_h=None if deadline_h is None else float(deadline_h),
-        p80_h=None if not risk else float(risk["p80_h"]),
-        probability_meet_deadline=(
-            None
-            if not risk or risk.get("probability_meet_deadline") is None
-            else float(risk["probability_meet_deadline"])
-        ),
-    )
-    tone = "good" if executive_status.tone == "ok" else executive_status.tone
-    status_text = (
-        f"{executive_status.overall}. "
-        f"Determinístico: {executive_status.deterministic}; "
-        f"P80: {executive_status.p80}; "
-        f"P(janela): {executive_status.probability}. "
-        f"{executive_status.detail}"
-    )
-    story.extend([_status_box(status_text, tone), Spacer(1, 4 * mm)])
-
-    p80 = "-"
-    probability = "-"
-    if risk:
-        p80 = f"{risk['p80_h'] / hours_per_day:.2f} d"
-        if risk.get("probability_meet_deadline") is not None:
-            probability = f"{100 * risk['probability_meet_deadline']:.1f}%"
-
     story.extend(
         [
+            _p("Leitura executiva", s["h2"]),
             _metric_table(
                 [
-                    (
-                        "Makespan base" if risk and risk.get("scope_enabled") else "Makespan",
-                        f"{makespan_h / hours_per_day:.2f} d",
-                    ),
-                    ("P80", p80),
-                    ("P(cumprir janela)", probability),
                     ("Determinístico", executive_status.deterministic),
                     ("Risco probabilístico", executive_status.risk),
-                    ("Status geral", executive_status.overall),
                     (
                         "CPM sem recursos",
                         f"{comparison['unconstrained_makespan_h'] / hours_per_day:.2f} d",
@@ -846,7 +892,6 @@ def build_base_management_pdf(
                     ),
                 ]
             ),
-            _p("Leitura executiva", s["h2"]),
             _p(
                 f"Regra SSGS selecionada: {priority_rule.replace('_', ' ')}.",
                 s["muted"],
