@@ -3581,10 +3581,19 @@ with operation_tab:
         st.markdown("#### Cronograma operacional para Microsoft Project")
         st.caption(
             "Exporta o snapshot materializado em Microsoft Project XML (MSPDI). "
-            "Entram atividades ativas, condicionais já disparadas, escopo DS-* "
-            "descoberto, precedências efetivas, recursos, modo escolhido e horários "
-            "do replanejamento. Regras ainda dormentes não são materializadas."
+            "Entram atividades ativas, condicionais já disparadas, escopo DS-*, "
+            "precedências efetivas, recursos, horários e calendários por recurso "
+            "(turnos, indisponibilidades e overtime). Regras ainda dormentes não "
+            "são materializadas."
         )
+        if project.resource_calendars:
+            st.info(
+                "O XML leva os calendários usados pelo TDS e os horários calculados. "
+                "A hipótese TDS de atividade não preemptiva é registrada nas Notas, "
+                "mas não existe como regra nativa equivalente no MSPDI; portanto, "
+                "alterações e novo recálculo dentro do Project podem produzir datas "
+                "diferentes do snapshot exportado."
+            )
 
         export_origin = calendar_origin
         if export_origin is None:
