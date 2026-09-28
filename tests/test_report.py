@@ -3,9 +3,17 @@ import pandas as pd
 from turnaround.report import (
     _GanttFlowable,
     _gantt_chart_pages,
+    _stability_profile_label,
     build_base_management_pdf,
     build_conditional_management_pdf,
 )
+
+
+def test_stability_profile_label_maps_operational_levels():
+    assert _stability_profile_label(0.3) == "Baixa"
+    assert _stability_profile_label(1.0) == "Balanceada"
+    assert _stability_profile_label(1.7) == "Alta"
+    assert _stability_profile_label(0.8) == "Avançada"
 
 
 def test_base_management_pdf_is_valid_binary():
