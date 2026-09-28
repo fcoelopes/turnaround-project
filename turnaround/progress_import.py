@@ -316,6 +316,7 @@ def _validate_remaining(
             )
         if (
             remaining_as_of_h is not None
+            and actual_start_h is not None
             and remaining_as_of_h < actual_start_h - 1e-9
         ):
             raise ValueError(
@@ -397,7 +398,12 @@ def _validate_actuals(
         raise ValueError("Atividade não iniciada não pode possuir Actual Start/Finish.")
     if status == "in_progress" and actual_finish_h is not None:
         raise ValueError("Atividade em andamento não pode possuir Actual Finish.")
-    if status == "completed" and actual_start_h is None and actual_finish_h is not None:
+    if (
+        status == "completed"
+        and actual_start_h is None
+        and actual_finish_h is not None
+        and not allow_partial
+    ):
         raise ValueError("Atividade concluída exige Actual Start antes de Actual Finish.")
 
 
