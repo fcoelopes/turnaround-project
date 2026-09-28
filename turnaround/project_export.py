@@ -205,7 +205,11 @@ def _affected_exception_dates(
             dates.add(current)
             current += timedelta(days=1)
     return [
-        datetime.combine(day, datetime.min.time())
+        datetime.combine(
+            day,
+            datetime.min.time(),
+            tzinfo=calendar_origin.tzinfo,
+        )
         for day in sorted(dates)
     ]
 
