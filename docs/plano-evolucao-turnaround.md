@@ -1029,7 +1029,7 @@ scheduler fica para a próxima microtarefa, quando Actual Start / Actual Finish
 forem importados e validados.
 - [x] Actual Start / Actual Finish.
 
-**TDS-33 implementado — aguardando revisão funcional:** a importação de
+**TDS-33 implementado e aprovado:** a importação de
 progresso passou a aceitar **Actual Start** e **Actual Finish** tanto como
 data/hora absoluta quanto diretamente no eixo **H+**. Datas absolutas são
 convertidas contra a origem temporal do baseline; quando a origem não existe, a
@@ -1047,7 +1047,27 @@ ainda não recebem término previsto automaticamente. O consumo futuro só será
 congelado quando **Remaining Duration** estiver disponível na próxima
 microtarefa. Os Actuals continuam persistidos no evento `PROGRESS_IMPORTED`,
 sem migration adicional.
-- [ ] Remaining Duration.
+- [x] Remaining Duration.
+
+**TDS-34 implementado — aguardando revisão funcional:** a importação de
+progresso passou a aceitar **Remaining Duration** em horas/minutos ou no formato
+ISO `PT...` do Microsoft Project. O XML também lê a `StatusDate` como
+referência temporal do Remaining Duration quando a origem do baseline permite
+convertê-la para H+; CSV/Excel podem informar a referência diretamente em H+.
+
+Para atividade `in_progress`, Remaining Duration exige **Actual Start** e deve
+ser maior que zero. O forecast de término é calculado a partir da referência do
+snapshot; na ausência dela, usa a **hora corrente** da tela. Esse forecast
+respeita os calendários dos recursos e mantém a hipótese não preemptiva: se o
+restante não couber continuamente no turno/overtime vigente, o replanejamento é
+bloqueado com diagnóstico explícito.
+
+Atividades em andamento com forecast válido passam a entrar no
+`ExecutionState` com término previsto e a bloquear sucessoras/recursos até esse
+forecast. O replanejamento também valida que `Actual Start ≤ hora corrente <
+forecast finish` e que a soma das atividades atualmente em andamento não
+ultrapassa a capacidade modelada. Os campos continuam auditados no evento
+`PROGRESS_IMPORTED`, sem migration adicional.
 - [ ] Atualização em lote.
 - [ ] Comparação plano x realizado.
 
