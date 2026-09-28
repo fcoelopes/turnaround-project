@@ -51,6 +51,72 @@ class DecisionEngineResult:
         ]
 
 
+def summarize_pending_decisions(
+    decisions: list[DecisionEvaluation],
+    *,
+    current_makespan: float,
+    current_cost: float,
+) -> list[dict[str, str]]:
+    """Resume alternativas pendentes sem escolher entre elas."""
+    rows: list[dict[str, str]] = []
+    for decision in decisions:
+        feasible = [impact for impact in decision.impacts if impact.feasible]
+        all_names = []
+        for impact in decision.impacts:
+            label = " + ".join(impact.task_names)
+            if label and label not in all_names:
+                all_names.append(label)
+
+        makespan_deltas = [
+            float(impact.makespan) - float(current_makespan)
+            for impact in feasible
+            if impact.makespan is not None
+        ]
+        cost_deltas = [
+            float(impact.total_cost) - float(current_cost)
+            for impact in feasible
+            if impact.total_cost is not None
+        ]
+
+        def format_range(values: list[float], suffix: str) -> str:
+            if not values:
+                return "sem alternativa factível"
+            low = min(values)
+            high = max(values)
+            if abs(low - high) <= 1e-9:
+                return f"{low:+.1f} {suffix}"
+            return f"{low:+.1f} a {high:+.1f} {suffix}"
+
+        resource_gaps: dict[str, float] = {}
+        for impact in decision.impacts:
+            for resource, shortage in impact.resource_gaps.items():
+                resource_gaps[resource] = max(
+                    resource_gaps.get(resource, 0.0),
+                    float(shortage),
+                )
+
+        rows.append(
+            {
+                "Decisão": decision.group_id,
+                "Alternativas": " | ".join(all_names) or "—",
+                "Impacto prazo": format_range(makespan_deltas, "h"),
+                "Impacto custo": format_range(cost_deltas, ""),
+                "Recurso crítico": (
+                    ", ".join(
+                        f"{resource} (faltam {shortage:g})"
+                        for resource, shortage in sorted(resource_gaps.items())
+                    )
+                    if resource_gaps
+                    else "sem déficit estático"
+                ),
+                "Factibilidade": (
+                    f"{len(feasible)}/{len(decision.impacts)} alternativa(s) factível(is)"
+                ),
+            }
+        )
+    return rows
+
+
 def _copy_state_with_selections(
     state: ExecutionState,
     selections: dict[str, list[str]],
