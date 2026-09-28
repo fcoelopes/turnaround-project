@@ -42,3 +42,12 @@ def test_advanced_navigation_uses_contextual_help_instead_of_manual_tab():
     assert '"Decisões pendentes"' in source
     assert '"#### Novo escopo relevante"' in source
     assert '"#### Cadeia controladora"' in source
+
+
+def test_execution_revalidates_persisted_baseline_before_project_build():
+    source = ADVANCED_PAGE.read_text(encoding="utf-8")
+
+    assert "validate_planning_baseline_for_execution(" in source
+    assert "allow_dangling_repair=True" in source
+    assert "require_formal_approval=True" in source
+    assert '"Baseline bloqueado para execução."' in source
