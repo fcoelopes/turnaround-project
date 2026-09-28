@@ -641,8 +641,9 @@ def load_project(store: ExecutionStore):
             title="Baseline herdado do Planejamento.",
         )
         st.caption(
-            "As capacidades, a janela e os horários RCPSP aprovados acompanham "
-            "o baseline. O replanejamento passa a medir mudanças contra essa referência."
+            "As capacidades, a janela, os calendários de recurso e os horários "
+            "RCPSP aprovados acompanham o baseline. O replanejamento passa a "
+            "medir mudanças contra essa referência."
         )
 
     elif source_mode == "Importar XML":
@@ -688,6 +689,11 @@ def load_project(store: ExecutionStore):
         xml_caps,
         deadline=(
             approved_baseline.deadline_h
+            if approved_baseline is not None
+            else None
+        ),
+        resource_calendars=(
+            approved_baseline.to_resource_calendars()
             if approved_baseline is not None
             else None
         ),
