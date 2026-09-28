@@ -655,8 +655,8 @@ def load_project(store: ExecutionStore):
 
 execution_store = _get_execution_store()
 
-operation_tab, config_tab, people_tab, governance_tab = st.tabs(
-    ["Operação", "Configuração", "Pessoas", "Governança"]
+vision_tab, operation_tab, config_tab, people_tab, governance_tab = st.tabs(
+    ["Visão", "Operação", "Configuração", "Pessoas", "Governança"]
 )
 
 with operation_tab:
@@ -691,6 +691,12 @@ with people_tab:
     workforce = _render_people_tab(execution_store, project)
 
 if project is None:
+    with vision_tab:
+        st.markdown("### Visão executiva da parada")
+        st.info(
+            "Selecione um baseline aprovado, carregue um XML na aba Operação "
+            "ou use o cenário demonstrativo para montar a visão executiva."
+        )
     with config_tab:
         st.markdown("### Configuração")
         st.info(
@@ -2826,6 +2832,132 @@ with operation_tab:
                     use_container_width=True,
                     hide_index=True,
                 )
+
+    # A aba Visão é deliberadamente somente leitura. Ela reutiliza o mesmo
+    # snapshot calculado pela Operação para evitar divergência entre dashboard,
+    # relatório e cronograma replanejado.
+    vision_tab.markdown("### Visão executiva da parada")
+    vision_tab.caption(
+        "Leitura gerencial do snapshot corrente: compromisso formal, forecast, "
+        "janela, decisões e cadeia que controla o término. Sem controles técnicos."
+    )
+
+    vision_impact_vs_original = (
+        float(result.schedule.makespan) - float(original_baseline_makespan)
+    )
+    vision_impact_vs_governing = (
+        float(result.schedule.makespan) - float(governing_baseline_makespan)
+    )
+    v1, v2, v3 = vision_tab.columns(3)
+    v1.metric(
+        "Baseline original",
+        f"{original_baseline_makespan:.1f} h",
+    )
+    v2.metric(
+        "Baseline vigente",
+        f"{governing_baseline_makespan:.1f} h",
+        delta=governing_baseline_label,
+        help="Baseline 0 ou a última Rev.n formalmente aprovada.",
+    )
+    v3.metric(
+        "Forecast atual",
+        f"{result.schedule.makespan:.1f} h",
+    )
+
+    v4, v5, v6, v7 = vision_tab.columns(4)
+    v4.metric(
+        "Δ vs original",
+        f"{vision_impact_vs_original:+.1f} h",
+    )
+    v5.metric(
+        "Δ vs vigente",
+        f"{vision_impact_vs_governing:+.1f} h",
+    )
+    if project.deadline is None:
+        vision_window_value = "sem deadline"
+    elif result.schedule.makespan <= project.deadline:
+        vision_window_value = (
+            f"{project.deadline - result.schedule.makespan:.1f} h de folga"
+        )
+    else:
+        vision_window_value = (
+            f"{result.schedule.makespan - project.deadline:.1f} h acima"
+        )
+    v6.metric("Janela", vision_window_value)
+    v7.metric(
+        "Decisões pendentes",
+        len(decision_engine.pending_human),
+    )
+
+    if project.deadline is None:
+        vision_tab.warning(
+            "A execução ainda não possui uma janela formal para comparar com o forecast."
+        )
+    elif result.schedule.makespan <= project.deadline:
+        vision_tab.success(
+            f"Forecast dentro da janela: {result.schedule.makespan:.1f} h "
+            f"para {project.deadline:.1f} h disponíveis."
+        )
+    else:
+        vision_tab.error(
+            f"Forecast excede a janela em "
+            f"{result.schedule.makespan - project.deadline:.1f} h."
+        )
+
+    scope_col, chain_col = vision_tab.columns(2)
+    active_change_names = [
+        name_by_id.get(task_id, task_id)
+        for task_id in sorted(new_scope)
+    ]
+    with scope_col:
+        st.markdown("#### Novo escopo relevante")
+        if active_change_names:
+            st.write(
+                f"{len(active_change_names)} atividade(s) adicional(is) ativa(s) "
+                f"neste snapshot."
+            )
+            st.markdown(
+                "\n".join(
+                    f"- {name}"
+                    for name in active_change_names[:8]
+                )
+            )
+            if len(active_change_names) > 8:
+                st.caption(
+                    f"+ {len(active_change_names) - 8} atividade(s) adicional(is)."
+                )
+        else:
+            st.caption("Nenhuma atividade adicional está ativa neste snapshot.")
+        if dynamic_scope_ids:
+            st.caption(
+                f"{len(dynamic_scope_ids)} atividade(s) DS-* registrada(s) na sessão."
+            )
+
+    with chain_col:
+        st.markdown("#### Cadeia controladora")
+        if criticality.path_ids:
+            st.write(
+                " → ".join(
+                    f"{task_id} · {name_by_id.get(task_id, task_id)}"
+                    for task_id in criticality.path_ids
+                )
+            )
+            branch_count = len(
+                criticality.critical_ids - set(criticality.path_ids)
+            )
+            if branch_count:
+                st.caption(
+                    f"+ {branch_count} atividade(s) crítica(s) em ramificações "
+                    "que também alimentam o término."
+                )
+        else:
+            st.caption("Nenhuma cadeia controladora foi identificada neste snapshot.")
+
+    vision_tab.caption(
+        f"Hora corrente: {current_time:.1f} h · "
+        f"snapshot {report_snapshot_id} · "
+        "rebaseline formal continua exclusivo da aba Governança."
+    )
 
     section(
         "3",
