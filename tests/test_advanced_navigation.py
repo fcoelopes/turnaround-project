@@ -57,7 +57,8 @@ def test_execution_supports_audited_progress_import_without_faking_actual_times(
     source = ADVANCED_PAGE.read_text(encoding="utf-8")
 
     assert '"Importar progresso em lote"' in source
-    assert "parse_progress_file(progress_file)" in source
+    assert "parse_progress_file(" in source
+    assert "calendar_origin=calendar_origin" in source
     assert "reconcile_progress(" in source
     assert "record_progress_import(" in source
     assert '"Actual Start/Actual Finish"' in source
