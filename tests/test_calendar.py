@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from turnaround import (
+    CalendarBlock,
     DailyShift,
     ExecutionMode,
     ExecutionState,
@@ -215,3 +216,88 @@ def test_project_rejects_calendar_for_unknown_resource():
                 )
             },
         )
+
+
+def test_absolute_unavailability_splits_working_window():
+    calendar = WorkingCalendar(
+        name="Guindaste",
+        shifts=(DailyShift(6, 18),),
+        blocks=(
+            CalendarBlock(
+                start_h=30,
+                end_h=36,
+                reason="manutenção corretiva",
+            ),
+        ),
+    )
+
+    intervals = calendar.working_intervals(24, 48)
+
+    assert intervals == [(36.0, 42.0)]
+    assert calendar.is_working_interval(30, 2) is False
+    assert calendar.next_working_start(30, 4) == pytest.approx(36)
+
+
+def test_unavailability_inside_shift_forces_start_after_block():
+    calendar = WorkingCalendar(
+        name="Equipe",
+        shifts=(DailyShift(7, 19),),
+        blocks=(CalendarBlock(start_h=10, end_h=12),),
+    )
+
+    assert calendar.next_working_start(9, 4) == pytest.approx(12)
+    assert calendar.is_working_interval(8, 2) is True
+    assert calendar.is_working_interval(9, 2) is False
+
+
+def test_full_shift_unavailability_moves_to_next_day():
+    calendar = WorkingCalendar(
+        name="Guindaste",
+        shifts=(DailyShift(7, 19),),
+        blocks=(CalendarBlock(start_h=31, end_h=43),),
+    )
+
+    assert calendar.next_working_start(31, 4) == pytest.approx(55)
+
+
+def test_mrcpsp_avoids_resource_unavailability_block():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="A",
+                name="Içamento",
+                modes=[
+                    ExecutionMode(
+                        name="base",
+                        duration=4,
+                        resources={"Guindaste": 1},
+                    )
+                ],
+            )
+        ],
+        capacities={"Guindaste": 1},
+        resource_calendars={
+            "Guindaste": WorkingCalendar(
+                name="Guindaste",
+                shifts=(DailyShift(6, 18),),
+                blocks=(CalendarBlock(start_h=6, end_h=12),),
+            )
+        },
+    )
+
+    result = reschedule_from_state(
+        project,
+        ExecutionState(current_time=6),
+    )
+
+    assert result.schedule.tasks[0].start == pytest.approx(12)
+    assert result.schedule.tasks[0].finish == pytest.approx(16)
+
+
+def test_calendar_block_validation_is_explicit():
+    with pytest.raises(ValueError):
+        CalendarBlock(start_h=-1, end_h=2)
+    with pytest.raises(ValueError):
+        CalendarBlock(start_h=4, end_h=4)
+    with pytest.raises(ValueError):
+        CalendarBlock(start_h=5, end_h=4)
