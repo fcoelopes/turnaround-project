@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from turnaround.models import Task
+from turnaround.rcpsp import serial_schedule_generation
+
 from turnaround import (
     CalendarBlock,
     DailyShift,
@@ -393,9 +396,6 @@ def test_overtime_window_validation_is_explicit():
         OvertimeWindow(start_h=5, end_h=4)
 
 
-from turnaround.rcpsp import serial_schedule_generation
-
-
 def test_calendar_origin_aligns_clock_time_to_h_plus_axis():
     calendar = WorkingCalendar(
         name="Equipe",
@@ -410,14 +410,7 @@ def test_calendar_origin_aligns_clock_time_to_h_plus_axis():
 
 
 def test_rcpsp_respects_resource_calendar_and_common_window():
-    tasks = [
-        TurnaroundTask(
-            id="A",
-            name="Içamento com equipe",
-            modes=[ExecutionMode(name="base", duration=4)],
-        )
-    ]
-    legacy_task = __import__("turnaround.models", fromlist=["Task"]).Task(
+    legacy_task = Task(
         id="A",
         name="Içamento com equipe",
         duration_h=4,
@@ -446,7 +439,7 @@ def test_rcpsp_respects_resource_calendar_and_common_window():
 
 
 def test_rcpsp_rejects_activity_longer_than_resource_work_window():
-    legacy_task = __import__("turnaround.models", fromlist=["Task"]).Task(
+    legacy_task = Task(
         id="A",
         name="Serviço longo",
         duration_h=13,
