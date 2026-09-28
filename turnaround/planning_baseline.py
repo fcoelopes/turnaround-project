@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 from .advanced_models import TurnaroundProject
+from .calendar import CalendarBlock, DailyShift, OvertimeWindow, WorkingCalendar
 from .models import Link, Task, TurnaroundResult
 from .mrcpsp import AdvancedScheduleResult, AdvancedScheduledTask
 from .planning_scope_risk import PlanningScopeRisk
@@ -92,6 +93,93 @@ class PlanningScheduleItemSnapshot(BaseModel):
     wbs: str | None = None
 
 
+class PlanningShiftSnapshot(BaseModel):
+    start_hour: float
+    end_hour: float
+
+
+class PlanningCalendarBlockSnapshot(BaseModel):
+    start_h: float
+    end_h: float
+    reason: str | None = None
+
+
+class PlanningOvertimeSnapshot(BaseModel):
+    start_h: float
+    end_h: float
+    reason: str | None = None
+
+
+class PlanningResourceCalendarSnapshot(BaseModel):
+    name: str
+    origin_hour: float = 0.0
+    shifts: list[PlanningShiftSnapshot]
+    blocks: list[PlanningCalendarBlockSnapshot] = Field(default_factory=list)
+    overtime_windows: list[PlanningOvertimeSnapshot] = Field(default_factory=list)
+
+    @classmethod
+    def from_calendar(
+        cls,
+        calendar: WorkingCalendar,
+    ) -> "PlanningResourceCalendarSnapshot":
+        return cls(
+            name=calendar.name,
+            origin_hour=float(calendar.origin_hour),
+            shifts=[
+                PlanningShiftSnapshot(
+                    start_hour=float(shift.start_hour),
+                    end_hour=float(shift.end_hour),
+                )
+                for shift in calendar.shifts
+            ],
+            blocks=[
+                PlanningCalendarBlockSnapshot(
+                    start_h=float(block.start_h),
+                    end_h=float(block.end_h),
+                    reason=block.reason,
+                )
+                for block in calendar.blocks
+            ],
+            overtime_windows=[
+                PlanningOvertimeSnapshot(
+                    start_h=float(window.start_h),
+                    end_h=float(window.end_h),
+                    reason=window.reason,
+                )
+                for window in calendar.overtime_windows
+            ],
+        )
+
+    def to_calendar(self) -> WorkingCalendar:
+        return WorkingCalendar(
+            name=self.name,
+            origin_hour=float(self.origin_hour),
+            shifts=tuple(
+                DailyShift(
+                    float(shift.start_hour),
+                    float(shift.end_hour),
+                )
+                for shift in self.shifts
+            ),
+            blocks=tuple(
+                CalendarBlock(
+                    start_h=float(block.start_h),
+                    end_h=float(block.end_h),
+                    reason=block.reason,
+                )
+                for block in self.blocks
+            ),
+            overtime_windows=tuple(
+                OvertimeWindow(
+                    start_h=float(window.start_h),
+                    end_h=float(window.end_h),
+                    reason=window.reason,
+                )
+                for window in self.overtime_windows
+            ),
+        )
+
+
 class PlanningRiskAssumptions(BaseModel):
     simulations: int = Field(ge=1)
     optimistic_pct: float
@@ -119,6 +207,9 @@ class ApprovedPlanningBaseline(BaseModel):
     probability_meet_deadline: float | None = None
     risk_assumptions: PlanningRiskAssumptions | None = None
     scope_risks: list[PlanningScopeRisk] = Field(default_factory=list)
+    resource_calendars: dict[str, PlanningResourceCalendarSnapshot] = Field(
+        default_factory=dict
+    )
     approved_at: datetime
 
     def dangling_predecessor_links(self) -> list[tuple[str, str]]:
@@ -152,6 +243,12 @@ class ApprovedPlanningBaseline(BaseModel):
             for task in tasks
         ]
 
+    def to_resource_calendars(self) -> dict[str, WorkingCalendar]:
+        return {
+            resource: snapshot.to_calendar()
+            for resource, snapshot in self.resource_calendars.items()
+        }
+
     def reference_start_times(self) -> dict[str, float]:
         return {
             item.task_id: float(item.start_h)
@@ -172,6 +269,7 @@ def _core_payload(
     priority_rule: str,
     risk_assumptions: PlanningRiskAssumptions | None,
     scope_risks: list[PlanningScopeRisk],
+    resource_calendars: dict[str, PlanningResourceCalendarSnapshot],
 ) -> dict:
     return {
         "project_name": project_name,
@@ -208,6 +306,10 @@ def _core_payload(
             item.model_dump(mode="json")
             for item in scope_risks
         ],
+        "resource_calendars": {
+            resource: snapshot.model_dump(mode="json")
+            for resource, snapshot in sorted(resource_calendars.items())
+        },
     }
 
 
@@ -225,6 +327,7 @@ def build_planning_baseline(
     risk: dict | None = None,
     risk_assumptions: PlanningRiskAssumptions | dict | None = None,
     scope_risks: list[PlanningScopeRisk] | None = None,
+    resource_calendars: dict[str, WorkingCalendar] | None = None,
     scenario_name: str | None = None,
     approved_by: str | None = None,
     approval_reason: str | None = None,
@@ -262,6 +365,11 @@ def build_planning_baseline(
         str(resource): str(origin)
         for resource, origin in (capacity_origins or {}).items()
     }
+    normalized_resource_calendars = {
+        str(resource): PlanningResourceCalendarSnapshot.from_calendar(calendar)
+        for resource, calendar in (resource_calendars or {}).items()
+    }
+
     core = _core_payload(
         project_name=project_name,
         hours_per_day=hours_per_day,
@@ -274,6 +382,7 @@ def build_planning_baseline(
         priority_rule=result.priority_rule,
         risk_assumptions=normalized_risk_assumptions,
         scope_risks=scope_risks,
+        resource_calendars=normalized_resource_calendars,
     )
     key = hashlib.sha256(
         json.dumps(
@@ -317,6 +426,7 @@ def build_planning_baseline(
         ),
         risk_assumptions=normalized_risk_assumptions,
         scope_risks=scope_risks,
+        resource_calendars=normalized_resource_calendars,
         approved_at=datetime.now(timezone.utc),
     )
 
