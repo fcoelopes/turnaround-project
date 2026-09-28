@@ -158,6 +158,27 @@ não tem equivalente nativo perfeito no MSPDI. Por isso os horários calculados
 são exportados e a hipótese é registrada nas Notas; se a lógica for alterada e
 o cronograma for recalculado no Project, as datas podem divergir do snapshot.
 
+## Atualização operacional
+
+### Importação de progresso
+
+A página **Operação** aceita uma fotografia de progresso em Microsoft Project
+XML, Excel ou CSV. A conciliação usa UID Project como referência preferencial e
+ID como fallback, evitando depender apenas do nome da atividade.
+
+Nesta primeira etapa são importados e auditados:
+
+- status operacional;
+- percentual concluído, quando informado;
+- referência usada na conciliação;
+- arquivo de origem e warnings da importação.
+
+A fotografia é persistida no histórico da sessão como `PROGRESS_IMPORTED`.
+Ela ainda **não congela atividades no scheduler**. O TDS não transforma
+percentual concluído em Actual Start/Finish fictícios nem assume que horários da
+baseline representam realizado. A aplicação ao `ExecutionState` entra na etapa
+seguinte, junto da importação e validação dos horários reais.
+
 ## Dois níveis de planejamento
 
 ### Planejamento-base — RCPSP
