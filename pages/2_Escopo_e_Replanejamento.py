@@ -148,7 +148,7 @@ def _next_person_id(rows: list[dict]) -> str:
         index += 1
 
 
-def _render_people_tab(
+def _render_workforce_section(
     store: ExecutionStore,
     project=None,
 ) -> WorkforceProfile:
@@ -655,8 +655,8 @@ def load_project(store: ExecutionStore):
 
 execution_store = _get_execution_store()
 
-vision_tab, operation_tab, scope_tab, config_tab, people_tab, governance_tab = st.tabs(
-    ["Visão", "Operação", "Escopo", "Configuração", "Pessoas", "Governança"]
+vision_tab, operation_tab, scope_tab, resources_tab, config_tab, governance_tab = st.tabs(
+    ["Visão", "Operação", "Escopo", "Recursos", "Configuração", "Governança"]
 )
 
 with operation_tab:
@@ -687,8 +687,7 @@ with operation_tab:
             "O manual técnico completo permanece em docs/manual-escopo-condicional.md."
         )
 
-with people_tab:
-    workforce = _render_people_tab(execution_store, project)
+workforce = execution_store.load_workforce_profile()
 
 if project is None:
     with vision_tab:
@@ -703,11 +702,19 @@ if project is None:
             "Selecione um baseline aprovado, carregue um XML na aba Operação "
             "ou use o cenário demonstrativo para configurar regras de escopo."
         )
+    with resources_tab:
+        st.markdown("### Recursos da parada")
+        st.info(
+            "Sem um baseline carregado, ainda é possível preparar o cadastro de "
+            "pessoas e habilidades. Capacidades de equipamentos aparecem quando "
+            "um projeto estiver disponível."
+        )
+        _render_workforce_section(execution_store, project)
     with config_tab:
         st.markdown("### Configuração")
         st.info(
             "Selecione um baseline aprovado, carregue um XML na aba Operação "
-            "ou use o cenário demonstrativo para configurar capacidades e preferências."
+            "ou use o cenário demonstrativo para configurar preferências avançadas."
         )
     st.stop()
 
@@ -1222,8 +1229,13 @@ unknown_resources = [
     )
 ]
 
-with config_tab:
-    st.markdown("#### Recursos e modos de execução")
+with resources_tab:
+    st.markdown("### Recursos da parada")
+    st.caption(
+        "Concentre aqui a capacidade operacional do cenário: equipamentos, "
+        "recursos agregados, pessoas, habilidades e multi-skill."
+    )
+    st.markdown("#### Capacidades e equipamentos")
     st.caption(
         "Ajuste capacidades somente quando quiser testar outro cenário. "
         "Os controles são gerados a partir dos recursos usados pelo plano e pelos modos MRCPSP."
@@ -1433,6 +1445,10 @@ with config_tab:
             hide_index=True,
         )
 
+
+with resources_tab:
+    st.divider()
+    _render_workforce_section(execution_store, project)
 
 with config_tab:
     st.markdown("#### Preferências do replanejamento")
