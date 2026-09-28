@@ -34,6 +34,7 @@ from turnaround import (
     evaluate_scope_decisions,
     forecast_remaining_finish,
     materialize_dynamic_scope,
+    merge_progress_snapshot,
     next_discovered_task_id,
     parse_progress_file,
     reconcile_progress,
@@ -1819,10 +1820,20 @@ with operation_tab:
                 imported_rows = parse_progress_file(
                     progress_file,
                     calendar_origin=calendar_origin,
+                    allow_partial=latest_progress_import is not None,
                 )
                 progress_result = reconcile_progress(
                     imported_rows,
                     project,
+                )
+                previous_progress_rows = (
+                    latest_progress_import.payload.get("rows", [])
+                    if latest_progress_import is not None
+                    else []
+                )
+                batch_merge = merge_progress_snapshot(
+                    previous_progress_rows,
+                    progress_result.rows,
                 )
                 preview_df = pd.DataFrame(
                     [
@@ -1837,6 +1848,11 @@ with operation_tab:
                             "Remaining Duration (h)": row.remaining_duration_h,
                             "Referência Remaining (H+)": row.remaining_as_of_h,
                             "Conciliação": row.source_reference,
+                            "Lote": (
+                                "alterar"
+                                if row.task_id in batch_merge.changed_task_ids
+                                else "sem mudança"
+                            ),
                         }
                         for row in progress_result.rows
                     ]
@@ -1859,11 +1875,39 @@ with operation_tab:
                     f"{progress_result.matched_rows} de "
                     f"{progress_result.source_rows} linha(s) conciliada(s)."
                 )
+                batch_cols = st.columns(3)
+                batch_cols[0].metric(
+                    "Alteradas no lote",
+                    batch_merge.changed_rows,
+                )
+                batch_cols[1].metric(
+                    "Sem mudança",
+                    batch_merge.unchanged_rows,
+                )
+                batch_cols[2].metric(
+                    "Preservadas",
+                    batch_merge.preserved_rows,
+                    help=(
+                        "Atividades já conhecidas que não vieram neste arquivo "
+                        "e permanecerão com o último estado registrado."
+                    ),
+                )
+                if batch_merge.preserved_rows:
+                    st.info(
+                        "O arquivo é tratado como atualização parcial: atividades "
+                        "ausentes preservam o último estado operacional conhecido."
+                    )
+                if batch_merge.changed_rows == 0:
+                    st.info(
+                        "O lote não contém nenhuma alteração em relação à fotografia "
+                        "operacional já registrada."
+                    )
 
                 if st.button(
                     "Registrar importação de progresso",
                     type="primary",
                     key=f"save_progress_import_{execution_session.id[:8]}",
+                    disabled=batch_merge.changed_rows == 0,
                 ):
                     execution_store.record_progress_import(
                         execution_session.id,
@@ -1881,12 +1925,21 @@ with operation_tab:
                                 "remaining_as_of_h": row.remaining_as_of_h,
                                 "source_reference": row.source_reference,
                             }
-                            for row in progress_result.rows
+                            for row in batch_merge.rows
                         ],
                         warnings=list(progress_result.warnings),
+                        expected_previous_event_id=(
+                            latest_progress_import.id
+                            if latest_progress_import is not None
+                            else None
+                        ),
+                        changed_task_ids=list(batch_merge.changed_task_ids),
+                        unchanged_task_ids=list(batch_merge.unchanged_task_ids),
+                        preserved_task_ids=list(batch_merge.preserved_task_ids),
+                        incoming_rows=progress_result.matched_rows,
                     )
                     st.success(
-                        "Progresso importado e registrado no histórico da sessão."
+                        "Lote aplicado de forma atômica e registrado no histórico da sessão."
                     )
                     st.rerun()
             except (TypeError, ValueError) as exc:
@@ -1896,10 +1949,19 @@ with operation_tab:
             latest_payload = latest_progress_import.payload
             st.divider()
             st.caption(
-                "Última importação registrada: "
+                "Última atualização registrada: "
                 f"{latest_payload.get('source_name', 'arquivo')} · "
-                f"{latest_payload.get('matched_rows', 0)} atividade(s) conciliada(s)."
+                f"{latest_payload.get('incoming_rows', latest_payload.get('matched_rows', 0))} "
+                "linha(s) recebida(s) · "
+                f"{latest_payload.get('matched_rows', 0)} atividade(s) no estado consolidado."
             )
+            if "changed_task_ids" in latest_payload:
+                st.caption(
+                    f"Alteradas: {len(latest_payload.get('changed_task_ids', []))} · "
+                    f"Sem mudança: {len(latest_payload.get('unchanged_task_ids', []))} · "
+                    f"Preservadas do lote anterior: "
+                    f"{len(latest_payload.get('preserved_task_ids', []))}."
+                )
             latest_rows = latest_payload.get("rows", [])
             if latest_rows:
                 st.dataframe(
