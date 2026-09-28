@@ -267,6 +267,23 @@ de prazo adicional separa o cenário determinístico da referência probabilíst
 P80. Informações de aprovação da Baseline 0 e diagnóstico técnico aparecem
 depois desse resumo executivo.
 
+### Premissas do cenário no relatório
+
+O relatório de Planejamento inclui uma página de rastreabilidade com os valores
+efetivamente usados no cálculo:
+
+- arquivo de origem;
+- janela e fator horas/dia;
+- capacidades e origem de cada capacidade;
+- número de simulações Monte Carlo;
+- distribuição triangular de duração;
+- probabilidades dos eventos de escopo;
+- heurística SSGS e regra selecionada;
+- data/hora em que o cenário foi calculado.
+
+O timestamp representa o **cálculo do cenário**, não o momento em que o PDF foi
+baixado.
+
 ### Scope discovery — MRCPSP + escopo condicional
 
 A página **Escopo e Replanejamento** acrescenta a dinâmica típica de turnaround:
