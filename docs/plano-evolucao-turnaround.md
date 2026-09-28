@@ -743,7 +743,7 @@ Recurso crítico
 
 Não selecionar a decisão automaticamente.
 
-**TDS-22 implementado — aguardando revisão funcional:** decisões humanas
+**TDS-22 implementado e aprovado:** decisões humanas
 pendentes passaram a aparecer na **Visão** e na primeira página do relatório de
 Execução. Para cada decisão são mostradas as alternativas, faixa de impacto de
 prazo e custo em relação ao forecast atual, déficit estático de recurso quando
@@ -763,6 +763,14 @@ Bloqueia: fechamento V-101
 ```
 
 Priorizar somente novos escopos com impacto relevante.
+
+**TDS-23 implementado — aguardando revisão funcional:** atividades `DS-*`
+relevantes agora aparecem na **Visão** e na primeira página do relatório de
+Execução com hora da descoberta, impacto marginal estimado sobre o término e
+atividades que passaram a bloquear. O impacto é calculado por contrafactual
+individual no mesmo estado operacional; quando dependências entre `DS-*`
+impedem remover uma atividade isoladamente, o relatório marca o impacto como
+**não isolável** em vez de inventar um número.
 
 ---
 
@@ -903,7 +911,7 @@ Depois disso avaliar:
 - [x] Premissas do cenário.
 - [x] Ranking de direcionadores de risco.
 - [x] Decisões pendentes na execução.
-- [ ] Novo escopo com impacto.
+- [x] Novo escopo com impacto.
 - [ ] Status gerencial coerente com P80/P(janela).
 
 ## Sprint 5 — Calendários
