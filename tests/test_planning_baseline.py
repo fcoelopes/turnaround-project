@@ -192,3 +192,52 @@ def test_legacy_planning_baseline_without_governance_fields_remains_readable():
     assert restored.risk_assumptions is None
     assert restored.capacity_origins == {}
     assert restored.capacities_validated is False
+
+
+def test_approved_baseline_can_normalize_legacy_dangling_predecessor():
+    tasks = [
+        Task(
+            id="7",
+            name="Atividade potencial",
+            duration_h=4,
+            predecessors=[Link("5", "FS", 0)],
+        )
+    ]
+    result = TurnaroundResult(
+        schedule=[
+            ScheduledTask(
+                id="7",
+                name="Atividade potencial",
+                start_h=0,
+                finish_h=4,
+                duration_h=4,
+                resources={},
+            )
+        ],
+        makespan_h=4,
+        resource_peak={},
+        resource_utilization={},
+        tardiness_h=0,
+        priority_rule="minimum_float",
+    )
+    baseline = build_planning_baseline(
+        project_name="Parada legado",
+        source_name="legado.xml",
+        hours_per_day=8,
+        deadline_h=8,
+        capacities={},
+        tasks=tasks,
+        result=result,
+    )
+
+    assert baseline.dangling_predecessor_links() == [("7", "5")]
+
+    normalized = baseline.to_tasks(drop_dangling_predecessors=True)
+    assert normalized[0].predecessors == []
+
+    project = project_from_tasks(
+        normalized,
+        baseline.capacities,
+        deadline=baseline.deadline_h,
+    )
+    assert [task.id for task in project.tasks] == ["7"]
