@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -604,6 +605,7 @@ if run:
         "comparison": comparison,
         "risk": risk,
         "risk_error": risk_error,
+        "calculated_at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
     }
     st.session_state["planning_result"] = cached_result
 elif (
@@ -1362,6 +1364,36 @@ with tab_schedule:
             hide_index=True,
         )
 
+scenario_assumptions = {
+    "source_name": uploaded.name,
+    "deadline_h": None if deadline_h is None else float(deadline_h),
+    "hours_per_day": int(hours_per_day),
+    "capacities": {
+        resource: float(value)
+        for resource, value in capacities.items()
+    },
+    "capacity_origins": dict(capacity_origins),
+    "simulations": int(simulations),
+    "duration_distribution": {
+        "optimistic_pct": float(optimistic_pct),
+        "most_likely_pct": float(most_likely_pct),
+        "pessimistic_pct": float(pessimistic_pct),
+    },
+    "scope_events": [
+        {
+            "trigger": task_label_by_id.get(
+                item.trigger_task_id,
+                item.trigger_task_id,
+            ),
+            "event": item.event_name,
+            "probability": float(item.probability),
+        }
+        for item in scope_risks
+    ],
+    "heuristic": f"SSGS · {best.priority_rule}",
+    "calculated_at": cached_result.get("calculated_at", "não registrado"),
+}
+
 with tab_export:
     st.markdown("#### Relatório gerencial")
     st.caption(
@@ -1400,6 +1432,7 @@ with tab_export:
             if baseline_formal and approved_baseline is not None
             else None
         ),
+        scenario_assumptions=scenario_assumptions,
     )
 
     st.download_button(
