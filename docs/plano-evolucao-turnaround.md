@@ -992,7 +992,7 @@ silenciosamente. O resultado de risco registra ainda `calendar_aware` e os
 recursos calendarizados usados no cálculo.
 - [x] Exportação Project coerente.
 
-**TDS-31 implementado — aguardando revisão funcional:** o exportador MSPDI deixou
+**TDS-31 implementado e aprovado:** o exportador MSPDI deixou
 de representar todos os recursos pelo calendário 24×7. O arquivo mantém um
 calendário-base 24×7 para o projeto e cria um calendário dedicado para cada
 recurso que possui `WorkingCalendar`, associando-o via `Resource.CalendarUID`.
@@ -1011,7 +1011,22 @@ recalcular pode obter datas diferentes das calculadas pelo TDS.
 
 ## Sprint 6 — Atualização operacional
 
-- [ ] Importar progresso.
+- [x] Importar progresso.
+
+**TDS-32 implementado — aguardando revisão funcional:** a aba **Operação** agora
+aceita importação de progresso em **Microsoft Project XML, Excel ou CSV**.
+O importador normaliza status e percentual concluído e concilia as linhas
+primeiro por **UID Project** e, quando necessário, por **ID**. Atividades
+desconhecidas e divergências de nome são sinalizadas antes do registro;
+duplicidades e combinações incoerentes de status/% são bloqueantes.
+
+A importação aprovada é persistida no histórico da sessão como evento
+`PROGRESS_IMPORTED`, incluindo arquivo de origem, linhas conciliadas e
+warnings, sem nova migration de banco. Nesta etapa a fotografia de progresso
+**não altera ainda o `ExecutionState`**: o sistema não inventa Actual
+Start/Finish nem usa horários da baseline como realizado. A aplicação ao
+scheduler fica para a próxima microtarefa, quando Actual Start / Actual Finish
+forem importados e validados.
 - [ ] Actual Start / Actual Finish.
 - [ ] Remaining Duration.
 - [ ] Atualização em lote.
