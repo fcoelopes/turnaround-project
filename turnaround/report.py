@@ -1481,6 +1481,30 @@ def build_conditional_management_pdf(
             and not pending_decisions_df.empty
             else []
         ),
+        *(
+            [
+                _p("NOVO ESCOPO RELEVANTE", s["h2"]),
+                _dataframe_table(
+                    dynamic_scope_df,
+                    [
+                        "ID",
+                        "Atividade",
+                        "Descoberta em (h)",
+                        "Impacto no término",
+                        "Bloqueia",
+                    ],
+                    max_rows=8,
+                    widths=[18 * mm, 58 * mm, 28 * mm, 34 * mm, 36 * mm],
+                ),
+                _p(
+                    "Impacto estimado por contrafactual individual no mesmo estado operacional; dependências entre DS-* podem impedir isolamento.",
+                    s["muted"],
+                ),
+            ]
+            if dynamic_scope_df is not None
+            and not dynamic_scope_df.empty
+            else []
+        ),
         _p("Leitura executiva", s["h2"]),
         _p(
             (
@@ -1564,9 +1588,16 @@ def build_conditional_management_pdf(
                 _p("Trabalho criado durante a execução", s["h2"]),
                 _dataframe_table(
                     dynamic_scope_df,
-                    ["ID", "Atividade", "Descoberta em (h)", "Recursos", "Bloqueia"],
+                    [
+                        "ID",
+                        "Atividade",
+                        "Descoberta em (h)",
+                        "Impacto no término",
+                        "Recursos",
+                        "Bloqueia",
+                    ],
                     max_rows=20,
-                    widths=[18 * mm, 65 * mm, 25 * mm, 36 * mm, 36 * mm],
+                    widths=[16 * mm, 48 * mm, 24 * mm, 30 * mm, 28 * mm, 28 * mm],
                 ),
             ]
             if dynamic_scope_df is not None and not dynamic_scope_df.empty
