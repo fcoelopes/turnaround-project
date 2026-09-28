@@ -452,13 +452,13 @@ with config_risk:
     if calendar_mode_active:
         status(
             (
-                "O RCPSP determinístico já usa os calendários configurados. "
-                "O Monte Carlo ainda não: para não misturar bases temporais, "
-                "P50/P80/P90 ficam indisponíveis neste cenário até a integração "
-                "calendar-aware da próxima etapa."
+                "RCPSP determinístico e Monte Carlo usam os mesmos calendários "
+                "e o mesmo eixo de tempo decorrido. As durações sorteadas continuam "
+                "não preemptivas: cada atividade precisa caber integralmente numa "
+                "janela contínua de todos os recursos exigidos."
             ),
-            tone="warn",
-            title="Risco probabilístico temporariamente não comparável.",
+            tone="ok",
+            title="Risco probabilístico alinhado ao calendário.",
         )
     st.markdown("#### Incerteza de duração")
     st.caption(
@@ -749,29 +749,23 @@ if run:
         st.stop()
 
     risk_error = None
-    if calendar_mode_active:
-        risk = None
-        risk_error = (
-            "Monte Carlo não executado: este cenário usa calendário real de recurso "
-            "e a integração probabilística calendar-aware ainda não foi concluída."
-        )
-    else:
-        with st.spinner("Simulando duração + ampliação probabilística de escopo..."):
-            try:
-                risk = simulate_deadline_risk(
-                    tasks,
-                    capacities,
-                    priority_rule=best.priority_rule,
-                    deadline_h=deadline_h,
-                    n=int(simulations),
-                    optimistic_factor=1 + optimistic_pct / 100,
-                    most_likely_factor=1 + most_likely_pct / 100,
-                    pessimistic_factor=1 + pessimistic_pct / 100,
-                    scope_risks=scope_risks,
-                )
-            except Exception as exc:
-                risk = None
-                risk_error = str(exc)
+    with st.spinner("Simulando duração + ampliação probabilística de escopo..."):
+        try:
+            risk = simulate_deadline_risk(
+                tasks,
+                capacities,
+                priority_rule=best.priority_rule,
+                deadline_h=deadline_h,
+                n=int(simulations),
+                optimistic_factor=1 + optimistic_pct / 100,
+                most_likely_factor=1 + most_likely_pct / 100,
+                pessimistic_factor=1 + pessimistic_pct / 100,
+                scope_risks=scope_risks,
+                resource_calendars=resource_calendars,
+            )
+        except Exception as exc:
+            risk = None
+            risk_error = str(exc)
 
     cached_result = {
         "signature": planning_signature,
