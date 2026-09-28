@@ -3,7 +3,7 @@
 Este manual descreve o uso da página **Escopo e Replanejamento** do Turnaround Decision Support.
 
 > A interface não mantém mais uma aba **Manual**. A ajuda curta aparece dentro de
-> **Operação**, **Configuração**, **Pessoas** e **Governança**; este documento
+> **Operação**, **Escopo**, **Recursos**, **Configuração** e **Governança**; este documento
 > permanece como referência técnica completa.
 
 A funcionalidade foi criada para tratar um problema típico de paradas de manutenção: o planejamento começa com um escopo conhecido, mas novas atividades podem surgir somente depois da abertura e inspeção do equipamento.
@@ -250,7 +250,7 @@ Isso diferencia o modelo de um RCPSP convencional em que todo o escopo já é co
 
 ## 7. Etapa 2 — Capacidade de recursos
 
-A interface apresenta sliders para os recursos disponíveis.
+Na aba **Recursos**, a interface apresenta sliders para os recursos disponíveis. No mesmo domínio ficam o roster, as habilidades humanas, o multi-skill e os indicadores de pico/utilização do cenário.
 
 No cenário demonstrativo aparecem recursos como:
 
