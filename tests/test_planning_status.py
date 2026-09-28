@@ -93,8 +93,6 @@ def test_planning_ui_has_single_managerial_status_source():
 
     assert "classify_planning_status(" in source
     assert 'tone = "ok" if probability >= 0.8 else "warn"' not in source
-    assert (
-        "A classificação gerencial de prazo combina P80 e "
-        "P(cumprir janela)"
-    ) in source
+    assert "A classificação gerencial de prazo combina P80 e " in source
+    assert "P(cumprir janela); nenhum desses sinais" in source
     assert 'title=f"Status geral: {executive_status.overall}."' in source
