@@ -128,5 +128,7 @@ def test_planning_calendar_mode_uses_elapsed_time_and_disables_incomparable_risk
     assert 'config_resources, config_calendar, config_risk' in source
     assert 'timeline_hours_per_day = 24 if calendar_mode_active' in source
     assert 'resource_calendars=resource_calendars' in source
-    assert 'Monte Carlo não executado: este cenário usa calendário real' in source
+    assert 'resource_calendars=resource_calendars' in source
+    assert 'Risco probabilístico alinhado ao calendário.' in source
+    assert 'Monte Carlo não executado: este cenário usa calendário real' not in source
     assert '"resource_calendars": {' in source
