@@ -37,6 +37,28 @@ mensagens de bloqueio, não em traceback.
 
 ## Calendários de trabalho
 
+### Planejamento RCPSP calendar-aware
+
+O Planejamento também usa `WorkingCalendar` no RCPSP determinístico. A aba
+**Calendários** mantém recursos em 24 h por padrão e permite configurar um turno
+recorrente por recurso. O horário do turno é alinhado ao relógio real do início
+do cronograma: se H+0 corresponde a 06:00 e o turno começa às 07:00, a primeira
+janela começa em H+1.
+
+Ao ativar qualquer calendário restritivo:
+
+- a linha do tempo passa a representar **tempo decorrido real**;
+- a janela em dias usa 24 h por dia corrido;
+- utilização é calculada sobre horas efetivamente trabalháveis do recurso;
+- a Baseline 0 persiste o calendário usado no cálculo e a Execução o restaura;
+- o gate de prontidão valida o cronograma aprovado contra essas janelas.
+
+O Monte Carlo ainda não usa calendários nesta etapa. Para evitar comparar um
+RCPSP calendar-aware com um P80 calculado em horas contínuas, os indicadores
+probabilísticos ficam indisponíveis enquanto houver calendário restritivo. A
+integração probabilística é a próxima etapa do Sprint 5.
+
+
 ### Calendário específico por recurso
 
 ### Indisponibilidades absolutas
