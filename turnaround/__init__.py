@@ -6,7 +6,7 @@ from .baseline_revision import (
     build_baseline_revision,
 )
 from .criticality import EffectiveCriticalityResult, EffectiveDriver, analyze_effective_criticality
-from .decision_engine import DecisionEngineResult, DecisionEvaluation, DecisionImpact, evaluate_scope_decisions
+from .decision_engine import DecisionEngineResult, DecisionEvaluation, DecisionImpact, evaluate_scope_decisions, summarize_pending_decisions
 from .dynamic_scope import DynamicScopeMaterialization, materialize_dynamic_scope, next_discovered_task_id
 from .advanced_models import (
     ActivationRule,
@@ -53,6 +53,7 @@ __all__ = [
     "DecisionEngineResult",
     "DecisionEvaluation",
     "DecisionImpact",
+    "summarize_pending_decisions",
     "DiscoveredTask",
     "DynamicScopeMaterialization",
     "EffectiveCriticalityResult",
