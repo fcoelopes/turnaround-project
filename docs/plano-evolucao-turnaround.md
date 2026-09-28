@@ -654,7 +654,7 @@ Reserva até P80        +2,7 d
 STATUS: ATENÇÃO
 ```
 
-**TDS-19 implementado — aguardando revisão funcional:** a primeira página do
+**TDS-19 implementado e aprovado:** a primeira página do
 relatório de **Planejamento** agora começa pela leitura de decisão: **Janela,
 Makespan base, P80, P(cumprir janela), Reserva até P80 e Status geral**. A
 governança da Baseline 0 aparece depois desse resumo, e o diagnóstico técnico
@@ -692,6 +692,13 @@ Probabilidades de eventos
 Heurística escolhida
 Data/hora do cálculo
 ```
+
+**TDS-20 implementado — aguardando revisão funcional:** o PDF de Planejamento
+passou a ter uma página dedicada **Premissas do cenário**, gerada a partir dos
+mesmos valores usados no cálculo. Ela registra arquivo de origem, janela,
+horas/dia para conversão, capacidades e respectivas origens, número de
+simulações Monte Carlo, distribuição triangular de duração, probabilidades dos
+eventos de escopo, heurística SSGS/regra escolhida e timestamp do cálculo.
 
 ---
 
@@ -879,7 +886,7 @@ Depois disso avaliar:
 ## Sprint 4 — Relatórios gerenciais
 
 - [x] Nova primeira página do Planejamento.
-- [ ] Premissas do cenário.
+- [x] Premissas do cenário.
 - [ ] Ranking de direcionadores de risco.
 - [ ] Decisões pendentes na execução.
 - [ ] Novo escopo com impacto.
