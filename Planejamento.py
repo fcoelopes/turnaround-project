@@ -958,15 +958,9 @@ with config_risk:
                 )
 
         if deadline_h and risk.get("probability_meet_deadline") is not None:
-            probability = risk["probability_meet_deadline"]
-            tone = "ok" if probability >= 0.8 else "warn"
-            status(
-                (
-                    f"A probabilidade simulada de cumprir a janela é "
-                    f"{probability * 100:.1f}%."
-                ),
-                tone=tone,
-                title="Exposição ao prazo.",
+            st.caption(
+                "A classificação gerencial de prazo combina P80 e "
+                "P(cumprir janela); nenhum desses sinais é interpretado isoladamente."
             )
 
 executive_status = classify_planning_status(
