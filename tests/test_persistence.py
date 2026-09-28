@@ -597,3 +597,136 @@ def test_progress_import_survives_store_restart_without_new_schema(tmp_path):
 
     events = second.list_events(session.id)
     assert any(item.event_type == "PROGRESS_IMPORTED" for item in events)
+
+
+def test_progress_batch_uses_optimistic_concurrency_and_audit_metadata(tmp_path):
+    url = _database_url(tmp_path)
+    upgrade_database(url)
+    store = ExecutionStore(url)
+    session = store.get_or_create_active_session(
+        project_key="batch-progress",
+        project_name="Parada lote",
+    )
+
+    first = store.record_progress_import(
+        session.id,
+        source_name="primeiro.csv",
+        rows=[
+            {
+                "task_id": "10",
+                "project_uid": "1010",
+                "task_name": "Abrir",
+                "percent_complete": 20.0,
+                "status": "in_progress",
+                "actual_start_h": 1.0,
+                "actual_finish_h": None,
+                "remaining_duration_h": 4.0,
+                "remaining_as_of_h": 2.0,
+                "source_reference": "UID 1010",
+            }
+        ],
+        expected_previous_event_id=None,
+        changed_task_ids=["10"],
+        incoming_rows=1,
+    )
+
+    second = store.record_progress_import(
+        session.id,
+        source_name="segundo.csv",
+        rows=[
+            {
+                "task_id": "10",
+                "project_uid": "1010",
+                "task_name": "Abrir",
+                "percent_complete": 40.0,
+                "status": "in_progress",
+                "actual_start_h": 1.0,
+                "actual_finish_h": None,
+                "remaining_duration_h": 2.0,
+                "remaining_as_of_h": 3.0,
+                "source_reference": "UID 1010",
+            },
+            {
+                "task_id": "20",
+                "project_uid": "2020",
+                "task_name": "Inspecionar",
+                "percent_complete": 0.0,
+                "status": "not_started",
+                "actual_start_h": None,
+                "actual_finish_h": None,
+                "remaining_duration_h": None,
+                "remaining_as_of_h": None,
+                "source_reference": "UID 2020",
+            },
+        ],
+        expected_previous_event_id=first.id,
+        changed_task_ids=["10"],
+        preserved_task_ids=["20"],
+        incoming_rows=1,
+    )
+
+    assert second.payload["incoming_rows"] == 1
+    assert second.payload["changed_task_ids"] == ["10"]
+    assert second.payload["preserved_task_ids"] == ["20"]
+    assert second.payload["matched_rows"] == 2
+
+    with pytest.raises(ValueError, match="mudou desde a prévia"):
+        store.record_progress_import(
+            session.id,
+            source_name="usuario-desatualizado.csv",
+            rows=second.payload["rows"],
+            expected_previous_event_id=first.id,
+            changed_task_ids=["10"],
+            incoming_rows=1,
+        )
+
+
+def test_progress_batch_rejects_missing_expected_previous_event(tmp_path):
+    url = _database_url(tmp_path)
+    upgrade_database(url)
+    store = ExecutionStore(url)
+    session = store.get_or_create_active_session(
+        project_key="batch-race",
+        project_name="Parada lote concorrente",
+    )
+
+    store.record_progress_import(
+        session.id,
+        source_name="estado.csv",
+        rows=[
+            {
+                "task_id": "10",
+                "project_uid": None,
+                "task_name": "Atividade",
+                "percent_complete": 10.0,
+                "status": "in_progress",
+                "actual_start_h": 0.0,
+                "actual_finish_h": None,
+                "remaining_duration_h": 4.0,
+                "remaining_as_of_h": 1.0,
+                "source_reference": "ID 10",
+            }
+        ],
+        expected_previous_event_id=None,
+    )
+
+    with pytest.raises(ValueError, match="mudou desde a prévia"):
+        store.record_progress_import(
+            session.id,
+            source_name="sem-refresh.csv",
+            rows=[
+                {
+                    "task_id": "10",
+                    "project_uid": None,
+                    "task_name": "Atividade",
+                    "percent_complete": 20.0,
+                    "status": "in_progress",
+                    "actual_start_h": 0.0,
+                    "actual_finish_h": None,
+                    "remaining_duration_h": 3.0,
+                    "remaining_as_of_h": 2.0,
+                    "source_reference": "ID 10",
+                }
+            ],
+            expected_previous_event_id=None,
+        )
