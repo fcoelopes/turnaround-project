@@ -194,6 +194,28 @@ Atividades `in_progress` com Actual Start + Remaining Duration válidos entram
 no `ExecutionState` com término previsto e passam a reservar recursos e
 bloquear sucessoras até o forecast.
 
+### Atualização em lote
+
+Uma nova importação de progresso é tratada como **patch parcial** da fotografia
+operacional já auditada. Se o arquivo trouxer apenas 20 atividades de um
+cronograma com 300, as outras 280 preservam o último estado conhecido.
+
+Na prévia, a aplicação separa:
+
+- atividades alteradas pelo lote;
+- linhas recebidas sem mudança;
+- atividades preservadas da fotografia anterior.
+
+Campos omitidos numa atualização incremental podem reutilizar Actual
+Start/Finish e Remaining Duration anteriores quando a transição continua
+válida. O merge bloqueia regressões de status, redução de percentual concluído
+e snapshots de Remaining Duration mais antigos que o já registrado.
+
+O registro é atômico. A aplicação grava a fotografia consolidada em
+PROGRESS_IMPORTED e usa o ID do último evento como controle otimista de
+concorrência. Se outro usuário atualizar o progresso após a prévia, o lote
+desatualizado é recusado em vez de sobrescrever o estado mais novo.
+
 ## Dois níveis de planejamento
 
 ### Planejamento-base — RCPSP
