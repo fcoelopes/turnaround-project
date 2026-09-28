@@ -83,8 +83,10 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
                 "ID": "DS-001",
                 "Atividade": "Reparo descoberto",
                 "Descoberta em (h)": 7.0,
+                "Impacto no término": "+4.0 h",
                 "Recursos": "Soldador=1",
-                "Bloqueia": "9",
+                "Bloqueia": "Fechamento V-101",
+                "Crítica atual": "sim",
             }
         ]
     )
@@ -201,6 +203,8 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
     assert "Soldador" in table_text
     assert "1.0" in table_text
     assert "Reparo descoberto" in table_text
+    assert "+4.0 h" in table_text
+    assert "Fechamento V-101" in table_text
     assert "Rev.1" in table_text
     assert "Original" in table_text
     assert "Gerência da parada" in table_text
