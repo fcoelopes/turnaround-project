@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
@@ -120,8 +121,36 @@ class ApprovedPlanningBaseline(BaseModel):
     scope_risks: list[PlanningScopeRisk] = Field(default_factory=list)
     approved_at: datetime
 
-    def to_tasks(self) -> list[Task]:
-        return [item.to_task() for item in self.tasks]
+    def dangling_predecessor_links(self) -> list[tuple[str, str]]:
+        known_ids = {item.id for item in self.tasks}
+        return [
+            (item.id, link.predecessor_id)
+            for item in self.tasks
+            for link in item.predecessors
+            if link.predecessor_id not in known_ids
+        ]
+
+    def to_tasks(
+        self,
+        *,
+        drop_dangling_predecessors: bool = False,
+    ) -> list[Task]:
+        tasks = [item.to_task() for item in self.tasks]
+        if not drop_dangling_predecessors:
+            return tasks
+
+        known_ids = {task.id for task in tasks}
+        return [
+            replace(
+                task,
+                predecessors=[
+                    link
+                    for link in task.predecessors
+                    if link.predecessor_id in known_ids
+                ],
+            )
+            for task in tasks
+        ]
 
     def reference_start_times(self) -> dict[str, float]:
         return {
