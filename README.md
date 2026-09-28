@@ -166,18 +166,23 @@ A página **Operação** aceita uma fotografia de progresso em Microsoft Project
 XML, Excel ou CSV. A conciliação usa UID Project como referência preferencial e
 ID como fallback, evitando depender apenas do nome da atividade.
 
-Nesta primeira etapa são importados e auditados:
+São importados e auditados:
 
 - status operacional;
 - percentual concluído, quando informado;
+- Actual Start e Actual Finish, quando disponíveis;
 - referência usada na conciliação;
 - arquivo de origem e warnings da importação.
 
-A fotografia é persistida no histórico da sessão como `PROGRESS_IMPORTED`.
-Ela ainda **não congela atividades no scheduler**. O TDS não transforma
-percentual concluído em Actual Start/Finish fictícios nem assume que horários da
-baseline representam realizado. A aplicação ao `ExecutionState` entra na etapa
-seguinte, junto da importação e validação dos horários reais.
+Actuals podem chegar como data/hora ou diretamente em H+. Datas absolutas são
+convertidas pela origem temporal do baseline. Trabalho concluído com Actual
+Start + Actual Finish válidos passa a ser congelado no `ExecutionState` pelo
+realizado.
+
+Quando existe qualquer Actual importado, o TDS deixa de inferir realizado
+apenas pela posição da hora corrente no cronograma. Atividade em andamento com
+Actual Start permanece auditada, mas seu término futuro só será congelado
+quando houver **Remaining Duration**.
 
 ## Dois níveis de planejamento
 
