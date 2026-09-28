@@ -51,3 +51,14 @@ def test_execution_revalidates_persisted_baseline_before_project_build():
     assert "allow_dangling_repair=True" in source
     assert "require_formal_approval=True" in source
     assert '"Baseline bloqueado para execução."' in source
+
+
+def test_execution_supports_audited_progress_import_without_faking_actual_times():
+    source = ADVANCED_PAGE.read_text(encoding="utf-8")
+
+    assert '"Importar progresso em lote"' in source
+    assert "parse_progress_file(progress_file)" in source
+    assert "reconcile_progress(" in source
+    assert "record_progress_import(" in source
+    assert '"Actual Start/Actual Finish"' in source
+    assert "latest_progress_import(" in source
