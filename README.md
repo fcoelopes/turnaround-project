@@ -564,17 +564,24 @@ maior desvio individual
 custo
 ```
 
-`λ=0` reproduz o comportamento anterior. Com `λ>0`, duas soluções de
-desempenho temporal semelhante passam a favorecer a que exige menos mudanças no
-plano comunicado às equipes.
+Na interface operacional, o planejador não precisa trabalhar diretamente com
+`λ`. O controle principal é **Preservação do plano**:
+
+- **Baixa** → λ=0,3;
+- **Balanceada** → λ=1,0;
+- **Alta** → λ=1,7.
+
+O valor exato permanece disponível somente em **Configuração avançada ·
+estabilidade** para estudos e calibração. Sessões antigas que possuam outro valor
+de λ são preservadas como perfil **Avançada**, sem conversão silenciosa.
 
 Atividades descobertas durante a parada não recebem penalidade de estabilidade,
 pois não possuíam horário de início no plano anterior. Atividades concluídas ou
 em andamento continuam congeladas pelo rescheduling.
 
 A página avançada mostra a soma dos deslocamentos, o maior deslocamento,
-quantas atividades foram comparadas e o peso `λ`; essas métricas também entram
-no relatório gerencial PDF e nos cenários salvos da sessão.
+quantas atividades foram comparadas e o perfil de **Preservação do plano**.
+O PDF e os cenários salvos usam a mesma linguagem operacional.
 
 ### Identidade estável das regras de escopo
 
