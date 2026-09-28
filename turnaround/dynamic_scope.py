@@ -5,16 +5,108 @@ from dataclasses import dataclass
 from .advanced_models import (
     ActivationRule,
     DiscoveredTask,
+    ExecutionState,
     Precedence,
     TurnaroundProject,
     TurnaroundTask,
 )
+from .reschedule import reschedule_from_state
+from .workforce import WorkforceProfile
 
 
 @dataclass(frozen=True)
 class DynamicScopeMaterialization:
     project: TurnaroundProject
     discovered_ids: set[str]
+
+
+def evaluate_dynamic_scope_impacts(
+    *,
+    planned_project: TurnaroundProject,
+    discovered_tasks: list[DiscoveredTask],
+    state: ExecutionState,
+    capacities: dict[str, float],
+    current_makespan: float,
+    critical_ids: set[str] | None = None,
+    reference_start_times: dict[str, float] | None = None,
+    stability_weight: float = 0.0,
+    workforce: WorkforceProfile | None = None,
+) -> list[dict[str, object]]:
+    """Estima o impacto marginal de DS-* relevantes por contrafactual individual.
+
+    Para cada descoberta relevante, recompõe o projeto sem aquela atividade e
+    reprograma o mesmo estado operacional. Se a remoção quebrar dependências
+    entre atividades descobertas, o impacto é marcado como não isolável.
+    """
+    critical_ids = set(critical_ids or set())
+    rows: list[dict[str, object]] = []
+
+    for item in discovered_tasks:
+        should_evaluate = (
+            item.id in critical_ids
+            or bool(item.successor_task_ids)
+        )
+        impact_h: float | None = None
+        diagnostic = ""
+
+        if should_evaluate:
+            counterfactual_tasks = [
+                candidate
+                for candidate in discovered_tasks
+                if candidate.id != item.id
+            ]
+            try:
+                counterfactual = materialize_dynamic_scope(
+                    planned_project,
+                    counterfactual_tasks,
+                ).project.model_copy(
+                    update={"capacities": dict(capacities)}
+                )
+                counterfactual_result = reschedule_from_state(
+                    counterfactual,
+                    state,
+                    reference_start_times=reference_start_times,
+                    stability_weight=stability_weight,
+                    workforce=workforce,
+                )
+                impact_h = (
+                    float(current_makespan)
+                    - float(counterfactual_result.schedule.makespan)
+                )
+            except ValueError as exc:
+                diagnostic = str(exc)
+
+        relevant = (
+            (impact_h is not None and impact_h > 1e-9)
+            or item.id in critical_ids
+            or bool(item.successor_task_ids)
+        )
+        if not relevant:
+            continue
+
+        rows.append(
+            {
+                "id": item.id,
+                "name": item.name,
+                "discovered_at": float(item.discovered_at),
+                "impact_h": impact_h,
+                "successor_task_ids": list(item.successor_task_ids),
+                "critical": item.id in critical_ids,
+                "diagnostic": diagnostic,
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            -(
+                float(row["impact_h"])
+                if row["impact_h"] is not None
+                else float("-inf")
+            ),
+            str(row["id"]),
+        )
+    )
+    return rows
 
 
 def next_discovered_task_id(
