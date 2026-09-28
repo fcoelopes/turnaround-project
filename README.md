@@ -19,6 +19,27 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 
 ## Calendários de trabalho
 
+### Calendário específico por recurso
+
+No domínio MRCPSP, cada recurso pode ter seu próprio calendário recorrente.
+Ao programar uma atividade, o solver procura a primeira janela contínua em que
+**todos os recursos demandados** estejam simultaneamente disponíveis.
+
+Exemplo:
+
+~~~text
+Guindaste   06:00–18:00
+Equipe      07:00–19:00
+Atividade   duração 4 h
+
+Primeiro início possível: 07:00
+~~~
+
+Recursos sem calendário explícito continuam 24 h disponíveis. Essa integração
+já vale para o rescheduling avançado; RCPSP, Monte Carlo, indisponibilidades,
+overtime e exportação Project serão conectados em etapas posteriores.
+
+
 O domínio já possui uma primitiva de calendário com turnos diários recorrentes.
 Ela suporta, por exemplo:
 
