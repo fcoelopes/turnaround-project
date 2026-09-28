@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from turnaround import ExecutionState, TaskExecution, project_from_tasks, resolve_activation
+import pytest
+
+from turnaround import (
+    DailyShift,
+    ExecutionState,
+    TaskExecution,
+    WorkingCalendar,
+    project_from_tasks,
+    resolve_activation,
+)
 from turnaround.models import Link, Task
 from turnaround.planning_scope_risk import (
     PlanningScopeRisk,
@@ -174,3 +183,123 @@ def test_planning_scope_risk_becomes_execution_condition_after_approval():
         ),
     )
     assert "2" in after_event.active_ids
+
+
+def test_monte_carlo_uses_same_resource_calendar_as_deterministic_rcpsp():
+    common = dict(
+        tasks=[
+            Task(
+                id="1",
+                name="Executar",
+                duration_h=4,
+                resources={"Equipe": 1},
+            )
+        ],
+        capacities={"Equipe": 1},
+        priority_rule="minimum_float",
+        n=60,
+        optimistic_factor=0.99,
+        most_likely_factor=1.0,
+        pessimistic_factor=1.01,
+        seed=19,
+    )
+
+    continuous = simulate_deadline_risk(
+        **common,
+        deadline_h=4,
+    )
+    calendar_aware = simulate_deadline_risk(
+        **common,
+        deadline_h=4,
+        resource_calendars={
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+                origin_hour=6,
+            )
+        },
+    )
+
+    assert continuous["p80_h"] == 4.0
+    assert continuous["probability_meet_deadline"] == 1.0
+
+    # H+0 = 06:00 e o turno começa 07:00, logo o mesmo serviço termina H+5.
+    assert calendar_aware["p80_h"] == 5.0
+    assert calendar_aware["probability_meet_deadline"] == 0.0
+    assert calendar_aware["calendar_aware"] is True
+    assert calendar_aware["calendar_resources"] == ["Equipe"]
+
+
+def test_monte_carlo_preserves_calendar_in_paired_scope_comparison():
+    risk = PlanningScopeRisk(
+        task_id="2",
+        trigger_task_id="1",
+        event_name="damage_found",
+        probability=1.0,
+    )
+    result = simulate_deadline_risk(
+        tasks=[
+            Task(
+                id="1",
+                name="Inspecionar",
+                duration_h=2,
+                resources={"Equipe": 1},
+            ),
+            Task(
+                id="2",
+                name="Reparo",
+                duration_h=4,
+                predecessors=[Link("1")],
+                resources={"Equipe": 1},
+            ),
+        ],
+        capacities={"Equipe": 1},
+        priority_rule="minimum_float",
+        deadline_h=30,
+        n=40,
+        optimistic_factor=0.99,
+        most_likely_factor=1.0,
+        pessimistic_factor=1.01,
+        seed=23,
+        scope_risks=[risk],
+        resource_calendars={
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+                origin_hour=6,
+            )
+        },
+    )
+
+    assert result["scope_enabled"] is True
+    assert result["calendar_aware"] is True
+    assert result["mean_scope_impact_h"] > 0
+    assert result["p80_h"] >= result["duration_only_p80_h"]
+
+
+def test_monte_carlo_fails_explicitly_when_sampled_duration_cannot_fit_shift():
+    with pytest.raises(ValueError, match="não cabe no calendário"):
+        simulate_deadline_risk(
+            tasks=[
+                Task(
+                    id="1",
+                    name="Serviço longo",
+                    duration_h=12,
+                    resources={"Equipe": 1},
+                )
+            ],
+            capacities={"Equipe": 1},
+            priority_rule="minimum_float",
+            deadline_h=48,
+            n=5,
+            optimistic_factor=1.20,
+            most_likely_factor=1.25,
+            pessimistic_factor=1.30,
+            seed=3,
+            resource_calendars={
+                "Equipe": WorkingCalendar(
+                    name="Equipe",
+                    shifts=(DailyShift(7, 19),),
+                )
+            },
+        )
