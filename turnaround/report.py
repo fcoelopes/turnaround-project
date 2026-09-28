@@ -1009,6 +1009,18 @@ def build_base_management_pdf(
     return _build_pdf(story)
 
 
+def _stability_profile_label(stability_weight: float) -> str:
+    presets = {
+        "Baixa": 0.3,
+        "Balanceada": 1.0,
+        "Alta": 1.7,
+    }
+    for label, weight in presets.items():
+        if abs(float(stability_weight) - weight) <= 1e-9:
+            return label
+    return "Avançada"
+
+
 def build_conditional_management_pdf(
     *,
     project_name: str,
@@ -1313,8 +1325,8 @@ def build_conditional_management_pdf(
         _p(
             (
                 f"Snapshot {snapshot_id or 'não informado'} · solver {strategy} · "
-                f"λ={stability_weight:.1f} · maior deslocamento individual "
-                f"{max_start_deviation:.1f} h."
+                f"preservação do plano {_stability_profile_label(stability_weight)} · "
+                f"maior deslocamento individual {max_start_deviation:.1f} h."
             ),
             s["muted"],
         ),
