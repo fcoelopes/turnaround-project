@@ -1038,6 +1038,16 @@ class ExecutionStore:
                     if row.get("actual_finish_h") is None
                     else float(row.get("actual_finish_h"))
                 ),
+                "remaining_duration_h": (
+                    None
+                    if row.get("remaining_duration_h") is None
+                    else float(row.get("remaining_duration_h"))
+                ),
+                "remaining_as_of_h": (
+                    None
+                    if row.get("remaining_as_of_h") is None
+                    else float(row.get("remaining_as_of_h"))
+                ),
                 "source_reference": str(row["source_reference"]),
             }
             for row in rows
