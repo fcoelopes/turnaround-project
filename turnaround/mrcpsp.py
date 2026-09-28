@@ -6,6 +6,7 @@ from math import prod
 import re
 
 from .advanced_models import ExecutionMode, Precedence, TurnaroundProject, TurnaroundTask
+from .calendar import WorkingCalendar
 from .workforce import (
     WorkforceProfile,
     assign_people_to_skills,
@@ -227,6 +228,62 @@ def _people_assignment(
     )
 
 
+def _calendar_aligned_start(
+    earliest: float,
+    duration: float,
+    demand: dict[str, float],
+    resource_calendars: dict[str, WorkingCalendar] | None,
+    *,
+    max_days: int = 366,
+) -> float:
+    """Move o início até uma janela comum a todos os recursos demandados."""
+    calendars = [
+        resource_calendars[resource]
+        for resource, amount in demand.items()
+        if amount > 0
+        and resource_calendars
+        and resource in resource_calendars
+    ]
+    if not calendars:
+        return max(0.0, float(earliest))
+
+    candidate = max(0.0, float(earliest))
+    horizon = candidate + max_days * 24.0
+
+    while candidate <= horizon + 1e-9:
+        if all(
+            calendar.is_working_interval(candidate, duration)
+            for calendar in calendars
+        ):
+            return candidate
+
+        advanced = candidate
+        for calendar in calendars:
+            if calendar.is_working_interval(candidate, duration):
+                continue
+            remaining_days = max(
+                1,
+                int((horizon - candidate) // 24) + 1,
+            )
+            advanced = max(
+                advanced,
+                calendar.next_working_start(
+                    candidate,
+                    duration,
+                    max_days=remaining_days,
+                ),
+            )
+
+        if advanced <= candidate + 1e-9:
+            break
+        candidate = advanced
+
+    raise ValueError(
+        "Não existe janela comum de calendário para todos os recursos "
+        f"demandados por {duration:g} h"
+    )
+
+
 def _earliest_resource_start(
     earliest: float,
     duration: float,
@@ -234,11 +291,23 @@ def _earliest_resource_start(
     capacities: dict[str, float],
     intervals: list[FixedInterval | AdvancedScheduledTask],
     workforce: WorkforceProfile | None = None,
+    resource_calendars: dict[str, WorkingCalendar] | None = None,
 ) -> tuple[float, dict[str, tuple[str, ...]]]:
-    candidates = {max(0.0, earliest)}
+    base_candidates = {max(0.0, earliest)}
     for iv in intervals:
         if iv.finish >= earliest - 1e-9:
-            candidates.add(max(earliest, iv.finish))
+            base_candidates.add(max(earliest, iv.finish))
+
+    candidates = {
+        _calendar_aligned_start(
+            candidate,
+            duration,
+            demand,
+            resource_calendars,
+        )
+        for candidate in base_candidates
+    }
+
     for start in sorted(candidates):
         finish = start + duration
         if not _resource_ok(start, finish, demand, capacities, intervals):
@@ -253,7 +322,12 @@ def _earliest_resource_start(
         if assignments is not None:
             return start, assignments
 
-    fallback = max([earliest] + [iv.finish for iv in intervals])
+    fallback = _calendar_aligned_start(
+        max([earliest] + [iv.finish for iv in intervals]),
+        duration,
+        demand,
+        resource_calendars,
+    )
     assignments = _people_assignment(
         fallback,
         fallback + duration,
@@ -278,6 +352,7 @@ def _schedule_assignment(
     fixed_intervals: list[FixedInterval] | None = None,
     fixed_task_times: dict[str, tuple[float, float]] | None = None,
     workforce: WorkforceProfile | None = None,
+    resource_calendars: dict[str, WorkingCalendar] | None = None,
 ) -> list[AdvancedScheduledTask]:
     fixed_intervals = list(fixed_intervals or [])
     fixed_task_times = dict(fixed_task_times or {})
@@ -332,6 +407,7 @@ def _schedule_assignment(
             capacities,
             intervals,
             workforce=workforce,
+            resource_calendars=resource_calendars,
         )
         item = AdvancedScheduledTask(
             task_id=task.id,
@@ -412,6 +488,7 @@ def solve_mrcpsp(
     reference_start_times: dict[str, float] | None = None,
     stability_weight: float = 0.0,
     workforce: WorkforceProfile | None = None,
+    resource_calendars: dict[str, WorkingCalendar] | None = None,
 ) -> AdvancedScheduleResult:
     if not tasks:
         return AdvancedScheduleResult([], earliest_start, 0.0, 0.0, "empty", 0, 0)
@@ -448,6 +525,7 @@ def solve_mrcpsp(
                 fixed_intervals=fixed_intervals,
                 fixed_task_times=fixed_task_times,
                 workforce=workforce,
+                resource_calendars=resource_calendars,
             )
             evaluated += 1
             score = _score(
