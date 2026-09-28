@@ -1013,7 +1013,7 @@ recalcular pode obter datas diferentes das calculadas pelo TDS.
 
 - [x] Importar progresso.
 
-**TDS-32 implementado — aguardando revisão funcional:** a aba **Operação** agora
+**TDS-32 implementado e aprovado:** a aba **Operação** agora
 aceita importação de progresso em **Microsoft Project XML, Excel ou CSV**.
 O importador normaliza status e percentual concluído e concilia as linhas
 primeiro por **UID Project** e, quando necessário, por **ID**. Atividades
@@ -1027,7 +1027,26 @@ warnings, sem nova migration de banco. Nesta etapa a fotografia de progresso
 Start/Finish nem usa horários da baseline como realizado. A aplicação ao
 scheduler fica para a próxima microtarefa, quando Actual Start / Actual Finish
 forem importados e validados.
-- [ ] Actual Start / Actual Finish.
+- [x] Actual Start / Actual Finish.
+
+**TDS-33 implementado — aguardando revisão funcional:** a importação de
+progresso passou a aceitar **Actual Start** e **Actual Finish** tanto como
+data/hora absoluta quanto diretamente no eixo **H+**. Datas absolutas são
+convertidas contra a origem temporal do baseline; quando a origem não existe, a
+entrada deve usar H+ explícito.
+
+A validação bloqueia Actual Finish anterior ao Start, atividade não iniciada com
+Actuals e atividade em andamento com Actual Finish. Trabalho concluído só é
+congelado pelo realizado quando possui **Actual Start + Actual Finish** válidos.
+Ao existir qualquer Actual importado, esses registros passam a ser a fonte de
+verdade operacional e a tela deixa de inferir realizado apenas porque a hora
+corrente ultrapassou o horário planejado.
+
+Atividades em andamento podem trazer Actual Start, que já fica auditado, mas
+ainda não recebem término previsto automaticamente. O consumo futuro só será
+congelado quando **Remaining Duration** estiver disponível na próxima
+microtarefa. Os Actuals continuam persistidos no evento `PROGRESS_IMPORTED`,
+sem migration adicional.
 - [ ] Remaining Duration.
 - [ ] Atualização em lote.
 - [ ] Comparação plano x realizado.
