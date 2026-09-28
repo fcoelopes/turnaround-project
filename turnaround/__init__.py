@@ -23,6 +23,7 @@ from .advanced_models import (
     TurnaroundTask,
 )
 from .io import load_schedule
+from .progress_import import ImportedProgressRow, ProgressImportResult, ReconciledProgressRow, parse_progress_file, reconcile_progress
 from .planning_scope_risk import (
     PlanningScopeRisk,
     apply_planning_scope_risks_to_project,
@@ -45,6 +46,11 @@ from .reschedule import RescheduleResult, reschedule_from_state
 from .scope import apply_scope_config
 
 __all__ = [
+    "reconcile_progress",
+    "parse_progress_file",
+    "ReconciledProgressRow",
+    "ProgressImportResult",
+    "ImportedProgressRow",
     "CalendarBlock",
     "DailyShift",
     "OvertimeWindow",
