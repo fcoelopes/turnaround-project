@@ -859,7 +859,7 @@ def _planning_risk_driver_frame(
 
 def _planning_assumption_frames(
     assumptions: dict | None,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Normaliza premissas do cenário para rastreabilidade no PDF."""
     assumptions = dict(assumptions or {})
     hours_per_day = int(assumptions.get("hours_per_day") or 0)
@@ -887,6 +887,14 @@ def _planning_assumption_frames(
             {
                 "Premissa": "Horas/dia para conversão",
                 "Valor": str(hours_per_day) if hours_per_day > 0 else "—",
+            },
+            {
+                "Premissa": "Horas/dia na importação",
+                "Valor": (
+                    str(assumptions.get("import_hours_per_day"))
+                    if assumptions.get("import_hours_per_day") is not None
+                    else "—"
+                ),
             },
             {
                 "Premissa": "Simulações Monte Carlo",
@@ -925,7 +933,29 @@ def _planning_assumption_frames(
         ],
         columns=["Gatilho", "Evento", "Probabilidade"],
     )
-    return summary_df, resource_df, event_df
+
+    calendar_rows = []
+    for resource, calendar in sorted(
+        (assumptions.get("resource_calendars") or {}).items()
+    ):
+        shifts = calendar.get("shifts") or []
+        shift_labels = []
+        for shift in shifts:
+            start = float(shift.get("start_hour", 0.0))
+            end = float(shift.get("end_hour", 0.0))
+            shift_labels.append(f"{start:02.0f}:00–{end:02.0f}:00")
+        calendar_rows.append(
+            {
+                "Recurso": resource,
+                "Turno": " + ".join(shift_labels) or "24 h",
+                "Relógio em H+0": f"{float(calendar.get('origin_hour', 0.0)):02.0f}:00",
+            }
+        )
+    calendar_df = pd.DataFrame(
+        calendar_rows,
+        columns=["Recurso", "Turno", "Relógio em H+0"],
+    )
+    return summary_df, resource_df, event_df, calendar_df
 
 
 def build_base_management_pdf(
@@ -1073,7 +1103,11 @@ def build_base_management_pdf(
                         f"{comparison['unconstrained_makespan_h'] / hours_per_day:.2f} d",
                     ),
                     (
-                        "Penalidade recursos",
+                        (
+                            "Penalidade restrições"
+                            if (scenario_assumptions or {}).get("resource_calendars")
+                            else "Penalidade recursos"
+                        ),
                         f"{comparison['resource_penalty_h']:.1f} h",
                     ),
                 ]
@@ -1085,9 +1119,12 @@ def build_base_management_pdf(
         ]
     )
 
-    assumption_summary_df, assumption_resource_df, assumption_event_df = (
-        _planning_assumption_frames(scenario_assumptions)
-    )
+    (
+        assumption_summary_df,
+        assumption_resource_df,
+        assumption_event_df,
+        assumption_calendar_df,
+    ) = _planning_assumption_frames(scenario_assumptions)
     story.extend(
         [
             PageBreak(),
@@ -1113,6 +1150,21 @@ def build_base_management_pdf(
                 widths=[80 * mm, 44 * mm, 50 * mm],
             ),
             Spacer(1, 4 * mm),
+            _p("Calendários de recurso", s["h2"]),
+            (
+                _dataframe_table(
+                    assumption_calendar_df,
+                    ["Recurso", "Turno", "Relógio em H+0"],
+                    max_rows=30,
+                    widths=[70 * mm, 64 * mm, 40 * mm],
+                )
+                if not assumption_calendar_df.empty
+                else _p(
+                    "Nenhum calendário restritivo configurado; recursos tratados como 24 h.",
+                    s["muted"],
+                )
+            ),
+            Spacer(1, 4 * mm),
             _p("Probabilidades de eventos de escopo", s["h2"]),
             (
                 _dataframe_table(
@@ -1133,10 +1185,16 @@ def build_base_management_pdf(
 
     insights = []
     if comparison["resource_penalty_h"] > 0:
-        insights.append(
-            f"A restrição de recursos adiciona {comparison['resource_penalty_h']:.1f} h "
-            "sobre a referência sem limitação de capacidade."
-        )
+        if (scenario_assumptions or {}).get("resource_calendars"):
+            insights.append(
+                f"Recursos + calendários adicionam {comparison['resource_penalty_h']:.1f} h "
+                "sobre a referência CPM sem restrições."
+            )
+        else:
+            insights.append(
+                f"A restrição de recursos adiciona {comparison['resource_penalty_h']:.1f} h "
+                "sobre a referência sem limitação de capacidade."
+            )
     else:
         insights.append(
             "As capacidades configuradas não acrescentam atraso sobre a referência CPM."
