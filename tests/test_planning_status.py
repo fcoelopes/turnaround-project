@@ -107,3 +107,14 @@ def test_baseline_approval_summary_uses_readable_text_not_metric_truncation():
     assert 'approved_at_local.strftime(\'%d/%m/%Y %H:%M\')' in source
     assert 'ZoneInfo("America/Fortaleza")' in source
     assert 'st.caption("Aprovado por")' in source
+
+
+def test_planning_release_is_gated_by_execution_readiness():
+    source = (
+        Path(__file__).resolve().parents[1] / "Planejamento.py"
+    ).read_text(encoding="utf-8")
+
+    assert '"Validação para execução"' in source
+    assert "disabled=not execution_readiness.ready" in source
+    assert "if baseline_formal and execution_readiness.ready:" in source
+    assert "readiness_subject = (" in source
