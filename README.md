@@ -180,9 +180,19 @@ Start + Actual Finish válidos passa a ser congelado no `ExecutionState` pelo
 realizado.
 
 Quando existe qualquer Actual importado, o TDS deixa de inferir realizado
-apenas pela posição da hora corrente no cronograma. Atividade em andamento com
-Actual Start permanece auditada, mas seu término futuro só será congelado
-quando houver **Remaining Duration**.
+apenas pela posição da hora corrente no cronograma.
+
+Para atividade em andamento, **Remaining Duration** representa as horas de
+trabalho ainda necessárias. Se houver uma data/hora de status no Project (ou
+referência H+ no CSV/Excel), ela é usada como origem desse restante; sem essa
+referência, vale a hora corrente informada na tela. O forecast de término usa os
+mesmos calendários do recurso e permanece não preemptivo: se o restante não
+couber numa janela contínua, o estado é recusado até ajustar
+calendário/overtime ou o dado operacional.
+
+Atividades `in_progress` com Actual Start + Remaining Duration válidos entram
+no `ExecutionState` com término previsto e passam a reservar recursos e
+bloquear sucessoras até o forecast.
 
 ## Dois níveis de planejamento
 
