@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import pytest
+
 from turnaround import (
     ApprovedPlanningBaseline,
+    DailyShift,
     ExecutionStore,
     approved_schedule_matches_project,
     approved_schedule_to_advanced,
     build_planning_baseline,
     project_from_tasks,
     upgrade_database,
+    WorkingCalendar,
 )
 from turnaround.models import Link, ScheduledTask, Task, TurnaroundResult
 
@@ -241,3 +245,89 @@ def test_approved_baseline_can_normalize_legacy_dangling_predecessor():
         deadline=baseline.deadline_h,
     )
     assert [task.id for task in project.tasks] == ["7"]
+
+
+def test_planning_baseline_persists_resource_calendar_without_schema_change(tmp_path):
+    url = _database_url(tmp_path)
+    upgrade_database(url)
+    tasks, result = _sample_plan()
+    calendar = WorkingCalendar(
+        name="Mecânica",
+        shifts=(DailyShift(7, 19),),
+        origin_hour=6,
+    )
+
+    baseline = build_planning_baseline(
+        project_name="Parada calendário",
+        source_name="parada.xml",
+        hours_per_day=24,
+        deadline_h=48,
+        capacities={"Mecânica": 2},
+        capacities_validated=True,
+        tasks=tasks,
+        result=result,
+        resource_calendars={"Mecânica": calendar},
+    )
+
+    stored = ExecutionStore(url).save_planning_baseline(baseline)
+    restored = ExecutionStore(url).load_planning_baseline(stored.key)
+
+    assert restored is not None
+    restored_calendar = restored.to_resource_calendars()["Mecânica"]
+    assert restored_calendar.origin_hour == pytest.approx(6)
+    assert restored_calendar.shifts[0].start_hour == pytest.approx(7)
+    assert restored_calendar.shifts[0].end_hour == pytest.approx(19)
+
+
+def test_empty_calendar_does_not_change_legacy_baseline_fingerprint():
+    tasks, result = _sample_plan()
+
+    legacy_equivalent = build_planning_baseline(
+        project_name="Parada teste",
+        source_name="parada.xml",
+        hours_per_day=8,
+        deadline_h=12,
+        capacities={"Mecânica": 2},
+        tasks=tasks,
+        result=result,
+    )
+    explicit_empty = build_planning_baseline(
+        project_name="Parada teste",
+        source_name="parada.xml",
+        hours_per_day=8,
+        deadline_h=12,
+        capacities={"Mecânica": 2},
+        tasks=tasks,
+        result=result,
+        resource_calendars={},
+    )
+
+    assert explicit_empty.key == legacy_equivalent.key
+
+
+def test_advanced_project_receives_calendar_from_approved_baseline():
+    tasks, result = _sample_plan()
+    calendar = WorkingCalendar(
+        name="Mecânica",
+        shifts=(DailyShift(7, 19),),
+        origin_hour=6,
+    )
+    baseline = build_planning_baseline(
+        project_name="Parada teste",
+        source_name="parada.xml",
+        hours_per_day=24,
+        deadline_h=48,
+        capacities={"Mecânica": 2},
+        tasks=tasks,
+        result=result,
+        resource_calendars={"Mecânica": calendar},
+    )
+
+    project = project_from_tasks(
+        baseline.to_tasks(),
+        baseline.capacities,
+        deadline=baseline.deadline_h,
+        resource_calendars=baseline.to_resource_calendars(),
+    )
+
+    assert project.resource_calendars["Mecânica"].origin_hour == pytest.approx(6)
