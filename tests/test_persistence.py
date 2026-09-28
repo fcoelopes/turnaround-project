@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy import inspect, text
