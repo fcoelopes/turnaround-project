@@ -267,6 +267,18 @@ de prazo adicional separa o cenário determinístico da referência probabilíst
 P80. Informações de aprovação da Baseline 0 e diagnóstico técnico aparecem
 depois desse resumo executivo.
 
+### Direcionadores de risco no relatório
+
+Logo após o resumo executivo, o PDF de Planejamento apresenta os principais
+sinais que pressionam o prazo:
+
+- eventos de escopo ordenados pelo impacto marginal médio positivo observado nas
+  simulações;
+- recurso mais pressionado, com pico, capacidade e utilização média.
+
+A ordenação é **informativa**. Ela serve para orientar a investigação do
+planejador, mas não recomenda nem seleciona automaticamente uma ação técnica.
+
 ### Premissas do cenário no relatório
 
 O relatório de Planejamento inclui uma página de rastreabilidade com os valores
