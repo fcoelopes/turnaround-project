@@ -590,9 +590,13 @@ def _rows_from_project_xml(
     calendar_origin: datetime | None = None,
 ) -> list[ImportedProgressRow]:
     root = ET.fromstring(content)
-    status_date_h = _parse_actual_datetime(
-        _child_text(root, "StatusDate"),
-        calendar_origin,
+    status_date_h = (
+        _parse_actual_datetime(
+            _child_text(root, "StatusDate"),
+            calendar_origin,
+        )
+        if calendar_origin is not None
+        else None
     )
     rows: list[ImportedProgressRow] = []
     for node in root.iter():
