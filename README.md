@@ -17,6 +17,24 @@ Aplicação para receber um cronograma exportado do Microsoft Project e aplicar 
 11. Em uma página avançada, trata **MRCPSP**, escopo opcional/condicional e rescheduling após inspeções.
 12. Exporta o snapshot operacional replanejado em **Microsoft Project XML (MSPDI)**, materializando condicionais ativadas, atividades `DS-*`, precedências, recursos e novos horários.
 
+## Gate de prontidão para execução
+
+Antes de habilitar **Escopo e Replanejamento**, a Baseline 0 passa por uma
+validação estrutural independente do RCPSP-base. O gate verifica, no mínimo:
+
+- IDs únicos e predecessoras existentes;
+- ausência de ciclos na rede completa, inclusive escopo potencial;
+- regras condicionais/gatilhos compatíveis com o domínio de execução;
+- capacidades validadas e suficientes também para atividades dormentes;
+- cobertura exata do escopo-base pelo cronograma aprovado;
+- coerência entre duração, início, término, precedências e makespan;
+- ausência de sobrecarga simultânea de recursos no snapshot persistido.
+
+Se houver erro, a baseline pode continuar visível para análise, mas o link de
+replanejamento não é liberado. Ao abrir um baseline persistido, a página de
+Execução repete a validação defensivamente para transformar inconsistências em
+mensagens de bloqueio, não em traceback.
+
 ## Calendários de trabalho
 
 ### Calendário específico por recurso
