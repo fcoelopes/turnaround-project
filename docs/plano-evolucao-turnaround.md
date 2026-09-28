@@ -393,7 +393,7 @@ Relatório
 
 A navegação deve seguir o domínio da parada, não a estrutura interna do software.
 
-**TDS-18 implementado — aguardando revisão funcional:** a aba genérica
+**TDS-18 implementado e aprovado:** a aba genérica
 **Configuração** foi removida da navegação. Sessão persistida, histórico e
 preferências de replanejamento passaram para **Operação** em blocos contextuais
 colapsáveis. A configuração numérica de λ só aparece quando o usuário marca
@@ -654,6 +654,14 @@ Reserva até P80        +2,7 d
 STATUS: ATENÇÃO
 ```
 
+**TDS-19 implementado — aguardando revisão funcional:** a primeira página do
+relatório de **Planejamento** agora começa pela leitura de decisão: **Janela,
+Makespan base, P80, P(cumprir janela), Reserva até P80 e Status geral**. A
+governança da Baseline 0 aparece depois desse resumo, e o diagnóstico técnico
+(CPM sem recursos, penalidade de recursos e estados determinístico/probabilístico)
+fica em segundo plano. **Reserva até P80** representa a diferença entre P80 e o
+makespan base.
+
 ## P1.19 Mostrar principais direcionadores
 
 Primeira página ou logo após o resumo:
@@ -870,7 +878,7 @@ Depois disso avaliar:
 
 ## Sprint 4 — Relatórios gerenciais
 
-- [ ] Nova primeira página do Planejamento.
+- [x] Nova primeira página do Planejamento.
 - [ ] Premissas do cenário.
 - [ ] Ranking de direcionadores de risco.
 - [ ] Decisões pendentes na execução.
