@@ -643,6 +643,18 @@ restrições de recursos
 modos de execução
 ```
 
+### Preservação do plano
+
+Em **Configuração**, escolha quanto o replanejamento deve preservar os horários
+já comunicados para o trabalho futuro:
+
+- **Baixa**: aceita mais rearranjo em busca de prazo;
+- **Balanceada**: compromisso padrão entre prazo e estabilidade;
+- **Alta**: penaliza mais mudanças nos horários já planejados.
+
+O valor matemático λ fica escondido em **Configuração avançada · estabilidade**.
+Ele só precisa ser usado diretamente em estudos ou calibração.
+
 ---
 
 ## 22. Visão executiva
