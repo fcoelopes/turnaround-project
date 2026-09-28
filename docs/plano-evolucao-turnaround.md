@@ -473,11 +473,10 @@ observações
 - [x] JSON continua como importação opcional.
 - [x] Editor tabular permanece como mecanismo principal.
 
-**TDS-15 implementado — aguardando revisão funcional:** foi criada a aba
-**Escopo**, separando conditional, XOR/OR/AND, gatilhos, eventos, rotas e o
-editor tabular do domínio genérico **Configuração**. O JSON segue como entrada
-opcional e as capacidades, pessoas e preferências de estabilidade permanecem
-fora desta aba.
+**TDS-15 implementado e aprovado:** foi criada a aba **Escopo**, separando
+conditional, XOR/OR/AND, gatilhos, eventos, rotas e o editor tabular do domínio
+genérico **Configuração**. O JSON segue como entrada opcional e as capacidades,
+pessoas e preferências de estabilidade permanecem fora desta aba.
 
 ---
 
@@ -516,6 +515,14 @@ Organizar em subseções:
 - utilização;
 - atividades inviáveis;
 - conflito de skill.
+
+**TDS-16 implementado — aguardando revisão funcional:** a antiga aba
+**Pessoas** foi absorvida por **Recursos**. O mesmo domínio agora reúne
+capacidades/equipamentos, modos de execução, roster, habilidades e multi-skill.
+O resultado do cenário exibe também **pico**, **utilização média** e **folga no
+pico** calculados sobre o mesmo snapshot MRCPSP usado pela Operação e pelo
+relatório. Diagnósticos de modos inviáveis e conflitos de composição multi-skill
+permanecem no mesmo contexto.
 
 ---
 
@@ -599,7 +606,7 @@ Objetivo: evitar consumir uma aba operacional com documentação.
 
 **TDS-13 implementado e aprovado:** a aba **Manual** foi removida da navegação
 principal. A ajuda essencial foi distribuída em expanders contextuais de
-**Operação**, **Configuração**, **Pessoas** e **Governança**. O manual técnico
+**Operação**, **Escopo**, **Recursos**, **Configuração** e **Governança**. O manual técnico
 completo permanece em `docs/manual-escopo-condicional.md`.
 
 ---
@@ -841,7 +848,7 @@ Depois disso avaliar:
 
 - [x] Criar aba Visão.
 - [x] Criar aba Escopo.
-- [ ] Consolidar Recursos + Pessoas.
+- [x] Consolidar Recursos + Pessoas.
 - [ ] Traduzir λ em níveis de preservação.
 - [ ] Manter configuração avançada opcional.
 
