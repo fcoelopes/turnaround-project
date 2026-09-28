@@ -7,6 +7,7 @@ from turnaround import (
     DailyShift,
     ExecutionMode,
     ExecutionState,
+    OvertimeWindow,
     TurnaroundProject,
     TurnaroundTask,
     WorkingCalendar,
@@ -301,3 +302,92 @@ def test_calendar_block_validation_is_explicit():
         CalendarBlock(start_h=4, end_h=4)
     with pytest.raises(ValueError):
         CalendarBlock(start_h=5, end_h=4)
+
+
+def test_overtime_extends_regular_shift_continuously():
+    calendar = WorkingCalendar(
+        name="Equipe",
+        shifts=(DailyShift(7, 19),),
+        overtime_windows=(
+            OvertimeWindow(
+                start_h=19,
+                end_h=23,
+                reason="janela extraordinária aprovada",
+            ),
+        ),
+    )
+
+    assert calendar.is_working_interval(17, 4) is True
+    assert calendar.next_working_start(17, 4) == pytest.approx(17)
+
+
+def test_isolated_overtime_window_can_enable_work_outside_regular_shift():
+    calendar = WorkingCalendar(
+        name="Guindaste",
+        shifts=(DailyShift(6, 18),),
+        overtime_windows=(OvertimeWindow(start_h=22, end_h=26),),
+    )
+
+    assert calendar.is_working_interval(22, 3) is True
+    assert calendar.next_working_start(21, 3) == pytest.approx(22)
+
+
+def test_unavailability_block_overrides_overtime_window():
+    calendar = WorkingCalendar(
+        name="Equipe",
+        shifts=(DailyShift(7, 19),),
+        overtime_windows=(OvertimeWindow(start_h=19, end_h=23),),
+        blocks=(CalendarBlock(start_h=20, end_h=21),),
+    )
+
+    assert calendar.is_working_interval(19, 3) is False
+    assert calendar.next_working_start(19, 2) == pytest.approx(31)
+
+
+def test_mrcpsp_can_use_approved_overtime_instead_of_waiting_next_shift():
+    project = TurnaroundProject(
+        tasks=[
+            TurnaroundTask(
+                id="A",
+                name="Serviço crítico",
+                modes=[
+                    ExecutionMode(
+                        name="base",
+                        duration=4,
+                        resources={"Equipe": 1},
+                    )
+                ],
+            )
+        ],
+        capacities={"Equipe": 1},
+        resource_calendars={
+            "Equipe": WorkingCalendar(
+                name="Equipe",
+                shifts=(DailyShift(7, 19),),
+                overtime_windows=(
+                    OvertimeWindow(
+                        start_h=19,
+                        end_h=23,
+                        reason="janela aprovada",
+                    ),
+                ),
+            )
+        },
+    )
+
+    result = reschedule_from_state(
+        project,
+        ExecutionState(current_time=17),
+    )
+
+    assert result.schedule.tasks[0].start == pytest.approx(17)
+    assert result.schedule.tasks[0].finish == pytest.approx(21)
+
+
+def test_overtime_window_validation_is_explicit():
+    with pytest.raises(ValueError):
+        OvertimeWindow(start_h=-1, end_h=2)
+    with pytest.raises(ValueError):
+        OvertimeWindow(start_h=4, end_h=4)
+    with pytest.raises(ValueError):
+        OvertimeWindow(start_h=5, end_h=4)
