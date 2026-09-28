@@ -981,6 +981,7 @@ entra no objetivo do solver**.
 A ferramenta pode ser considerada pronta para um piloto operacional de grande parada quando:
 
 - [ ] capacidades forem explicitamente validadas;
+- [x] baseline passar por gate estrutural antes de habilitar replanejamento;
 - [ ] calendário/turnos forem respeitados pelo scheduler;
 - [ ] status executivo considerar risco;
 - [ ] baseline original possuir governança formal;
