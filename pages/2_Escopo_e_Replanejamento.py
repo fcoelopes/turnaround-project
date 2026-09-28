@@ -483,6 +483,52 @@ def _parse_resource_demands(raw: str) -> dict[str, float]:
     return demands
 
 
+def _resource_usage_snapshot(
+    schedule_items: list,
+    capacities: dict[str, float],
+    makespan: float,
+) -> dict[str, dict[str, float]]:
+    """Calcula pico e utilização média do snapshot MRCPSP exibido."""
+    metrics: dict[str, dict[str, float]] = {}
+    resource_names = set(capacities)
+    for item in schedule_items:
+        resource_names.update(item.resources)
+
+    for resource in sorted(resource_names, key=str.casefold):
+        events: list[tuple[float, int, float]] = []
+        load_hours = 0.0
+        for item in schedule_items:
+            demand = float(item.resources.get(resource, 0.0))
+            if demand <= 0:
+                continue
+            start = float(item.start)
+            finish = float(item.finish)
+            duration = max(0.0, finish - start)
+            load_hours += demand * duration
+            # Em instantes coincidentes, liberações são processadas antes de inícios.
+            events.append((start, 1, demand))
+            events.append((finish, 0, -demand))
+
+        current = 0.0
+        peak = 0.0
+        for _, _, delta in sorted(events, key=lambda row: (row[0], row[1])):
+            current += delta
+            peak = max(peak, current)
+
+        capacity = float(capacities.get(resource, 0.0))
+        utilization = (
+            0.0
+            if capacity <= 0 or makespan <= 0
+            else load_hours / (capacity * float(makespan))
+        )
+        metrics[resource] = {
+            "peak": peak,
+            "utilization": utilization,
+            "peak_slack": capacity - peak,
+        }
+    return metrics
+
+
 def load_project(store: ExecutionStore):
     section(
         "1",
@@ -2385,6 +2431,60 @@ with operation_tab:
     )
 
     all_items = result.frozen_tasks + result.schedule.tasks
+    resource_usage = _resource_usage_snapshot(
+        all_items,
+        project.capacities,
+        float(result.schedule.makespan),
+    )
+    if not resource_scenario_df.empty:
+        resource_scenario_df = resource_scenario_df.copy()
+        resource_scenario_df["Pico"] = resource_scenario_df["Recurso"].map(
+            lambda resource: resource_usage.get(resource, {}).get("peak", 0.0)
+        )
+        resource_scenario_df["Utilizacao_%"] = resource_scenario_df["Recurso"].map(
+            lambda resource: round(
+                resource_usage.get(resource, {}).get("utilization", 0.0) * 100,
+                1,
+            )
+        )
+        resource_scenario_df["Folga no pico"] = resource_scenario_df["Recurso"].map(
+            lambda resource: resource_usage.get(resource, {}).get(
+                "peak_slack",
+                float(project.capacities.get(resource, 0.0)),
+            )
+        )
+
+    with resources_tab:
+        st.markdown("#### Resultado do cenário")
+        st.caption(
+            "Pico e utilização são calculados sobre o mesmo snapshot MRCPSP "
+            "mostrado em Operação e no relatório."
+        )
+        st.dataframe(
+            resource_scenario_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Utilizacao_%": st.column_config.NumberColumn(
+                    "Utilização (%)",
+                    format="%.1f",
+                ),
+                "Pico": st.column_config.NumberColumn("Pico", format="%.1f"),
+                "Folga no pico": st.column_config.NumberColumn(
+                    "Folga no pico",
+                    format="%.1f",
+                ),
+            },
+        )
+        constrained_resources = resource_scenario_df[
+            resource_scenario_df["Folga no pico"] <= 1e-9
+        ] if not resource_scenario_df.empty else resource_scenario_df
+        if not constrained_resources.empty:
+            st.caption(
+                "Recursos que atingem a capacidade no pico: "
+                + ", ".join(constrained_resources["Recurso"].astype(str).tolist())
+            )
+
     person_name_by_id = {
         person.id: person.name
         for person in workforce.people
