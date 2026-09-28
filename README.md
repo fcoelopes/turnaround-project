@@ -78,6 +78,9 @@ ativação passa a depender do evento realmente observado, não da probabilidade
 
 ### Status executivo baseado em risco
 
+A interface não usa mais um segundo semáforo baseado apenas em `P(cumprir janela)`. Tela e PDF compartilham a mesma classificação gerencial: nenhum sinal fica verde isoladamente quando o P80 ainda está fora da janela.
+
+
 A leitura gerencial separa três coisas que não devem ser confundidas:
 
 - **Determinístico**: verifica se o cronograma-base cabe na janela;
