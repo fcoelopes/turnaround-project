@@ -674,6 +674,13 @@ Primeira página ou logo após o resumo:
 
 A ferramenta deve apresentar **informação para decisão**, não decidir por conta própria.
 
+**TDS-21 implementado — aguardando revisão funcional:** o relatório de
+Planejamento agora mostra **Principais direcionadores** logo após o resumo
+executivo. Eventos de escopo aparecem ordenados pelo impacto marginal médio
+positivo observado nas simulações; o recurso mais pressionado entra com
+pico/capacidade e utilização média. A seção explicita que a ordenação é
+informativa e não seleciona automaticamente nenhuma decisão técnica.
+
 ## P1.20 Criar seção “Premissas do cenário”
 
 Obrigatória para rastreabilidade.
@@ -693,7 +700,7 @@ Heurística escolhida
 Data/hora do cálculo
 ```
 
-**TDS-20 implementado — aguardando revisão funcional:** o PDF de Planejamento
+**TDS-20 implementado e aprovado:** o PDF de Planejamento
 passou a ter uma página dedicada **Premissas do cenário**, gerada a partir dos
 mesmos valores usados no cálculo. Ela registra arquivo de origem, janela,
 horas/dia para conversão, capacidades e respectivas origens, número de
@@ -887,7 +894,7 @@ Depois disso avaliar:
 
 - [x] Nova primeira página do Planejamento.
 - [x] Premissas do cenário.
-- [ ] Ranking de direcionadores de risco.
+- [x] Ranking de direcionadores de risco.
 - [ ] Decisões pendentes na execução.
 - [ ] Novo escopo com impacto.
 - [ ] Status gerencial coerente com P80/P(janela).
