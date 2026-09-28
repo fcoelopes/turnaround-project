@@ -415,12 +415,12 @@ Cadeia controladora
 
 Sem controles técnicos.
 
-**TDS-14 implementado — aguardando revisão funcional:** a nova aba **Visão**
-reutiliza o mesmo snapshot operacional calculado pelo replanejamento e mostra
-Baseline original, Baseline vigente, Forecast atual, Δ vs original, Δ vs vigente,
-situação da janela, decisões humanas pendentes, novo escopo ativo e cadeia
-controladora. A aba é deliberadamente somente leitura e não duplica controles
-técnicos da Operação, Recursos ou Governança.
+**TDS-14 implementado e aprovado:** a nova aba **Visão** reutiliza o mesmo
+snapshot operacional calculado pelo replanejamento e mostra Baseline original,
+Baseline vigente, Forecast atual, Δ vs original, Δ vs vigente, situação da janela,
+decisões humanas pendentes, novo escopo ativo e cadeia controladora. A aba é
+deliberadamente somente leitura e não duplica controles técnicos da Operação,
+Recursos ou Governança.
 
 ---
 
@@ -469,9 +469,15 @@ observações
 
 ### Critérios de aceite
 
-- [ ] Usuário entende que está configurando lógica de escopo.
-- [ ] JSON continua como importação opcional.
-- [ ] Editor tabular permanece como mecanismo principal.
+- [x] Usuário entende que está configurando lógica de escopo.
+- [x] JSON continua como importação opcional.
+- [x] Editor tabular permanece como mecanismo principal.
+
+**TDS-15 implementado — aguardando revisão funcional:** foi criada a aba
+**Escopo**, separando conditional, XOR/OR/AND, gatilhos, eventos, rotas e o
+editor tabular do domínio genérico **Configuração**. O JSON segue como entrada
+opcional e as capacidades, pessoas e preferências de estabilidade permanecem
+fora desta aba.
 
 ---
 
@@ -834,7 +840,7 @@ Depois disso avaliar:
 ## Sprint 3 — Reorganização da execução
 
 - [x] Criar aba Visão.
-- [ ] Criar aba Escopo.
+- [x] Criar aba Escopo.
 - [ ] Consolidar Recursos + Pessoas.
 - [ ] Traduzir λ em níveis de preservação.
 - [ ] Manter configuração avançada opcional.
