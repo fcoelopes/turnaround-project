@@ -271,7 +271,7 @@ def _core_payload(
     scope_risks: list[PlanningScopeRisk],
     resource_calendars: dict[str, PlanningResourceCalendarSnapshot],
 ) -> dict:
-    return {
+    payload = {
         "project_name": project_name,
         "hours_per_day": int(hours_per_day),
         "deadline_h": (
@@ -306,11 +306,13 @@ def _core_payload(
             item.model_dump(mode="json")
             for item in scope_risks
         ],
-        "resource_calendars": {
+    }
+    if resource_calendars:
+        payload["resource_calendars"] = {
             resource: snapshot.model_dump(mode="json")
             for resource, snapshot in sorted(resource_calendars.items())
-        },
-    }
+        }
+    return payload
 
 
 def build_planning_baseline(
