@@ -914,11 +914,19 @@ Depois disso avaliar:
 - [x] Novo escopo com impacto.
 - [x] Status gerencial coerente com P80/P(janela).
 
-**TDS-24 implementado — aguardando revisão funcional:** o Planejamento passou a ter uma única fonte de verdade para o status gerencial. O aviso intermediário que coloria **P(cumprir janela)** isoladamente foi removido; a interface e o PDF continuam usando `classify_planning_status`, que só considera o risco controlado quando **P80 cabe na janela e P(cumprir janela) ≥ 80%**. Isso elimina o caso contraditório em que a probabilidade aparecia verde enquanto o P80 continuava fora da janela.
+**TDS-24 implementado e aprovado:** o Planejamento passou a ter uma única fonte de verdade para o status gerencial. O aviso intermediário que coloria **P(cumprir janela)** isoladamente foi removido; a interface e o PDF continuam usando `classify_planning_status`, que só considera o risco controlado quando **P80 cabe na janela e P(cumprir janela) ≥ 80%**. Isso elimina o caso contraditório em que a probabilidade aparecia verde enquanto o P80 continuava fora da janela.
 
 ## Sprint 5 — Calendários
 
-- [ ] Turnos.
+**TDS-25 implementado — aguardando revisão funcional:** criada a primitiva de
+calendário de trabalho com **turnos diários recorrentes**, incluindo janelas que
+atravessam meia-noite (ex.: 19:00–07:00) e múltiplos turnos adjacentes. Nesta
+primeira etapa, atividades são tratadas como não preemptivas: toda a duração
+precisa caber numa janela contínua e horas bloqueadas não contam como trabalho.
+A integração desses calendários com recursos e com RCPSP/MRCPSP permanece para
+as próximas microtarefas do Sprint 5.
+
+- [x] Turnos.
 - [ ] Calendário de recursos.
 - [ ] Indisponibilidade.
 - [ ] Overtime.
