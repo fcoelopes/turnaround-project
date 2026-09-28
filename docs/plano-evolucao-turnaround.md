@@ -674,7 +674,7 @@ Primeira página ou logo após o resumo:
 
 A ferramenta deve apresentar **informação para decisão**, não decidir por conta própria.
 
-**TDS-21 implementado — aguardando revisão funcional:** o relatório de
+**TDS-21 implementado e aprovado:** o relatório de
 Planejamento agora mostra **Principais direcionadores** logo após o resumo
 executivo. Eventos de escopo aparecem ordenados pelo impacto marginal médio
 positivo observado nas simulações; o recurso mais pressionado entra com
@@ -742,6 +742,13 @@ Recurso crítico
 ```
 
 Não selecionar a decisão automaticamente.
+
+**TDS-22 implementado — aguardando revisão funcional:** decisões humanas
+pendentes passaram a aparecer na **Visão** e na primeira página do relatório de
+Execução. Para cada decisão são mostradas as alternativas, faixa de impacto de
+prazo e custo em relação ao forecast atual, déficit estático de recurso quando
+existente e factibilidade das alternativas. O motor continua sem selecionar
+nenhum ramo automaticamente.
 
 ## P1.23 Mostrar novo escopo com impacto
 
@@ -895,7 +902,7 @@ Depois disso avaliar:
 - [x] Nova primeira página do Planejamento.
 - [x] Premissas do cenário.
 - [x] Ranking de direcionadores de risco.
-- [ ] Decisões pendentes na execução.
+- [x] Decisões pendentes na execução.
 - [ ] Novo escopo com impacto.
 - [ ] Status gerencial coerente com P80/P(janela).
 
