@@ -96,3 +96,14 @@ def test_planning_ui_has_single_managerial_status_source():
     assert "A classificação gerencial de prazo combina P80 e " in source
     assert "P(cumprir janela); nenhum desses sinais" in source
     assert 'title=f"Status geral: {executive_status.overall}."' in source
+
+
+def test_baseline_approval_summary_uses_readable_text_not_metric_truncation():
+    source = (
+        Path(__file__).resolve().parents[1] / "Planejamento.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'approval_cols[0].metric(' not in source
+    assert 'approved_at_local.strftime(\'%d/%m/%Y %H:%M\')' in source
+    assert 'ZoneInfo("America/Fortaleza")' in source
+    assert 'st.caption("Aprovado por")' in source
