@@ -292,6 +292,8 @@ def _validate_remaining(
     actual_start_h: float | None,
     remaining_duration_h: float | None,
     remaining_as_of_h: float | None,
+    *,
+    allow_partial: bool = False,
 ) -> None:
     if remaining_duration_h is None:
         return
@@ -304,7 +306,7 @@ def _validate_remaining(
             "Atividade omitida/cancelada deve possuir Remaining Duration igual a 0 h."
         )
     if status == "in_progress":
-        if actual_start_h is None:
+        if actual_start_h is None and not allow_partial:
             raise ValueError(
                 "Remaining Duration de atividade em andamento exige Actual Start."
             )
@@ -374,8 +376,14 @@ def _validate_actuals(
     status: ProgressStatus,
     actual_start_h: float | None,
     actual_finish_h: float | None,
+    *,
+    allow_partial: bool = False,
 ) -> None:
-    if actual_finish_h is not None and actual_start_h is None:
+    if (
+        actual_finish_h is not None
+        and actual_start_h is None
+        and not allow_partial
+    ):
         raise ValueError("Actual Finish exige Actual Start.")
     if (
         actual_start_h is not None
@@ -479,6 +487,8 @@ def _normalize_status(value: object, percent: float | None) -> ProgressStatus:
 def _rows_from_dataframe(
     df: pd.DataFrame,
     calendar_origin: datetime | None = None,
+    *,
+    allow_partial: bool = False,
 ) -> list[ImportedProgressRow]:
     id_col = _pick_column(df.columns, "id")
     uid_col = _pick_column(df.columns, "uid")
@@ -546,6 +556,7 @@ def _rows_from_dataframe(
                 status,
                 actual_start_h,
                 actual_finish_h,
+                allow_partial=allow_partial,
             )
             remaining_duration_h = _parse_remaining_duration(
                 row[remaining_col] if remaining_col is not None else None
@@ -569,6 +580,7 @@ def _rows_from_dataframe(
                 actual_start_h,
                 remaining_duration_h,
                 remaining_as_of_h,
+                allow_partial=allow_partial,
             )
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Linha {index + 2}: {exc}") from exc
@@ -608,6 +620,8 @@ def _child_text(node: ET.Element, name: str, default: str | None = None) -> str 
 def _rows_from_project_xml(
     content: bytes,
     calendar_origin: datetime | None = None,
+    *,
+    allow_partial: bool = False,
 ) -> list[ImportedProgressRow]:
     root = ET.fromstring(content)
     status_date_h = (
@@ -644,6 +658,7 @@ def _rows_from_project_xml(
             status,
             actual_start_h,
             actual_finish_h,
+            allow_partial=allow_partial,
         )
         remaining_duration_h = _parse_remaining_duration(
             _child_text(node, "RemainingDuration")
@@ -653,6 +668,7 @@ def _rows_from_project_xml(
             actual_start_h,
             remaining_duration_h,
             status_date_h,
+            allow_partial=allow_partial,
         )
         rows.append(
             ImportedProgressRow(
@@ -679,6 +695,7 @@ def parse_progress_file(
     uploaded_file,
     *,
     calendar_origin: datetime | None = None,
+    allow_partial: bool = False,
 ) -> list[ImportedProgressRow]:
     name = uploaded_file.name.lower()
     content = uploaded_file.getvalue()
@@ -687,6 +704,7 @@ def parse_progress_file(
         return _rows_from_project_xml(
             content,
             calendar_origin=calendar_origin,
+            allow_partial=allow_partial,
         )
     if name.endswith(".csv"):
         try:
@@ -706,11 +724,13 @@ def parse_progress_file(
         return _rows_from_dataframe(
             df,
             calendar_origin=calendar_origin,
+            allow_partial=allow_partial,
         )
     if name.endswith((".xlsx", ".xls")):
         return _rows_from_dataframe(
             pd.read_excel(io.BytesIO(content)),
             calendar_origin=calendar_origin,
+            allow_partial=allow_partial,
         )
     raise ValueError(
         "Formato de progresso não suportado. Envie XML, XLSX/XLS ou CSV."
@@ -958,6 +978,17 @@ def merge_progress_snapshot(
     for task_id, incoming in incoming_by_id.items():
         old = previous_by_id.get(task_id)
         if old is None:
+            _validate_actuals(
+                incoming.status,
+                incoming.actual_start_h,
+                incoming.actual_finish_h,
+            )
+            _validate_remaining(
+                incoming.status,
+                incoming.actual_start_h,
+                incoming.remaining_duration_h,
+                incoming.remaining_as_of_h,
+            )
             merged = incoming
             changed.append(task_id)
         else:
