@@ -12,6 +12,7 @@ from turnaround import (
     TurnaroundTask,
     WorkingCalendar,
     forecast_remaining_finish,
+    merge_progress_snapshot,
     parse_progress_file,
     reconcile_progress,
 )
@@ -423,3 +424,205 @@ def test_remaining_forecast_respects_resource_calendar():
             from_h=10,
             mode_name="base",
         )
+
+
+def test_batch_merge_preserves_tasks_absent_from_partial_file():
+    previous = [
+        {
+            "task_id": "10",
+            "project_uid": "1010",
+            "task_name": "Abrir equipamento",
+            "percent_complete": 100.0,
+            "status": "completed",
+            "actual_start_h": 1.0,
+            "actual_finish_h": 3.0,
+            "remaining_duration_h": 0.0,
+            "remaining_as_of_h": 3.0,
+            "source_reference": "UID 1010",
+        },
+        {
+            "task_id": "20",
+            "project_uid": "2020",
+            "task_name": "Inspecionar",
+            "percent_complete": 40.0,
+            "status": "in_progress",
+            "actual_start_h": 3.5,
+            "actual_finish_h": None,
+            "remaining_duration_h": 3.0,
+            "remaining_as_of_h": 4.0,
+            "source_reference": "UID 2020",
+        },
+    ]
+    incoming = reconcile_progress(
+        parse_progress_file(
+            _Upload(
+                name="parcial.csv",
+                content=(
+                    "ID,Status,% concluído,Actual Start H,Remaining Duration,Status H+\n"
+                    "20,in progress,60,3.5,2,5\n"
+                ).encode("utf-8"),
+            )
+        ),
+        _project(),
+    )
+
+    merged = merge_progress_snapshot(previous, incoming.rows)
+
+    assert merged.changed_task_ids == ("20",)
+    assert merged.preserved_task_ids == ("10",)
+    assert len(merged.rows) == 2
+    by_id = {row.task_id: row for row in merged.rows}
+    assert by_id["10"].status == "completed"
+    assert by_id["10"].actual_finish_h == pytest.approx(3.0)
+    assert by_id["20"].percent_complete == pytest.approx(60.0)
+    assert by_id["20"].remaining_duration_h == pytest.approx(2.0)
+    assert by_id["20"].remaining_as_of_h == pytest.approx(5.0)
+
+
+def test_partial_patch_can_complete_task_using_previous_actual_start():
+    previous = [
+        {
+            "task_id": "20",
+            "project_uid": "2020",
+            "task_name": "Inspecionar",
+            "percent_complete": 60.0,
+            "status": "in_progress",
+            "actual_start_h": 3.5,
+            "actual_finish_h": None,
+            "remaining_duration_h": 2.0,
+            "remaining_as_of_h": 5.0,
+            "source_reference": "UID 2020",
+        }
+    ]
+    upload = _Upload(
+        name="fechamento.csv",
+        content=(
+            "ID,Status,% concluído,Actual Finish H\n"
+            "20,completed,100,7\n"
+        ).encode("utf-8"),
+    )
+
+    incoming = reconcile_progress(
+        parse_progress_file(upload, allow_partial=True),
+        _project(),
+    )
+    merged = merge_progress_snapshot(previous, incoming.rows)
+    row = merged.rows[0]
+
+    assert row.status == "completed"
+    assert row.actual_start_h == pytest.approx(3.5)
+    assert row.actual_finish_h == pytest.approx(7.0)
+    assert row.remaining_duration_h == pytest.approx(0.0)
+
+
+def test_partial_patch_can_update_remaining_without_repeating_actual_start():
+    previous = [
+        {
+            "task_id": "20",
+            "project_uid": "2020",
+            "task_name": "Inspecionar",
+            "percent_complete": 40.0,
+            "status": "in_progress",
+            "actual_start_h": 3.5,
+            "actual_finish_h": None,
+            "remaining_duration_h": 3.0,
+            "remaining_as_of_h": 4.0,
+            "source_reference": "UID 2020",
+        }
+    ]
+    incoming = reconcile_progress(
+        parse_progress_file(
+            _Upload(
+                name="remaining_delta.csv",
+                content=(
+                    "ID,Status,% concluído,Remaining Duration,Status H+\n"
+                    "20,in progress,50,2.25,5\n"
+                ).encode("utf-8"),
+            ),
+            allow_partial=True,
+        ),
+        _project(),
+    )
+
+    merged = merge_progress_snapshot(previous, incoming.rows)
+    row = merged.rows[0]
+
+    assert row.actual_start_h == pytest.approx(3.5)
+    assert row.remaining_duration_h == pytest.approx(2.25)
+    assert row.remaining_as_of_h == pytest.approx(5.0)
+
+
+def test_batch_merge_blocks_status_and_percent_regression():
+    previous = [
+        {
+            "task_id": "20",
+            "project_uid": "2020",
+            "task_name": "Inspecionar",
+            "percent_complete": 60.0,
+            "status": "in_progress",
+            "actual_start_h": 3.5,
+            "actual_finish_h": None,
+            "remaining_duration_h": 2.0,
+            "remaining_as_of_h": 5.0,
+            "source_reference": "UID 2020",
+        }
+    ]
+
+    status_regression = reconcile_progress(
+        parse_progress_file(
+            _Upload(
+                name="status.csv",
+                content=("ID,Status,% concluído\n20,not started,0\n").encode("utf-8"),
+            ),
+            allow_partial=True,
+        ),
+        _project(),
+    )
+    with pytest.raises(ValueError, match="status não pode regredir"):
+        merge_progress_snapshot(previous, status_regression.rows)
+
+    percent_regression = reconcile_progress(
+        parse_progress_file(
+            _Upload(
+                name="percent.csv",
+                content=("ID,Status,% concluído\n20,in progress,50\n").encode("utf-8"),
+            ),
+            allow_partial=True,
+        ),
+        _project(),
+    )
+    with pytest.raises(ValueError, match="% concluído não pode regredir"):
+        merge_progress_snapshot(previous, percent_regression.rows)
+
+
+def test_batch_merge_blocks_stale_remaining_snapshot():
+    previous = [
+        {
+            "task_id": "20",
+            "project_uid": "2020",
+            "task_name": "Inspecionar",
+            "percent_complete": 60.0,
+            "status": "in_progress",
+            "actual_start_h": 3.5,
+            "actual_finish_h": None,
+            "remaining_duration_h": 2.0,
+            "remaining_as_of_h": 6.0,
+            "source_reference": "UID 2020",
+        }
+    ]
+    incoming = reconcile_progress(
+        parse_progress_file(
+            _Upload(
+                name="stale.csv",
+                content=(
+                    "ID,Status,% concluído,Remaining Duration,Status H+\n"
+                    "20,in progress,65,1.5,5\n"
+                ).encode("utf-8"),
+            ),
+            allow_partial=True,
+        ),
+        _project(),
+    )
+
+    with pytest.raises(ValueError, match="anterior ao último snapshot"):
+        merge_progress_snapshot(previous, incoming.rows)
