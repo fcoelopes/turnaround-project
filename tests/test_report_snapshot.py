@@ -88,6 +88,18 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
             }
         ]
     )
+    pending_decisions_df = pd.DataFrame(
+        [
+            {
+                "Decisão": "V-101-disposition",
+                "Alternativas": "Reparar bocal | Substituir bocal",
+                "Impacto prazo": "+4.0 a +9.0 h",
+                "Impacto custo": "+200.0 a +700.0",
+                "Recurso crítico": "Guindaste (faltam 1)",
+            }
+        ]
+    )
+
     baseline_history_df = pd.DataFrame(
         [
             {
@@ -145,6 +157,7 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
         execution_state_df=execution_df,
         dynamic_scope_df=dynamic_df,
         baseline_revisions_df=baseline_history_df,
+        pending_decisions_df=pending_decisions_df,
     )
 
     assert result == b"snapshot-pdf"
@@ -194,3 +207,7 @@ def test_conditional_report_uses_current_snapshot_and_makespan(monkeypatch):
     assert "snap-rev1" in table_text
     assert "Novo escopo aprovado" in table_text
     assert "Janela revisada" in table_text
+    assert "V-101-disposition" in table_text
+    assert "Reparar bocal | Substituir bocal" in table_text
+    assert "+4.0 a +9.0 h" in table_text
+    assert "Guindaste (faltam 1)" in table_text
