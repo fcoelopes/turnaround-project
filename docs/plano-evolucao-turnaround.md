@@ -1049,7 +1049,7 @@ microtarefa. Os Actuals continuam persistidos no evento `PROGRESS_IMPORTED`,
 sem migration adicional.
 - [x] Remaining Duration.
 
-**TDS-34 implementado — aguardando revisão funcional:** a importação de
+**TDS-34 implementado e aprovado:** a importação de
 progresso passou a aceitar **Remaining Duration** em horas/minutos ou no formato
 ISO `PT...` do Microsoft Project. O XML também lê a `StatusDate` como
 referência temporal do Remaining Duration quando a origem do baseline permite
@@ -1068,7 +1068,26 @@ forecast. O replanejamento também valida que `Actual Start ≤ hora corrente <
 forecast finish` e que a soma das atividades atualmente em andamento não
 ultrapassa a capacidade modelada. Os campos continuam auditados no evento
 `PROGRESS_IMPORTED`, sem migration adicional.
-- [ ] Atualização em lote.
+- [x] Atualização em lote.
+
+**TDS-35 implementado — aguardando revisão funcional:** arquivos de progresso
+passaram a funcionar como **lotes parciais sobre a fotografia operacional
+vigente**, em vez de substituir todo o estado pelo conteúdo do último arquivo.
+Atividades ausentes do lote preservam o último estado conhecido; campos
+temporais omitidos numa linha incremental também podem reaproveitar os valores
+já auditados quando a transição permanece coerente.
+
+Antes do registro, a UI mostra **alteradas**, **sem mudança** e **preservadas**.
+Lotes sem alteração não geram novo evento. A mesclagem bloqueia regressão de
+status, redução de percentual concluído e Remaining Duration com referência
+temporal anterior ao último snapshot.
+
+O registro continua em um único PROGRESS_IMPORTED, contendo a fotografia
+consolidada e metadados do lote. Foi adicionado controle otimista pelo ID do
+último evento: se outro usuário registrar progresso entre a prévia e a
+confirmação, o lote é recusado e precisa ser reconciliado novamente. Assim a
+atualização permanece atômica e não sobrescreve silenciosamente avanço mais
+recente. Não houve nova migration de banco.
 - [ ] Comparação plano x realizado.
 
 ## Sprint 7 — Risco avançado
