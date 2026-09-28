@@ -436,10 +436,14 @@ extensões futuras e não são inferidos pelo scheduler.
 A página **Escopo e Replanejamento** não possui mais uma aba exclusiva de manual.
 A orientação essencial aparece no próprio contexto:
 
-- **Operação**: fluxo de achados, eventos, decisões humanas e DS-*;
-- **Configuração**: `conditional`, XOR/OR/AND, `human` x `event` e rotas;
-- **Pessoas**: roster, habilidades e restrição multi-skill;
+- **Visão**: baseline, forecast, janela, decisões pendentes e cadeia controladora;
+- **Operação**: estado real, achados, eventos, decisões, sessão, histórico e preferências de replanejamento;
+- **Escopo**: `conditional`, XOR/OR/AND, `human` x `event` e rotas;
+- **Recursos**: capacidades, equipamentos, roster, habilidades e multi-skill;
 - **Governança**: Baseline 0, baseline vigente, forecast e rebaseline.
+
+A aplicação não mantém mais uma aba genérica **Configuração**. Parâmetros
+avançados aparecem somente no contexto em que fazem sentido.
 
 O manual técnico completo continua em
 `docs/manual-escopo-condicional.md` para consulta detalhada.
@@ -571,8 +575,8 @@ Na interface operacional, o planejador não precisa trabalhar diretamente com
 - **Balanceada** → λ=1,0;
 - **Alta** → λ=1,7.
 
-O valor exato permanece disponível somente em **Configuração avançada ·
-estabilidade** para estudos e calibração. Sessões antigas que possuam outro valor
+O valor exato permanece oculto por padrão e só aparece quando o usuário marca
+**Mostrar configuração avançada de estabilidade**, dentro de **Operação**. Sessões antigas que possuam outro valor
 de λ são preservadas como perfil **Avançada**, sem conversão silenciosa.
 
 Atividades descobertas durante a parada não recebem penalidade de estabilidade,
