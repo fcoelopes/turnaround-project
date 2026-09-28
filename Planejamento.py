@@ -1176,8 +1176,23 @@ with tab_exec:
         },
         scope_risks=scope_risks,
     )
+    approved_baseline = execution_store.load_planning_baseline(
+        approval_candidate.key
+    )
+    baseline_formal = bool(
+        approved_baseline
+        and approved_baseline.scenario_name
+        and approved_baseline.approved_by
+        and approved_baseline.approval_reason
+    )
+    readiness_subject = (
+        approved_baseline
+        if baseline_formal and approved_baseline is not None
+        else approval_candidate
+    )
     execution_readiness = validate_planning_baseline_for_execution(
-        approval_candidate
+        readiness_subject,
+        require_formal_approval=baseline_formal,
     )
     with st.expander(
         "Validação para execução",
@@ -1202,17 +1217,7 @@ with tab_exec:
                 "Verificado: " + " · ".join(execution_readiness.checks)
             )
 
-    approved_baseline = execution_store.load_planning_baseline(
-        approval_candidate.key
-    )
-    baseline_formal = bool(
-        approved_baseline
-        and approved_baseline.scenario_name
-        and approved_baseline.approved_by
-        and approved_baseline.approval_reason
-    )
-
-    if not capacity_validation_ok:
+    if not capacity_validation_ok and not baseline_formal:
         status(
             (
                 "Revise as capacidades marcadas como INFERIDA em Recursos e "
