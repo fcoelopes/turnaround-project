@@ -1801,9 +1801,10 @@ with operation_tab:
         expanded=False,
     ):
         st.caption(
-            "Aceita Microsoft Project XML, Excel ou CSV. Nesta etapa a importação "
-            "registra status/% concluído e concilia as atividades; ela ainda não "
-            "congela tarefas no scheduler sem Actual Start/Actual Finish."
+            "Aceita Microsoft Project XML, Excel ou CSV. Actual Start/Actual Finish "
+            "em data/hora são convertidos para H+ usando a origem do baseline; "
+            "também são aceitas colunas H+ diretas. Trabalho concluído com ambos "
+            "os Actuals passa a ser congelado pelo realizado."
         )
         progress_file = st.file_uploader(
             "Arquivo de progresso",
@@ -1813,7 +1814,10 @@ with operation_tab:
         progress_result = None
         if progress_file is not None:
             try:
-                imported_rows = parse_progress_file(progress_file)
+                imported_rows = parse_progress_file(
+                    progress_file,
+                    calendar_origin=calendar_origin,
+                )
                 progress_result = reconcile_progress(
                     imported_rows,
                     project,
@@ -1826,6 +1830,8 @@ with operation_tab:
                             "Atividade": row.task_name,
                             "% concluído": row.percent_complete,
                             "Status": row.status,
+                            "Actual Start (H+)": row.actual_start_h,
+                            "Actual Finish (H+)": row.actual_finish_h,
                             "Conciliação": row.source_reference,
                         }
                         for row in progress_result.rows
@@ -1865,6 +1871,8 @@ with operation_tab:
                                 "task_name": row.task_name,
                                 "percent_complete": row.percent_complete,
                                 "status": row.status,
+                                "actual_start_h": row.actual_start_h,
+                                "actual_finish_h": row.actual_finish_h,
                                 "source_reference": row.source_reference,
                             }
                             for row in progress_result.rows
@@ -1896,6 +1904,8 @@ with operation_tab:
                                 "Atividade": row.get("task_name"),
                                 "% concluído": row.get("percent_complete"),
                                 "Status": row.get("status"),
+                                "Actual Start (H+)": row.get("actual_start_h"),
+                                "Actual Finish (H+)": row.get("actual_finish_h"),
                             }
                             for row in latest_rows
                         ]
@@ -1903,18 +1913,66 @@ with operation_tab:
                     use_container_width=True,
                     hide_index=True,
                 )
-            st.info(
-                "Esta fotografia de progresso está auditada, mas ainda não altera "
-                "o estado congelado do scheduler. Actual Start/Finish serão a "
-                "próxima etapa para aplicar o realizado sem inventar horários."
+            actual_completed = sum(
+                1
+                for row in latest_rows
+                if (
+                    row.get("status") == "completed"
+                    and row.get("actual_start_h") is not None
+                    and row.get("actual_finish_h") is not None
+                )
             )
+            actual_in_progress = sum(
+                1
+                for row in latest_rows
+                if (
+                    row.get("status") == "in_progress"
+                    and row.get("actual_start_h") is not None
+                )
+            )
+            if actual_completed:
+                st.success(
+                    f"{actual_completed} atividade(s) concluída(s) possuem Actual "
+                    "Start/Finish e serão congeladas pelo realizado."
+                )
+            if actual_in_progress:
+                st.info(
+                    f"{actual_in_progress} atividade(s) em andamento possuem Actual "
+                    "Start. Elas serão auditadas, mas só terão término congelado "
+                    "quando Remaining Duration estiver disponível."
+                )
+
+    latest_progress_rows = (
+        latest_progress_import.payload.get("rows", [])
+        if latest_progress_import is not None
+        else []
+    )
+    actual_time_values = [
+        float(value)
+        for row in latest_progress_rows
+        for value in (
+            row.get("actual_start_h"),
+            row.get("actual_finish_h"),
+        )
+        if value is not None
+    ]
+    actual_progress_authoritative = bool(actual_time_values)
+    latest_actual_h = max(actual_time_values, default=0.0)
+    default_current_time = max(
+        float(default_current_time),
+        float(latest_actual_h),
+    )
 
     current_time = st.number_input(
         "Hora corrente desde o início da parada",
-        min_value=0.0,
+        min_value=float(latest_actual_h if actual_progress_authoritative else 0.0),
         value=float(default_current_time),
         step=0.5,
         key=f"current_time_{execution_session.id[:8]}",
+        help=(
+            "Quando existem Actuals importados, a hora corrente não pode anteceder "
+            "o último registro real."
+        ),
     )
 
     execution_reference_items = (
@@ -1922,30 +1980,75 @@ with operation_tab:
         if governing_baseline_revision is not None
         else baseline.tasks
     )
+    reference_item_by_id = {
+        item.task_id: item
+        for item in execution_reference_items
+    }
     executions: dict[str, TaskExecution] = {}
-    for item in execution_reference_items:
-        if item.finish <= current_time + 1e-9:
-            executions[item.task_id] = TaskExecution(
+
+    if actual_progress_authoritative:
+        for row in latest_progress_rows:
+            if row.get("status") != "completed":
+                continue
+            actual_start = row.get("actual_start_h")
+            actual_finish = row.get("actual_finish_h")
+            if actual_start is None or actual_finish is None:
+                continue
+            reference_item = reference_item_by_id.get(
+                str(row.get("task_id"))
+            )
+            executions[str(row.get("task_id"))] = TaskExecution(
                 status="completed",
-                start=item.start,
-                finish=item.finish,
-                mode_name=item.mode_name,
-                skill_assignments={
-                    skill: list(person_ids)
-                    for skill, person_ids in item.skill_assignments.items()
-                },
+                start=float(actual_start),
+                finish=float(actual_finish),
+                mode_name=(
+                    reference_item.mode_name
+                    if reference_item is not None
+                    else None
+                ),
+                skill_assignments=(
+                    {
+                        skill: list(person_ids)
+                        for skill, person_ids
+                        in reference_item.skill_assignments.items()
+                    }
+                    if reference_item is not None
+                    else {}
+                ),
             )
-        elif item.start < current_time < item.finish:
-            executions[item.task_id] = TaskExecution(
-                status="in_progress",
-                start=item.start,
-                finish=item.finish,
-                mode_name=item.mode_name,
-                skill_assignments={
-                    skill: list(person_ids)
-                    for skill, person_ids in item.skill_assignments.items()
-                },
-            )
+        st.caption(
+            "Estado operacional orientado pelos Actuals importados. Atividades sem "
+            "Actual Start/Finish não são inferidas como realizadas apenas porque a "
+            "hora corrente ultrapassou o horário planejado."
+        )
+    else:
+        for item in execution_reference_items:
+            if item.finish <= current_time + 1e-9:
+                executions[item.task_id] = TaskExecution(
+                    status="completed",
+                    start=item.start,
+                    finish=item.finish,
+                    mode_name=item.mode_name,
+                    skill_assignments={
+                        skill: list(person_ids)
+                        for skill, person_ids in item.skill_assignments.items()
+                    },
+                )
+            elif item.start < current_time < item.finish:
+                executions[item.task_id] = TaskExecution(
+                    status="in_progress",
+                    start=item.start,
+                    finish=item.finish,
+                    mode_name=item.mode_name,
+                    skill_assignments={
+                        skill: list(person_ids)
+                        for skill, person_ids in item.skill_assignments.items()
+                    },
+                )
+        st.caption(
+            "Sem Actuals importados, a tela mantém o modo de simulação legado: "
+            "o estado é inferido pela posição da hora corrente no cronograma."
+        )
 
     st.markdown("#### Mudanças de escopo")
 
