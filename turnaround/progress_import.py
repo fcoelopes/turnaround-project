@@ -23,6 +23,8 @@ class ImportedProgressRow:
     status: ProgressStatus
     actual_start_h: float | None = None
     actual_finish_h: float | None = None
+    remaining_duration_h: float | None = None
+    remaining_as_of_h: float | None = None
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,8 @@ class ReconciledProgressRow:
     source_reference: str
     actual_start_h: float | None = None
     actual_finish_h: float | None = None
+    remaining_duration_h: float | None = None
+    remaining_as_of_h: float | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +98,31 @@ _PROGRESS_ALIASES = {
         "término real h",
         "h+ termino",
         "h+ término",
+    ],
+    "remaining_duration": [
+        "remainingduration",
+        "remaining duration",
+        "remaining duration h",
+        "remaining duration (h)",
+        "duracao restante",
+        "duração restante",
+        "duracao restante h",
+        "duração restante h",
+        "horas restantes",
+    ],
+    "remaining_as_of": [
+        "status date",
+        "data de status",
+        "data status",
+        "as of",
+        "progress date",
+    ],
+    "remaining_as_of_h": [
+        "status h",
+        "status h+",
+        "as of h",
+        "as of h+",
+        "h+ status",
     ],
 }
 
@@ -186,6 +215,139 @@ def _resolve_actual_h(
             f"convertida ({derived:g}) em mais de 1 minuto."
         )
     return direct if direct is not None else derived
+
+
+def _parse_remaining_duration(value: object) -> float | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        number = float(value)
+    else:
+        text = str(value).strip().lower().replace(",", ".")
+        if not text:
+            return None
+
+        iso = re.fullmatch(
+            r"pt(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?",
+            text,
+            re.I,
+        )
+        if iso:
+            number = (
+                float(iso.group(1) or 0.0)
+                + float(iso.group(2) or 0.0) / 60.0
+                + float(iso.group(3) or 0.0) / 3600.0
+            )
+        else:
+            hour = re.fullmatch(
+                r"(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hora|horas)",
+                text,
+                re.I,
+            )
+            minute = re.fullmatch(
+                r"(\d+(?:\.\d+)?)\s*(?:m|min|mins|minuto|minutos)",
+                text,
+                re.I,
+            )
+            if hour:
+                number = float(hour.group(1))
+            elif minute:
+                number = float(minute.group(1)) / 60.0
+            else:
+                try:
+                    number = float(text)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Remaining Duration não reconhecida: {value!r}. "
+                        "Informe horas, minutos ou duração ISO PT... do Project."
+                    ) from exc
+
+    if number < 0:
+        raise ValueError("Remaining Duration deve ser >= 0 h")
+    return float(number)
+
+
+def _validate_remaining(
+    status: ProgressStatus,
+    actual_start_h: float | None,
+    remaining_duration_h: float | None,
+    remaining_as_of_h: float | None,
+) -> None:
+    if remaining_duration_h is None:
+        return
+    if status == "completed" and remaining_duration_h > 1e-9:
+        raise ValueError(
+            "Atividade concluída deve possuir Remaining Duration igual a 0 h."
+        )
+    if status == "skipped" and remaining_duration_h > 1e-9:
+        raise ValueError(
+            "Atividade omitida/cancelada deve possuir Remaining Duration igual a 0 h."
+        )
+    if status == "in_progress":
+        if actual_start_h is None:
+            raise ValueError(
+                "Remaining Duration de atividade em andamento exige Actual Start."
+            )
+        if remaining_duration_h <= 1e-9:
+            raise ValueError(
+                "Atividade em andamento exige Remaining Duration maior que 0 h."
+            )
+        if (
+            remaining_as_of_h is not None
+            and remaining_as_of_h < actual_start_h - 1e-9
+        ):
+            raise ValueError(
+                "Data/hora de referência do Remaining Duration não pode anteceder "
+                "o Actual Start."
+            )
+
+
+def forecast_remaining_finish(
+    project: TurnaroundProject,
+    *,
+    task_id: str,
+    remaining_duration_h: float,
+    from_h: float,
+    mode_name: str | None = None,
+) -> float:
+    """Projeta o término do trabalho em andamento sem inventar preempção."""
+    remaining = float(remaining_duration_h)
+    start = float(from_h)
+    if remaining <= 0:
+        raise ValueError("Remaining Duration deve ser > 0 h para atividade em andamento.")
+    if start < 0:
+        raise ValueError("Referência H+ do Remaining Duration deve ser >= 0.")
+
+    task = next((item for item in project.tasks if item.id == task_id), None)
+    if task is None:
+        raise ValueError(f"Atividade {task_id} não existe no projeto.")
+
+    if mode_name is None:
+        mode = task.modes[0]
+    else:
+        mode = next(
+            (item for item in task.modes if item.name == mode_name),
+            None,
+        )
+        if mode is None:
+            raise ValueError(
+                f"Atividade {task_id}: modo {mode_name!r} não existe."
+            )
+
+    for resource, demand in mode.resources.items():
+        if float(demand) <= 0:
+            continue
+        calendar = project.resource_calendars.get(resource)
+        if (
+            calendar is not None
+            and not calendar.is_working_interval(start, remaining)
+        ):
+            raise ValueError(
+                f"Atividade {task_id}: Remaining Duration de {remaining:g} h "
+                f"a partir de H+{start:g} não cabe continuamente no calendário "
+                f"do recurso {resource}. Ajuste calendário/overtime ou o dado real."
+            )
+    return start + remaining
 
 
 def _validate_actuals(
@@ -307,6 +469,9 @@ def _rows_from_dataframe(
     actual_finish_col = _pick_column(df.columns, "actual_finish")
     actual_start_h_col = _pick_column(df.columns, "actual_start_h")
     actual_finish_h_col = _pick_column(df.columns, "actual_finish_h")
+    remaining_col = _pick_column(df.columns, "remaining_duration")
+    remaining_as_of_col = _pick_column(df.columns, "remaining_as_of")
+    remaining_as_of_h_col = _pick_column(df.columns, "remaining_as_of_h")
 
     if id_col is None and uid_col is None:
         raise ValueError(
@@ -362,6 +527,29 @@ def _rows_from_dataframe(
                 actual_start_h,
                 actual_finish_h,
             )
+            remaining_duration_h = _parse_remaining_duration(
+                row[remaining_col] if remaining_col is not None else None
+            )
+            remaining_as_of_h = _resolve_actual_h(
+                direct_h=(
+                    row[remaining_as_of_h_col]
+                    if remaining_as_of_h_col is not None
+                    else None
+                ),
+                datetime_value=(
+                    row[remaining_as_of_col]
+                    if remaining_as_of_col is not None
+                    else None
+                ),
+                calendar_origin=calendar_origin,
+                label="Referência do Remaining Duration",
+            )
+            _validate_remaining(
+                status,
+                actual_start_h,
+                remaining_duration_h,
+                remaining_as_of_h,
+            )
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Linha {index + 2}: {exc}") from exc
 
@@ -381,6 +569,8 @@ def _rows_from_dataframe(
                 status=status,
                 actual_start_h=actual_start_h,
                 actual_finish_h=actual_finish_h,
+                remaining_duration_h=remaining_duration_h,
+                remaining_as_of_h=remaining_as_of_h,
             )
         )
     if not rows:
@@ -400,6 +590,10 @@ def _rows_from_project_xml(
     calendar_origin: datetime | None = None,
 ) -> list[ImportedProgressRow]:
     root = ET.fromstring(content)
+    status_date_h = _parse_actual_datetime(
+        _child_text(root, "StatusDate"),
+        calendar_origin,
+    )
     rows: list[ImportedProgressRow] = []
     for node in root.iter():
         if node.tag.split("}", 1)[-1] != "Task":
@@ -427,6 +621,15 @@ def _rows_from_project_xml(
             actual_start_h,
             actual_finish_h,
         )
+        remaining_duration_h = _parse_remaining_duration(
+            _child_text(node, "RemainingDuration")
+        )
+        _validate_remaining(
+            status,
+            actual_start_h,
+            remaining_duration_h,
+            status_date_h,
+        )
         rows.append(
             ImportedProgressRow(
                 source_id=source_id,
@@ -436,6 +639,8 @@ def _rows_from_project_xml(
                 status=status,
                 actual_start_h=actual_start_h,
                 actual_finish_h=actual_finish_h,
+                remaining_duration_h=remaining_duration_h,
+                remaining_as_of_h=status_date_h,
             )
         )
 
@@ -551,6 +756,8 @@ def reconcile_progress(
                 source_reference=source_reference,
                 actual_start_h=row.actual_start_h,
                 actual_finish_h=row.actual_finish_h,
+                remaining_duration_h=row.remaining_duration_h,
+                remaining_as_of_h=row.remaining_as_of_h,
             )
         )
 
