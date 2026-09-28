@@ -341,7 +341,7 @@ def test_unavailability_block_overrides_overtime_window():
     )
 
     assert calendar.is_working_interval(19, 3) is False
-    assert calendar.next_working_start(19, 2) == pytest.approx(31)
+    assert calendar.next_working_start(19, 3) == pytest.approx(31)
 
 
 def test_mrcpsp_can_use_approved_overtime_instead_of_waiting_next_shift():
