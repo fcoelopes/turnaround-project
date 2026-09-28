@@ -53,10 +53,15 @@ Ao ativar qualquer calendário restritivo:
 - a Baseline 0 persiste o calendário usado no cálculo e a Execução o restaura;
 - o gate de prontidão valida o cronograma aprovado contra essas janelas.
 
-O Monte Carlo ainda não usa calendários nesta etapa. Para evitar comparar um
-RCPSP calendar-aware com um P80 calculado em horas contínuas, os indicadores
-probabilísticos ficam indisponíveis enquanto houver calendário restritivo. A
-integração probabilística é a próxima etapa do Sprint 5.
+O Monte Carlo usa os mesmos calendários do RCPSP determinístico em cada
+iteração. Assim, P50/P80/P90 e P(cumprir janela) permanecem no mesmo eixo de
+tempo decorrido do cenário-base. O cenário pareado de “somente duração” também
+usa os mesmos calendários, preservando a decomposição entre incerteza de duração
+e ampliação probabilística de escopo.
+
+A hipótese é **não preemptiva**: se uma duração sorteada não couber em nenhuma
+janela contínua permitida, a simulação é rejeitada com diagnóstico explícito em
+vez de repartir a atividade silenciosamente entre turnos.
 
 
 ### Calendário específico por recurso
@@ -113,9 +118,10 @@ Atividade   duração 4 h
 Primeiro início possível: 07:00
 ~~~
 
-Recursos sem calendário explícito continuam 24 h disponíveis. Essa integração
-já vale para o rescheduling avançado; RCPSP, Monte Carlo, indisponibilidades,
-overtime e exportação Project serão conectados em etapas posteriores.
+Recursos sem calendário explícito continuam 24 h disponíveis. O mesmo calendário
+já é respeitado por MRCPSP/rescheduling, RCPSP do Planejamento e Monte Carlo.
+A exportação Project permanece como a próxima integração do Sprint de
+Calendários.
 
 
 O domínio já possui uma primitiva de calendário com turnos diários recorrentes.
@@ -129,9 +135,8 @@ Nesta etapa, o calendário trabalha com atividades **não preemptivas**: a
 atividade só pode iniciar quando sua duração completa cabe em uma janela
 contínua. Horas fora do turno não contam como horas executadas.
 
-A integração com calendários específicos por recurso, RCPSP/MRCPSP, Monte Carlo
-e exportação MSPDI é incremental e pertence às próximas etapas do Sprint de
-Calendários.
+A integração com calendários específicos por recurso já alcança RCPSP, MRCPSP
+e Monte Carlo. A exportação MSPDI continua pendente no Sprint de Calendários.
 
 ## Dois níveis de planejamento
 
@@ -167,7 +172,7 @@ Em cada iteração do Monte Carlo, o sistema:
 1. sorteia a ocorrência dos eventos de escopo;
 2. materializa somente as atividades potenciais cujos eventos ocorreram;
 3. sorteia as durações das atividades ativas por distribuição triangular;
-4. executa novamente o RCPSP com as mesmas capacidades;
+4. executa novamente o RCPSP com as mesmas capacidades e calendários;
 5. registra makespan, cumprimento da janela e impacto incremental do novo escopo.
 
 Eventos iguais (mesmo gatilho + nome) são sorteados uma única vez, mesmo quando
