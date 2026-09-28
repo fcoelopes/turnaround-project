@@ -1,4 +1,4 @@
-from .calendar import CalendarBlock, DailyShift, WorkingCalendar
+from .calendar import CalendarBlock, DailyShift, OvertimeWindow, WorkingCalendar
 from .activation import ActivationResult, ActivationState, resolve_activation
 from .advanced_adapter import project_from_tasks
 from .baseline_revision import (
@@ -46,6 +46,7 @@ from .scope import apply_scope_config
 __all__ = [
     "CalendarBlock",
     "DailyShift",
+    "OvertimeWindow",
     "WorkingCalendar",
     "ActivationResult",
     "ActivationRule",
