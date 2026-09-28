@@ -170,6 +170,26 @@ Cada cenário aprovado recebe um fingerprint SHA-256 determinístico. Reaprovar 
 mesmo cenário atualiza o snapshot em vez de criar duplicatas; alterar tarefas,
 capacidades, deadline ou o cronograma produz uma nova identidade de baseline.
 
+### Visão executiva da execução
+
+A página **Escopo e Replanejamento** começa agora com uma aba **Visão** somente
+para leitura gerencial. Ela não possui controles técnicos: reutiliza o mesmo
+snapshot calculado pela Operação e mostra, em um único lugar:
+
+- Baseline original;
+- Baseline vigente;
+- Forecast atual;
+- Δ vs original e Δ vs vigente;
+- situação da janela;
+- decisões humanas pendentes;
+- novo escopo ativo;
+- cadeia controladora do término.
+
+A intenção é responder rapidamente **onde estamos, o que mudou e o que precisa
+de atenção**, sem obrigar o gerente a navegar pelos controles de execução,
+recursos ou governança. O rebaseline formal continua exclusivo da aba
+**Governança**.
+
 ### Replanejamento x rebaseline formal
 
 Um replanejamento não cria automaticamente uma nova linha de base.
