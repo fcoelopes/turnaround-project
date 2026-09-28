@@ -82,9 +82,9 @@ with st.sidebar:
         value=8,
         step=1,
         help=(
-            "Converte horas em dias para indicadores e janela. "
-            "Não representa calendário real de turnos; o scheduler atual "
-            "continua trabalhando em horas contínuas."
+            "Sem calendário real, converte horas de trabalho em dias para os "
+            "indicadores e para a janela. Quando um calendário de recurso é "
+            "ativado, os indicadores passam a usar dias corridos de 24 h."
         ),
     )
     deadline_days = st.number_input(
@@ -1173,7 +1173,11 @@ with tab_exec:
         ),
     )
     metric_cols[1].metric(
-        "Penalidade de recursos",
+        (
+            "Penalidade recursos/calendário"
+            if calendar_mode_active
+            else "Penalidade de recursos"
+        ),
         f"{comparison['resource_penalty_h']:.1f} h",
     )
     metric_cols[2].metric(
