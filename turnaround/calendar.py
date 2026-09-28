@@ -41,11 +41,29 @@ class DailyShift:
 
 
 @dataclass(frozen=True)
+class CalendarBlock:
+    """Indisponibilidade absoluta no eixo H+ da parada."""
+
+    start_h: float
+    end_h: float
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        start = float(self.start_h)
+        end = float(self.end_h)
+        if start < 0:
+            raise ValueError("start_h da indisponibilidade deve ser >= 0")
+        if end <= start:
+            raise ValueError("end_h da indisponibilidade deve ser > start_h")
+
+
+@dataclass(frozen=True)
 class WorkingCalendar:
     """Calendário recorrente formado por uma ou mais janelas diárias."""
 
     name: str
     shifts: tuple[DailyShift, ...]
+    blocks: tuple[CalendarBlock, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -100,10 +118,49 @@ class WorkingCalendar:
                 continue
             merged[-1][1] = max(merged[-1][1], interval_end)
 
-        return [
+        available = [
             (interval_start, interval_end)
             for interval_start, interval_end in merged
         ]
+
+        for block in sorted(
+            self.blocks,
+            key=lambda item: (float(item.start_h), float(item.end_h)),
+        ):
+            block_start = float(block.start_h)
+            block_end = float(block.end_h)
+            updated: list[tuple[float, float]] = []
+            for interval_start, interval_end in available:
+                if (
+                    block_end <= interval_start + 1e-9
+                    or block_start >= interval_end - 1e-9
+                ):
+                    updated.append((interval_start, interval_end))
+                    continue
+
+                if block_start > interval_start + 1e-9:
+                    updated.append(
+                        (
+                            interval_start,
+                            min(block_start, interval_end),
+                        )
+                    )
+                if block_end < interval_end - 1e-9:
+                    updated.append(
+                        (
+                            max(block_end, interval_start),
+                            interval_end,
+                        )
+                    )
+            available = [
+                (a, b)
+                for a, b in updated
+                if b > a + 1e-9
+            ]
+            if not available:
+                break
+
+        return available
 
     def is_working_interval(
         self,
