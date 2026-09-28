@@ -427,6 +427,16 @@ with config_calendar:
         except ValueError as exc:
             calendar_config_errors.append(f"{resource}: {exc}")
 
+    if (
+        resource_calendars
+        and abs(calendar_origin_hour - round(calendar_origin_hour)) > 1e-9
+    ):
+        calendar_config_errors.append(
+            "O RCPSP de Planejamento usa grade horária inteira nesta etapa, "
+            "mas H+0 possui minutos diferentes de 00. Ajuste a origem ou mantenha "
+            "os recursos em 24 h até suportarmos resolução sub-horária."
+        )
+
     for message in calendar_config_errors:
         st.error(message)
 
@@ -1573,6 +1583,19 @@ scenario_assumptions = {
         for resource, value in capacities.items()
     },
     "capacity_origins": dict(capacity_origins),
+    "resource_calendars": {
+        resource: {
+            "origin_hour": float(calendar.origin_hour),
+            "shifts": [
+                {
+                    "start_hour": float(shift.start_hour),
+                    "end_hour": float(shift.end_hour),
+                }
+                for shift in calendar.shifts
+            ],
+        }
+        for resource, calendar in sorted(resource_calendars.items())
+    },
     "simulations": int(simulations),
     "duration_distribution": {
         "optimistic_pct": float(optimistic_pct),
