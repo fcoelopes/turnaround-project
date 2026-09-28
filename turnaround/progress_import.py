@@ -969,7 +969,8 @@ def merge_progress_snapshot(
 
     Atividades ausentes do novo arquivo são preservadas. Campos temporais
     ausentes na linha nova também preservam o último valor conhecido, desde que
-    a transição de status continue coerente.
+    a transição de status continue coerente. O resultado representa a fotografia
+    consolidada que deve ser persistida atomicamente pela camada de storage.
     """
     previous = [_stored_progress_row(row) for row in previous_rows]
     previous_by_id = {row.task_id: row for row in previous}
